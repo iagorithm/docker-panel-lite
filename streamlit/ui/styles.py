@@ -563,6 +563,13 @@ div[class*="st-key-auth_shell"] [data-testid="InputInstructions"] {
     font-size: 0.64rem;
 }
 
+.resource-metadata > span {
+    color: var(--ui-text) !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    font-weight: 520;
+}
+
 .confirmation-copy {
     display: flex;
     gap: 0.3rem;
@@ -1106,6 +1113,11 @@ div[class*="st-key-new_repo_branch_loader"] button {
 
 div[class*="st-key-new_repo_branch_loader"] button p {
     display: none;
+}
+
+div[class*="st-key-new_repo_url_input"] input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
 }
 
 div[class*="st-key-credential_inline_"] label p,

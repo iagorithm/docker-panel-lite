@@ -723,8 +723,22 @@ def _render_add_repository_panel() -> None:
                 new_cred_alias = st.text_input("Credential name", key="new_cred_alias")
 
         with st.form("add_repo_form"):
-            url_col, alias_col, branch_col, branch_action_col = st.columns([2.2, 1.3, 1.15, 0.65])
-            repo_url = url_col.text_input("Repository URL", placeholder="https://github.com/user/repo.git")
+            url_col, branch_action_col = st.columns([10, 1])
+            repo_url = url_col.text_input(
+                "Repository URL",
+                placeholder="https://github.com/user/repository.git",
+                key="new_repo_url_input",
+            )
+            with branch_action_col:
+                st.write("")
+                with st.container(key="new_repo_branch_loader"):
+                    load_branches = st.form_submit_button(
+                        "Load branches",
+                        icon=":material/account_tree:",
+                        help="Load remote branches using the selected GitHub credential.",
+                    )
+
+            alias_col, branch_col = st.columns(2)
             repo_alias = alias_col.text_input("Display name", placeholder="my-service")
             cached_branch_url = st.session_state.get("new_repo_branch_url", "")
             cached_branch_credential = st.session_state.get("new_repo_branch_credential", "")
@@ -746,14 +760,6 @@ def _render_add_repository_panel() -> None:
                     placeholder="Default",
                     key="new_repo_branch_manual",
                 )
-            with branch_action_col:
-                st.write("")
-                with st.container(key="new_repo_branch_loader"):
-                    load_branches = st.form_submit_button(
-                        "Load branches",
-                        icon=":material/account_tree:",
-                        help="Load remote branches using the selected GitHub credential.",
-                    )
 
             config_col, secondary_col = st.columns(2)
             if deploy_mode == "Single Dockerfile":
