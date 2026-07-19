@@ -40,6 +40,11 @@ def clone_repo(repo_url: str, dest: Path, token: str = "", timeout: int = 300) -
 
     Returns GitResult(ok, message). Raises GitError on failure.
     """
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise GitError(f"Could not create clone directory '{dest.parent}': {e}") from e
+
     clone_url = _inject_token(repo_url, token)
     try:
         result = subprocess.run(
@@ -79,6 +84,19 @@ def pull_repo(repo_path: Path, token: str = "", timeout: int = 300) -> GitResult
 
 def sync_repo(repo_url: str, repo_path: Path, token: str = "", timeout: int = 300) -> GitResult:
     """Clone if it does not exist yet, otherwise pull the existing clone."""
-    if repo_path.exists():
+    if (repo_path / ".git").is_dir():
         return pull_repo(repo_path, token=token, timeout=timeout)
+
+    if repo_path.exists():
+        if not repo_path.is_dir():
+            raise GitError(f"Clone destination '{repo_path}' exists and is not a directory")
+        try:
+            next(repo_path.iterdir())
+        except StopIteration:
+            pass
+        except OSError as e:
+            raise GitError(f"Could not inspect clone destination '{repo_path}': {e}") from e
+        else:
+            raise GitError(f"Clone destination '{repo_path}' exists and is not an empty Git repository")
+
     return clone_repo(repo_url, repo_path, token=token, timeout=timeout)
