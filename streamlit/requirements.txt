@@ -1,0 +1,2 @@
+streamlit>=1.59.2,<1.60
+docker>=7.0

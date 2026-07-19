@@ -1,0 +1,46 @@
+{
+  "github-crm-sales": {
+    "url": "https://github.com/iagorithm/crm-sales.git",
+    "path": "/app/clones/github-crm-sales",
+    "mode": "compose",
+    "dockerfile": "Dockerfile",
+    "compose_file": "crm/docker-compose.yml",
+    "ports": "",
+    "credential": "exeluma",
+    "added_at": "2026-07-19T14:34:06.283604"
+  },
+  "github-content-delivery-service": {
+    "url": "https://github.com/iagorithm/content-delivery-service.git",
+    "path": "/app/clones/github-content-delivery-service",
+    "mode": "compose",
+    "dockerfile": "Dockerfile",
+    "compose_file": "compose.yaml",
+    "ports": "",
+    "credential": "exeluma",
+    "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.content-delivery-service",
+    "added_at": "2026-07-19T15:10:37.000000"
+  },
+  "github-summary-youtube": {
+    "url": "https://github.com/iagorithm/summary-youtube.git",
+    "path": "/app/clones/github-summary-youtube",
+    "mode": "compose",
+    "dockerfile": "Dockerfile",
+    "compose_file": "studio/compose.yaml",
+    "ports": "",
+    "credential": "exeluma",
+    "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.summary-youtube",
+    "added_at": "2026-07-19T15:10:37.000000"
+  },
+  "github-exceluma-agents": {
+    "url": "https://github.com/iagorithm/exceluma-agents.git",
+    "path": "/app/clones/github-exceluma-agents",
+    "mode": "compose",
+    "dockerfile": "Dockerfile",
+    "compose_file": "compose.yaml",
+    "ports": "",
+    "credential": "exeluma",
+    "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.stack",
+    "added_at": "2026-07-19T15:10:37.000000",
+    "env_vars": "# .env.stack\n# Variables usadas por todos los agentes del proyecto.\n# NO incluir valores sensibles ni dar commit de este archivo.\n\n# --- gmail-agent (lector de Gmail -> CRM) ---\nGMAIL_USER=christ.ibarrac@gmail.com\nGMAIL_APP_PASSWORD=oswepoiaujfvrool\nGMAIL_READ_LIMIT=5\nCRM_EMAILS_DIR=crm/emails\nOPENAI_API_KEY=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\nOPENAI_MODEL_NAME=gpt-4o-mini\nFIREBASE_DATABASE_URL=https://spark-driver-app-default-rtdb.firebaseio.com\nFIREBASE_BASE_PATH=crm\nPOLL_INTERVAL_SECONDS=3600\nCRM_USER_ID=\nLEAD_ENDPOINT_TOKEN=\n\n# --- gmail-agent-leads (generador de leads por CrewAI) ---\nGMAIL_USER_LEADS=ch.ibarrac@gmail.com\nGMAIL_APP_PASSWORD_LEADS=txbr ddzb inmc yioh\nLEADS_RECIPIENT=christ.ibarrac@gmail.com\nOPENAI_API_KEY=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\nOPENAI_MODEL_NAME=gpt-4o-mini\nMIN_INTERVAL_MINUTES=5\nMAX_INTERVAL_MINUTES=5\n\n# --- langchain-agent-leads (generador de leads por LangChain) ---\nGMAIL_USER_LEADS=\nGMAIL_APP_PASSWORD_LEADS=\nLEADS_RECIPIENT=\nOPENAI_API_KEY=\nOPENAI_MODEL_NAME=gpt-4o-mini\nMIN_INTERVAL_MINUTES=1\nMAX_INTERVAL_MINUTES=60\n\n# --- crew-agents-marketing ---\nOPENAI_API_KEY=\nOPENAI_MODEL_NAME=gpt-4o-mini\nMIN_INTERVAL_MINUTES=5\nMAX_INTERVAL_MINUTES=60\n\n# --- crm-agent-leads ---\nFIREBASE_DATABASE_URL=\nFIREBASE_BASE_PATH=crm\nLEAD_ENDPOINT_TOKEN=\nOPENAI_API_KEY=\nOPENAI_MODEL_NAME=gpt-4o-mini\nANALYSIS_BATCH_LIMIT=10\nFORCE_REANALYZE=false\nPOLL_INTERVAL_SECONDS=900"
+  }
+}

@@ -1,0 +1,17 @@
+services:
+  streamlit-panel:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - ./repos:/app/clones
+      - ./app.py:/app/app.py
+      - ./core:/app/core
+      - ./ui:/app/ui
+      - ./.streamlit:/app/.streamlit
+      - ./requirements.txt:/app/requirements.txt
+    environment:
+      - APP_DATA_DIR=/app/data
+      - APP_CLONE_DIR=/app/clones
