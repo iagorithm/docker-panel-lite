@@ -841,14 +841,18 @@ div[class*="st-key-env_table_inline_"] {
 }
 
 div[class*="st-key-env_json_inline_"] {
-    width: min(100%, 32rem);
+    width: min(100%, 28rem);
 }
 
 div[class*="st-key-env_json_inline_"] textarea {
-    min-height: 7.25rem !important;
+    min-height: 4.5rem !important;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.74rem !important;
-    line-height: 1.4 !important;
+    font-size: 0.68rem !important;
+    line-height: 1.2 !important;
+    color: var(--ui-text);
+    background: var(--ui-surface-subtle);
+    border-color: var(--ui-border);
+    tab-size: 2;
 }
 
 div[class*="st-key-cancel_env_"] button,
@@ -1058,10 +1062,22 @@ div[class*="st-key-container_card_"] {
     padding: 0.72rem 0.9rem;
 }
 
-div[class*="st-key-env_json_inline_"] textarea {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.72rem;
-    line-height: 1.25;
+div[class*="st-key-edit_env_json_inline_"] {
+    max-width: 8rem;
+}
+
+div[class*="st-key-edit_env_json_inline_"] label p {
+    color: var(--ui-text-muted);
+    font-size: 0.68rem;
+}
+
+div[class*="st-key-env_json_preview_"] [data-testid="stCode"] {
+    font-size: 0.68rem;
+    line-height: 1.2;
+}
+
+div[class*="st-key-env_json_preview_"] {
+    width: min(100%, 28rem);
 }
 
 div[class*="st-key-credential_json_input"] textarea {

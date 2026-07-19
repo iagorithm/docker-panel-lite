@@ -1154,20 +1154,37 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     width="stretch",
                 )
             else:
-                compact_environment_json = json.dumps(
+                formatted_environment_json = json.dumps(
                     _environment_mapping(info.get("env_vars", "")),
                     ensure_ascii=False,
-                    separators=(", ", ": "),
+                    indent=2,
                 )
-                estimated_json_lines = max(1, (len(compact_environment_json) + 95) // 96)
-                environment_json = st.text_area(
-                    "Environment JSON",
-                    value=compact_environment_json,
-                    height=max(72, 38 + estimated_json_lines * 15),
-                    key=f"env_json_inline_{alias}",
-                    label_visibility="collapsed",
-                    placeholder='{"KEY": "value"}',
+                json_line_count = max(1, len(formatted_environment_json.splitlines()))
+                json_widget_key = f"env_json_inline_{alias}"
+                environment_json = st.session_state.get(json_widget_key, formatted_environment_json)
+                edit_environment_json = st.toggle(
+                    "Edit JSON",
+                    key=f"edit_env_json_inline_{alias}",
+                    help="Switch between syntax-highlighted preview and source editing.",
                 )
+                if edit_environment_json:
+                    environment_json = st.text_area(
+                        "Environment JSON",
+                        value=formatted_environment_json,
+                        height=min(180, max(78, 30 + json_line_count * 14)),
+                        key=json_widget_key,
+                        label_visibility="collapsed",
+                        placeholder='{"KEY": "value"}',
+                    )
+                else:
+                    with st.container(key=f"env_json_preview_{alias}"):
+                        st.code(
+                            environment_json,
+                            language="json",
+                            line_numbers=True,
+                            wrap_lines=True,
+                            height=min(180, max(72, 28 + json_line_count * 14)),
+                        )
             with st.container(horizontal=True, horizontal_alignment="right", gap="xsmall"):
                 if st.button("Cancel", key=f"cancel_env_{alias}"):
                     st.session_state.editing_repo = None
