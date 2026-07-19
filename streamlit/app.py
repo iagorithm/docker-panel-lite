@@ -722,11 +722,37 @@ def _render_add_repository_panel() -> None:
             if save_new_cred:
                 new_cred_alias = st.text_input("Credential name", key="new_cred_alias")
 
-        with st.form("add_repo_form", clear_on_submit=True):
-            url_col, alias_col, branch_col = st.columns([2.2, 1.3, 1])
+        with st.form("add_repo_form"):
+            url_col, alias_col, branch_col, branch_action_col = st.columns([2.2, 1.3, 1.15, 0.65])
             repo_url = url_col.text_input("Repository URL", placeholder="https://github.com/user/repo.git")
             repo_alias = alias_col.text_input("Display name", placeholder="my-service")
-            repo_branch = branch_col.text_input("Branch", placeholder="Default")
+            cached_branch_url = st.session_state.get("new_repo_branch_url", "")
+            cached_branch_credential = st.session_state.get("new_repo_branch_credential", "")
+            remote_branches = (
+                st.session_state.get("new_repo_remote_branches", [])
+                if cached_branch_url == repo_url and cached_branch_credential == cred_choice
+                else []
+            )
+            if remote_branches:
+                repo_branch = branch_col.selectbox(
+                    "Branch",
+                    remote_branches,
+                    key="new_repo_branch_select",
+                    help="Remote branches available with the selected credential.",
+                )
+            else:
+                repo_branch = branch_col.text_input(
+                    "Branch",
+                    placeholder="Default",
+                    key="new_repo_branch_manual",
+                )
+            with branch_action_col:
+                st.write("")
+                load_branches = st.form_submit_button(
+                    "Load",
+                    help="Load remote branches using the selected GitHub credential.",
+                    use_container_width=True,
+                )
 
             config_col, secondary_col = st.columns(2)
             if deploy_mode == "Single Dockerfile":
@@ -751,7 +777,29 @@ def _render_add_repository_panel() -> None:
                 use_container_width=True,
             )
 
-            if submitted:
+            if load_branches:
+                if not utils.validate_repo_url(repo_url):
+                    st.error("Enter a valid repository URL before loading branches")
+                elif cred_choice == "Use a new token" and not one_off_token:
+                    st.error("Enter a Personal Access Token before loading branches")
+                else:
+                    try:
+                        remote_branches = git.list_remote_branches(
+                            repo_url,
+                            token=_token_for_choice(cred_choice, one_off_token),
+                            timeout=30,
+                        )
+                    except git.GitError as e:
+                        st.error(f"Could not load branches: {e}")
+                    else:
+                        if remote_branches:
+                            st.session_state.new_repo_remote_branches = remote_branches
+                            st.session_state.new_repo_branch_url = repo_url
+                            st.session_state.new_repo_branch_credential = cred_choice
+                            st.rerun()
+                        else:
+                            st.warning("The repository did not return any branches")
+            elif submitted:
                 if not repo_url or not repo_alias:
                     st.error("URL and display name are required")
                 elif not utils.validate_repo_url(repo_url):

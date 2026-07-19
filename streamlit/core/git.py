@@ -175,6 +175,44 @@ def list_branches(repo_path: Path, timeout: int = 30) -> list[str]:
     return sorted(branches, key=str.casefold)
 
 
+def list_remote_branches(
+    repo_url: str,
+    token: str = "",
+    timeout: int = 30,
+) -> list[str]:
+    """Return remote branch names with the repository default branch first."""
+    remote_url = _inject_token(repo_url, token)
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--symref", remote_url, "HEAD", "refs/heads/*"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise GitError("Timed out while reading remote branches") from e
+    except Exception as e:  # noqa: BLE001
+        raise GitError(f"Unexpected failure while reading remote branches: {e}") from e
+    if result.returncode != 0:
+        raise GitError(_sanitize_stderr(result.stderr, token))
+
+    default_branch = ""
+    branches: set[str] = set()
+    for line in result.stdout.splitlines():
+        if line.startswith("ref: refs/heads/") and line.endswith("\tHEAD"):
+            default_branch = line.removeprefix("ref: refs/heads/").removesuffix("\tHEAD")
+            continue
+        _, separator, ref = line.partition("\t")
+        if separator and ref.startswith("refs/heads/"):
+            branches.add(ref.removeprefix("refs/heads/"))
+
+    ordered_branches = sorted(branches, key=str.casefold)
+    if default_branch in branches:
+        ordered_branches.remove(default_branch)
+        ordered_branches.insert(0, default_branch)
+    return ordered_branches
+
+
 def sync_repo(
     repo_url: str,
     repo_path: Path,
