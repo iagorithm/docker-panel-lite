@@ -1064,6 +1064,41 @@ div[class*="st-key-env_json_inline_"] textarea {
     line-height: 1.25;
 }
 
+div[class*="st-key-credential_json_input"] textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+div[class*="st-key-credential_inline_"] {
+    max-width: 24rem;
+}
+
+div[class*="st-key-credential_inline_"] label p,
+div[class*="st-key-env_mode_inline_"] label p,
+div[class*="st-key-compose_file_inline_"] label p {
+    color: var(--ui-text-muted);
+    font-size: 0.72rem;
+}
+
+div[class*="st-key-credential_inline_"] [data-baseweb="select"] > div,
+div[class*="st-key-compose_file_inline_"] input {
+    min-height: 2rem;
+    font-size: 0.78rem;
+}
+
+div[class*="st-key-compose_viewer_"] {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    background: var(--ui-surface-subtle);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+}
+
+div[class*="st-key-compose_viewer_"] [data-testid="stCode"] {
+    font-size: 0.72rem;
+}
+
 .repository-row-divider,
 .container-row-divider {
     width: 100%;

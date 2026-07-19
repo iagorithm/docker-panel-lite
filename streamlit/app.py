@@ -252,11 +252,70 @@ def _environment_from_json(value: str) -> str:
     return _environment_from_rows(rows)
 
 
+def _credentials_from_json(value: str) -> dict[str, dict[str, str]]:
+    """Parse one credential or an alias-to-credential JSON object."""
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON: {e.msg}") from e
+    if not isinstance(parsed, dict) or not parsed:
+        raise ValueError("Credential JSON must be a non-empty object")
+
+    if "token" in parsed:
+        alias = str(parsed.get("name") or parsed.get("alias") or "").strip()
+        entries = {alias: parsed}
+    else:
+        entries = parsed
+
+    credentials: dict[str, dict[str, str]] = {}
+    for raw_alias, raw_credential in entries.items():
+        alias = str(raw_alias).strip()
+        if not alias:
+            raise ValueError("Every credential needs a name or alias")
+        if not isinstance(raw_credential, dict):
+            raise ValueError(f"Credential '{alias}' must be a JSON object")
+
+        token = raw_credential.get("token")
+        if not isinstance(token, str) or not token.strip():
+            raise ValueError(f"Credential '{alias}' needs a token")
+        username = raw_credential.get("username", "")
+        if username is not None and not isinstance(username, str):
+            raise ValueError(f"Username for credential '{alias}' must be text")
+
+        credentials[alias] = {
+            "username": (username or "").strip(),
+            "token": token.strip(),
+        }
+    return credentials
+
+
 # --------------------------------------------------------------------------
 # Presentation helpers
 # --------------------------------------------------------------------------
 def _safe(value) -> str:
     return html.escape(str(value if value not in (None, "") else "—"), quote=True)
+
+
+def _read_compose_source(repo_path: str, compose_file: str, max_bytes: int = 1_000_000) -> str:
+    """Read a repository-local Compose file without allowing path traversal."""
+    if not utils.validate_relative_file_path(compose_file):
+        raise ValueError("Compose file must be a path relative to the repository root")
+
+    repository_root = Path(repo_path).resolve()
+    source_path = (repository_root / compose_file).resolve()
+    try:
+        source_path.relative_to(repository_root)
+    except ValueError as e:
+        raise ValueError("Compose file resolves outside the repository") from e
+
+    if not source_path.is_file():
+        raise FileNotFoundError(f"Compose file not found: {compose_file}")
+    if source_path.stat().st_size > max_bytes:
+        raise ValueError("Compose file is too large to display")
+    try:
+        return source_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as e:
+        raise ValueError(f"Could not read Compose file: {e}") from e
 
 
 def _image_label(container) -> str:
@@ -727,24 +786,69 @@ def _render_add_repository_panel() -> None:
 
 def _render_credentials_panel() -> None:
     with st.expander(f"Credentials  ·  {len(st.session_state.credentials)}", expanded=True):
+        credential_input_mode = st.radio(
+            "Credential input",
+            ("Fields", "JSON"),
+            horizontal=True,
+            key="credential_input_mode",
+            label_visibility="collapsed",
+        )
         with st.form("add_credential_form", clear_on_submit=True):
-            alias_col, user_col = st.columns(2)
-            cred_alias = alias_col.text_input("Credential name", placeholder="work")
-            cred_username = user_col.text_input("GitHub username", placeholder="Optional")
-            cred_token = st.text_input("Personal Access Token", type="password")
-            submitted = st.form_submit_button("Save credential", type="primary", use_container_width=True)
+            cred_alias = ""
+            cred_username = ""
+            cred_token = ""
+            credential_json = ""
+            if credential_input_mode == "Fields":
+                alias_col, user_col = st.columns(2)
+                cred_alias = alias_col.text_input("Credential name", placeholder="work")
+                cred_username = user_col.text_input("GitHub username", placeholder="Optional")
+                cred_token = st.text_input("Personal Access Token", type="password")
+            else:
+                credential_json = st.text_area(
+                    "Credential JSON",
+                    placeholder='{"name":"work", "username":"octocat", "token":"github_pat_..."}',
+                    height=82,
+                    key="credential_json_input",
+                    help=(
+                        "Add one credential with name, username and token, or multiple credentials "
+                        "as an object keyed by alias."
+                    ),
+                )
+            submitted = st.form_submit_button(
+                "Save credential" if credential_input_mode == "Fields" else "Import credential JSON",
+                type="primary",
+                use_container_width=True,
+            )
             if submitted:
-                if not cred_alias or not cred_token:
-                    st.error("Name and token are required")
-                elif cred_alias in st.session_state.credentials:
-                    st.error("A credential with that name already exists")
-                else:
-                    st.session_state.credentials[cred_alias] = {
-                        "username": cred_username,
-                        "token": cred_token,
-                        "created_at": _now(),
-                    }
+                try:
+                    if credential_input_mode == "JSON":
+                        imported_credentials = _credentials_from_json(credential_json)
+                    else:
+                        normalized_alias = cred_alias.strip()
+                        normalized_token = cred_token.strip()
+                        if not normalized_alias or not normalized_token:
+                            raise ValueError("Name and token are required")
+                        imported_credentials = {
+                            normalized_alias: {
+                                "username": cred_username.strip(),
+                                "token": normalized_token,
+                            }
+                        }
+
+                    duplicates = sorted(set(imported_credentials) & set(st.session_state.credentials))
+                    if duplicates:
+                        raise ValueError(f"Credential already exists: {', '.join(duplicates)}")
+
+                    created_at = _now()
+                    for alias, credential in imported_credentials.items():
+                        st.session_state.credentials[alias] = {
+                            **credential,
+                            "created_at": created_at,
+                        }
                     store.save_credentials(CREDS_FILE, st.session_state.credentials)
+                except ValueError as e:
+                    st.error(str(e))
+                else:
                     st.rerun()
 
         if not st.session_state.credentials:
@@ -882,6 +986,17 @@ def _render_repository_card(alias: str, info: dict) -> None:
 
                 if is_compose:
                     if components.icon_button(
+                        f"View Compose file for {alias}",
+                        key=f"icon_action_view_compose_repo_{alias}",
+                        icon="description",
+                        help="View Docker Compose YAML",
+                        primary=st.session_state.get("viewing_compose") == alias,
+                    ):
+                        st.session_state.viewing_compose = (
+                            None if st.session_state.get("viewing_compose") == alias else alias
+                        )
+                        st.rerun()
+                    if components.icon_button(
                         f"Deploy {alias}",
                         key=f"icon_action_primary_deploy_repo_{alias}",
                         icon="play_arrow",
@@ -919,6 +1034,36 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     st.rerun()
 
         _render_repo_output(alias)
+
+        if is_compose and st.session_state.get("viewing_compose") == alias:
+            with st.container(key=f"compose_viewer_{alias}"):
+                viewer_title_col, viewer_close_col = st.columns(
+                    [9, 1],
+                    vertical_alignment="center",
+                )
+                compose_file = info.get("compose_file", "docker-compose.yml")
+                viewer_title_col.caption(f"Docker Compose · {compose_file}")
+                with viewer_close_col:
+                    if components.icon_button(
+                        f"Close Compose viewer for {alias}",
+                        key=f"icon_action_close_compose_repo_{alias}",
+                        icon="close",
+                        help="Close Compose viewer",
+                    ):
+                        st.session_state.viewing_compose = None
+                        st.rerun()
+                try:
+                    compose_source = _read_compose_source(info.get("path", ""), compose_file)
+                except (OSError, ValueError) as e:
+                    st.warning(str(e))
+                else:
+                    st.code(
+                        compose_source,
+                        language="yaml",
+                        line_numbers=True,
+                        wrap_lines=True,
+                        height=320,
+                    )
 
         if _is_confirming("down_repo", alias):
             st.markdown(
