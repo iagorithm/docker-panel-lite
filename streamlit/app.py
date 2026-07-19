@@ -166,9 +166,20 @@ load_state()
 def resolve_token(info: dict) -> str:
     """Resolve the token from the stored credential associated with the repo."""
     cred_alias = info.get("credential", "")
-    if cred_alias:
-        return st.session_state.credentials.get(cred_alias, {}).get("token", "")
-    return ""
+    if not cred_alias:
+        return ""
+
+    credential = st.session_state.credentials.get(cred_alias)
+    if not credential:
+        raise git.GitError(
+            f"GitHub credential '{cred_alias}' is not available. "
+            "Assign an existing credential to this repository."
+        )
+
+    token = credential.get("token", "")
+    if not token:
+        raise git.GitError(f"GitHub credential '{cred_alias}' does not contain a token")
+    return token
 
 
 def _token_for_choice(cred_choice: str, one_off_token: str) -> str:

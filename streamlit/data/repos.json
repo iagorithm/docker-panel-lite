@@ -6,7 +6,7 @@
     "dockerfile": "Dockerfile",
     "compose_file": "crm/docker-compose.yml",
     "ports": "",
-    "credential": "exeluma",
+    "credential": "exceluma",
     "added_at": "2026-07-19T14:34:06.283604"
   },
   "github-content-delivery-service": {
@@ -16,7 +16,7 @@
     "dockerfile": "Dockerfile",
     "compose_file": "compose.yaml",
     "ports": "",
-    "credential": "exeluma",
+    "credential": "exceluma",
     "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.content-delivery-service",
     "added_at": "2026-07-19T15:10:37.000000"
   },
@@ -27,7 +27,7 @@
     "dockerfile": "Dockerfile",
     "compose_file": "studio/compose.yaml",
     "ports": "",
-    "credential": "exeluma",
+    "credential": "exceluma",
     "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.summary-youtube",
     "added_at": "2026-07-19T15:10:37.000000"
   },
@@ -38,7 +38,7 @@
     "dockerfile": "Dockerfile",
     "compose_file": "compose.yaml",
     "ports": "",
-    "credential": "exeluma",
+    "credential": "exceluma",
     "env": "https://github.com/iagorithm/infrastructure/blob/main/.env.stack",
     "added_at": "2026-07-19T15:10:37.000000"
   }
