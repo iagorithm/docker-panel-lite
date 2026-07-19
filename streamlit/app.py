@@ -778,11 +778,12 @@ def _render_add_repository_panel() -> None:
                 placeholder="PORT=8080\nDEBUG=true",
                 help="Use KEY=VALUE, one per line. Values are injected at deploy time.",
             )
-            submitted = st.form_submit_button(
-                "Clone and register",
-                type="primary",
-                use_container_width=True,
-            )
+            with st.container(horizontal=True, horizontal_alignment="right", key="new_repo_submit"):
+                submitted = st.form_submit_button(
+                    "Clone and register",
+                    type="primary",
+                    icon=":material/download:",
+                )
 
             if load_branches:
                 if not utils.validate_repo_url(repo_url):

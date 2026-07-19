@@ -1120,6 +1120,16 @@ div[class*="st-key-new_repo_url_input"] input {
     font-size: 0.82rem;
 }
 
+div[class*="st-key-new_repo_submit"] button {
+    width: auto !important;
+    min-height: 2.15rem !important;
+    height: 2.15rem;
+    padding: 0.35rem 0.75rem !important;
+    border-radius: 0.5rem !important;
+    font-size: 0.76rem !important;
+    box-shadow: none !important;
+}
+
 div[class*="st-key-credential_inline_"] label p,
 div[class*="st-key-branch_inline_"] label p,
 div[class*="st-key-env_mode_inline_"] label p,
