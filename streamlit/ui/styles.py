@@ -1090,7 +1090,12 @@ div[class*="st-key-credential_inline_"] {
     max-width: 24rem;
 }
 
+div[class*="st-key-branch_inline_"] {
+    max-width: 24rem;
+}
+
 div[class*="st-key-credential_inline_"] label p,
+div[class*="st-key-branch_inline_"] label p,
 div[class*="st-key-env_mode_inline_"] label p,
 div[class*="st-key-compose_file_inline_"] label p {
     color: var(--ui-text-muted);
@@ -1098,6 +1103,7 @@ div[class*="st-key-compose_file_inline_"] label p {
 }
 
 div[class*="st-key-credential_inline_"] [data-baseweb="select"] > div,
+div[class*="st-key-branch_inline_"] [data-baseweb="select"] > div,
 div[class*="st-key-compose_file_inline_"] input {
     min-height: 2rem;
     font-size: 0.78rem;

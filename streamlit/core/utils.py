@@ -66,6 +66,21 @@ def validate_repo_url(url: str) -> bool:
     return url.startswith("https://") or url.startswith("git@") or url.startswith("ssh://")
 
 
+def validate_branch_name(value: str) -> bool:
+    """Validate the common Git branch-name constraints without invoking a shell."""
+    branch = (value or "").strip()
+    if not branch:
+        return True
+    if branch in {"@", "HEAD"} or branch.startswith(("-", ".", "/")):
+        return False
+    if branch.endswith((".", "/", ".lock")):
+        return False
+    if any(part.startswith(".") or part.endswith(".lock") for part in branch.split("/")):
+        return False
+    forbidden = ("..", "@{", "//", "\\", " ", "~", "^", ":", "?", "*", "[")
+    return not any(item in branch for item in forbidden) and all(ord(char) >= 32 for char in branch)
+
+
 def validate_relative_file_path(value: str) -> bool:
     """Validate a repository-relative file path without parent traversal."""
     candidate = (value or "").strip()

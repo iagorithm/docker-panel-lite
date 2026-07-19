@@ -600,9 +600,20 @@ def _run_pending_repo_action() -> None:
                     Path(info["path"]),
                     token=resolve_token(info),
                     timeout=300,
+                    branch=info.get("branch", ""),
                 )
             st.session_state[f"out_{alias}"] = ("success", f"'{alias}' is up to date", "")
         elif action == "build":
+            deployment_branch = info.get("branch", "")
+            if deployment_branch:
+                with st.spinner(f"Syncing branch '{deployment_branch}' for '{alias}'…"):
+                    git.sync_repo(
+                        info["url"],
+                        Path(info["path"]),
+                        token=resolve_token(info),
+                        timeout=300,
+                        branch=deployment_branch,
+                    )
             tag = f"{utils.sanitize_alias(alias).lower()}:latest"
             ports = utils.parse_ports(info.get("ports", ""))
             environment = utils.parse_env(info.get("env_vars", ""))
@@ -622,6 +633,16 @@ def _run_pending_repo_action() -> None:
                 f"Container ID: {short_id}",
             )
         elif action == "up":
+            deployment_branch = info.get("branch", "")
+            if deployment_branch:
+                with st.spinner(f"Syncing branch '{deployment_branch}' for '{alias}'…"):
+                    git.sync_repo(
+                        info["url"],
+                        Path(info["path"]),
+                        token=resolve_token(info),
+                        timeout=300,
+                        branch=deployment_branch,
+                    )
             compose_path = info.get("compose_file", "docker-compose.yml")
             env_lines = utils.parse_env(info.get("env_vars", ""))
             with st.spinner(f"Deploying '{alias}' with Docker Compose…"):
@@ -662,7 +683,13 @@ def _sync_all_repositories() -> None:
     for alias, info in list(st.session_state.repos.items()):
         try:
             with st.spinner(f"Syncing '{alias}'…"):
-                git.sync_repo(info["url"], Path(info["path"]), token=resolve_token(info), timeout=300)
+                git.sync_repo(
+                    info["url"],
+                    Path(info["path"]),
+                    token=resolve_token(info),
+                    timeout=300,
+                    branch=info.get("branch", ""),
+                )
             synced += 1
         except git.GitError as e:
             failures.append(f"{alias}: {e}")
@@ -696,9 +723,10 @@ def _render_add_repository_panel() -> None:
                 new_cred_alias = st.text_input("Credential name", key="new_cred_alias")
 
         with st.form("add_repo_form", clear_on_submit=True):
-            url_col, alias_col = st.columns(2)
+            url_col, alias_col, branch_col = st.columns([2.2, 1.3, 1])
             repo_url = url_col.text_input("Repository URL", placeholder="https://github.com/user/repo.git")
             repo_alias = alias_col.text_input("Display name", placeholder="my-service")
+            repo_branch = branch_col.text_input("Branch", placeholder="Default")
 
             config_col, secondary_col = st.columns(2)
             if deploy_mode == "Single Dockerfile":
@@ -728,6 +756,8 @@ def _render_add_repository_panel() -> None:
                     st.error("URL and display name are required")
                 elif not utils.validate_repo_url(repo_url):
                     st.error("The URL must start with https://, git@, or ssh://")
+                elif not utils.validate_branch_name(repo_branch):
+                    st.error("Enter a valid Git branch name")
                 elif deploy_mode == "Docker Compose" and not utils.validate_relative_file_path(compose_file):
                     st.error("Compose file must be a path relative to the repository root")
                 elif cred_choice == "Use a new token" and not one_off_token:
@@ -747,7 +777,13 @@ def _render_add_repository_panel() -> None:
                         repo_path = CLONE_DIR / safe_alias
                         try:
                             with st.spinner(f"Syncing '{safe_alias}'…"):
-                                result = git.sync_repo(repo_url, repo_path, token=token, timeout=300)
+                                result = git.sync_repo(
+                                    repo_url,
+                                    repo_path,
+                                    token=token,
+                                    timeout=300,
+                                    branch=repo_branch.strip(),
+                                )
                             st.session_state.repos[safe_alias] = {
                                 "url": repo_url,
                                 "path": str(repo_path),
@@ -755,10 +791,17 @@ def _render_add_repository_panel() -> None:
                                 "dockerfile": dockerfile_path or "Dockerfile",
                                 "compose_file": compose_file or "docker-compose.yml",
                                 "ports": port_mapping,
+                                "branch": repo_branch.strip(),
                                 "env_vars": env_vars or "",
-                                "credential": cred_choice
-                                if cred_choice not in ("Public (no credential)", "Use a new token")
-                                else "",
+                                "credential": (
+                                    new_cred_alias
+                                    if cred_choice == "Use a new token" and save_new_cred
+                                    else (
+                                        cred_choice
+                                        if cred_choice not in ("Public (no credential)", "Use a new token")
+                                        else ""
+                                    )
+                                ),
                                 "added_at": _now(),
                             }
                             store.save_repos(REPOS_FILE, st.session_state.repos)
@@ -814,6 +857,10 @@ def _render_credentials_panel() -> None:
                         "as an object keyed by alias."
                     ),
                 )
+            st.caption(
+                "Need a token? [Generate a Personal Access Token on GitHub]"
+                "(https://github.com/settings/tokens/new)."
+            )
             submitted = st.form_submit_button(
                 "Save credential" if credential_input_mode == "Fields" else "Import credential JSON",
                 type="primary",
@@ -927,6 +974,7 @@ def _render_repository_card(alias: str, info: dict) -> None:
         if is_compose
         else f"{info.get('dockerfile', 'Dockerfile')} · Ports {info.get('ports') or '—'}"
     )
+    config_detail = f"{config_detail} · Branch {info.get('branch') or 'default'}"
     with st.container(key=f"repo_card_{alias}"):
         identity_col, metadata_col, actions_col = st.columns(
             [3.2, 3.8, 3],
@@ -1111,6 +1159,26 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     key=f"compose_file_inline_{alias}",
                     help="Path relative to the repository root, for example deploy/compose.yml",
                 )
+            current_branch = info.get("branch") or ""
+            try:
+                available_branches = git.list_branches(Path(info.get("path", "")))
+                branch_read_error = ""
+            except git.GitError as e:
+                available_branches = []
+                branch_read_error = str(e)
+            branch_options = [""] + available_branches
+            if current_branch and current_branch not in branch_options:
+                branch_options.append(current_branch)
+            selected_branch = st.selectbox(
+                "Deployment branch",
+                branch_options,
+                index=branch_options.index(current_branch),
+                format_func=lambda value: value or "Repository default branch",
+                key=f"branch_inline_{alias}",
+                help="This branch is synchronized before each build or deployment.",
+            )
+            if branch_read_error:
+                st.caption(f"Could not read local branches: {branch_read_error}")
             credential_options = [""] + list(st.session_state.credentials.keys())
             current_credential = info.get("credential") or ""
             if current_credential and current_credential not in credential_options:
@@ -1196,6 +1264,8 @@ def _render_repository_card(alias: str, info: dict) -> None:
                 ):
                     if is_compose and not utils.validate_relative_file_path(compose_file_value):
                         st.error("Compose file must be a path relative to the repository root")
+                    elif not utils.validate_branch_name(selected_branch):
+                        st.error("Select a valid Git branch")
                     elif selected_credential and selected_credential not in st.session_state.credentials:
                         st.error("Select an existing GitHub credential")
                     else:
@@ -1210,6 +1280,7 @@ def _render_repository_card(alias: str, info: dict) -> None:
                         else:
                             st.session_state.repos[alias]["env_vars"] = env_text
                             st.session_state.repos[alias]["credential"] = selected_credential
+                            st.session_state.repos[alias]["branch"] = selected_branch
                             if is_compose:
                                 st.session_state.repos[alias]["compose_file"] = compose_file_value.strip()
                             store.save_repos(REPOS_FILE, st.session_state.repos)
