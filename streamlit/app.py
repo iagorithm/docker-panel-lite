@@ -748,11 +748,12 @@ def _render_add_repository_panel() -> None:
                 )
             with branch_action_col:
                 st.write("")
-                load_branches = st.form_submit_button(
-                    "Load",
-                    help="Load remote branches using the selected GitHub credential.",
-                    use_container_width=True,
-                )
+                with st.container(key="new_repo_branch_loader"):
+                    load_branches = st.form_submit_button(
+                        "Load branches",
+                        icon=":material/account_tree:",
+                        help="Load remote branches using the selected GitHub credential.",
+                    )
 
             config_col, secondary_col = st.columns(2)
             if deploy_mode == "Single Dockerfile":

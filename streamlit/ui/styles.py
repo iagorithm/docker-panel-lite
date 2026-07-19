@@ -1094,6 +1094,20 @@ div[class*="st-key-branch_inline_"] {
     max-width: 24rem;
 }
 
+div[class*="st-key-new_repo_branch_loader"] button {
+    width: 2rem !important;
+    min-width: 2rem !important;
+    height: 2rem !important;
+    min-height: 2rem !important;
+    padding: 0 !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+div[class*="st-key-new_repo_branch_loader"] button p {
+    display: none;
+}
+
 div[class*="st-key-credential_inline_"] label p,
 div[class*="st-key-branch_inline_"] label p,
 div[class*="st-key-env_mode_inline_"] label p,
