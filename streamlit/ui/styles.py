@@ -1058,6 +1058,12 @@ div[class*="st-key-container_card_"] {
     padding: 0.72rem 0.9rem;
 }
 
+div[class*="st-key-env_json_inline_"] textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
 .repository-row-divider,
 .container-row-divider {
     width: 100%;

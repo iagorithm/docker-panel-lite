@@ -966,6 +966,26 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     key=f"compose_file_inline_{alias}",
                     help="Path relative to the repository root, for example deploy/compose.yml",
                 )
+            credential_options = [""] + list(st.session_state.credentials.keys())
+            current_credential = info.get("credential") or ""
+            if current_credential and current_credential not in credential_options:
+                credential_options.append(current_credential)
+            selected_credential = st.selectbox(
+                "GitHub credential",
+                credential_options,
+                index=credential_options.index(current_credential),
+                format_func=lambda value: (
+                    "Public (no credential)"
+                    if not value
+                    else (
+                        value
+                        if value in st.session_state.credentials
+                        else f"{value} (missing)"
+                    )
+                ),
+                key=f"credential_inline_{alias}",
+                help="Credential used to clone or pull this repository.",
+            )
             environment_mode = st.radio(
                 "Environment variables",
                 ("Key / value", "JSON"),
@@ -989,10 +1009,16 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     width="stretch",
                 )
             else:
+                compact_environment_json = json.dumps(
+                    _environment_mapping(info.get("env_vars", "")),
+                    ensure_ascii=False,
+                    separators=(", ", ": "),
+                )
+                estimated_json_lines = max(1, (len(compact_environment_json) + 95) // 96)
                 environment_json = st.text_area(
                     "Environment JSON",
-                    value=json.dumps(_environment_mapping(info.get("env_vars", "")), indent=2),
-                    height=116,
+                    value=compact_environment_json,
+                    height=max(72, 38 + estimated_json_lines * 15),
                     key=f"env_json_inline_{alias}",
                     label_visibility="collapsed",
                     placeholder='{"KEY": "value"}',
@@ -1008,6 +1034,8 @@ def _render_repository_card(alias: str, info: dict) -> None:
                 ):
                     if is_compose and not utils.validate_relative_file_path(compose_file_value):
                         st.error("Compose file must be a path relative to the repository root")
+                    elif selected_credential and selected_credential not in st.session_state.credentials:
+                        st.error("Select an existing GitHub credential")
                     else:
                         try:
                             env_text = (
@@ -1019,6 +1047,7 @@ def _render_repository_card(alias: str, info: dict) -> None:
                             st.error(str(e))
                         else:
                             st.session_state.repos[alias]["env_vars"] = env_text
+                            st.session_state.repos[alias]["credential"] = selected_credential
                             if is_compose:
                                 st.session_state.repos[alias]["compose_file"] = compose_file_value.strip()
                             store.save_repos(REPOS_FILE, st.session_state.repos)
