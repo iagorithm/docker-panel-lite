@@ -1,1 +1,12 @@
-repos
+# Python bytecode and generated caches
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime-generated data and cloned repositories
+/data/
+/repos/
