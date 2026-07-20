@@ -428,12 +428,39 @@ a:hover { text-decoration-color: var(--ui-text); }
 .secondary:hover:not(:disabled), .icon-button:hover:not(:disabled), .auth-card button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: var(--ui-text-tertiary); }
 .icon-button { display: inline-grid; width: 2.5rem; max-width: 2.5rem; min-width: 2.5rem; padding: 0.5rem; place-items: center; }
 .ui-icon { display: block; width: 1.12rem; height: 1.12rem; }
+.button-spinner {
+  display: inline-block;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: button-spin 700ms linear infinite;
+}
+.primary .button-spinner,
+.primary-icon .button-spinner {
+  color: #fff;
+}
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
 .top-toolbar .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.1rem; }
 .top-toolbar .ui-icon { width: 1.2rem; height: 1.2rem; }
 .row-actions .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.02rem; }
 .row-actions .ui-icon { width: 1.15rem; height: 1.15rem; }
 .repositories-workspace .row-actions .icon-button { background: transparent; border-color: transparent; box-shadow: none; }
 .repositories-workspace .row-actions .icon-button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: transparent; }
+.repositories-workspace .row-actions .icon-button.primary-icon {
+  color: #fff;
+  background: var(--ui-text);
+  border-color: var(--ui-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.repositories-workspace .row-actions .icon-button.primary-icon:hover:not(:disabled) {
+  color: #fff;
+  background: #303030;
+  border-color: #303030;
+}
 .containers-workspace .row-actions .icon-button { background: var(--ui-surface); border-color: var(--ui-border-strong); box-shadow: var(--ui-shadow-xs); }
 .containers-workspace .row-actions .icon-button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: var(--ui-text-tertiary); }
 .icon-button.primary-icon { color: #fff; background: var(--ui-text); border-color: var(--ui-text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }

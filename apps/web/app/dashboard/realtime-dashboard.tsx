@@ -4,6 +4,7 @@ import { signOut } from "firebase/auth";
 import { onValue, ref } from "firebase/database";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import {
   cancelDeployment,
@@ -34,6 +35,7 @@ type Props = {
 type View = "containers" | "repositories";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
+const defaultComposeFile = "compose.yml";
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -98,22 +100,38 @@ function StatusBadge({ label, running }: { label: string; running: boolean }) {
   return <span className={`ui-status-badge ${running ? "is-running" : "is-stopped"}`}><span className="ui-status-badge__dot" aria-hidden="true" />{display}</span>;
 }
 
-function IconButton({ title, children, onClick, primary = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean }) {
-  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} onClick={onClick}>{children}</button>;
+function Spinner() {
+  return <span className="button-spinner" aria-hidden="true" />;
 }
 
-function QueueButton({ repositoryId, action, children, title, primary = false }: {
+function IconButton({ title, children, onClick, primary = false, disabled = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
+  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} onClick={onClick} disabled={disabled}>{children}</button>;
+}
+
+function PendingIconButton({ title, children, onClick, primary = false, busy = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean }) {
+  const { pending } = useFormStatus();
+  const isBusy = pending || busy;
+  return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
+}
+
+function PendingSubmitButton({ children, className = "primary", formAction }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void> }) {
+  const { pending } = useFormStatus();
+  return <button className={className} type="submit" formAction={formAction} disabled={pending}>{pending ? <Spinner /> : children}</button>;
+}
+
+function QueueButton({ repositoryId, action, children, title, primary = false, busy = false }: {
   repositoryId: string;
   action: RepositoryAction;
   children: React.ReactNode;
   title: string;
   primary?: boolean;
+  busy?: boolean;
 }) {
   return (
     <form action={enqueueDeployment}>
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
-      <IconButton title={title} primary={primary}>{children}</IconButton>
+      <PendingIconButton title={title} primary={primary} busy={busy}>{children}</PendingIconButton>
     </form>
   );
 }
@@ -138,6 +156,10 @@ function containerActionMeta(action: ContainerAction) {
   if (action === "container_logs") return { title: "View logs", icon: "terminal" as const };
   if (action === "container_restart") return { title: "Restart container", icon: "sync" as const };
   return { title: "Delete container", icon: "trash" as const };
+}
+
+function isActiveJob(job: Deployment) {
+  return ["queued", "leased", "running"].includes(job.status);
 }
 
 export function RealtimeDashboard(props: Props) {
@@ -211,6 +233,10 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, container.status, ...(container.ports || [])], query),
   );
+  const busyContainerActions = useMemo(
+    () => new Set(deployments.filter(isActiveJob).map((job) => `${job.containerId || ""}:${job.action}`)),
+    [deployments],
+  );
   function expandLog(containerId: string) {
     setExpandedLogs((current) => new Set(current).add(containerId));
     setHiddenLogs((current) => {
@@ -236,8 +262,8 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
         <div className="toolbar-actions">
-          <form action={enqueueAllContainerLogs}><IconButton title="Open logs for all containers" onClick={expandAllLogs}><Icon name="terminal" /></IconButton></form>
-          <form action={enqueueInventoryRefresh}><IconButton title="Refresh containers"><Icon name="sync" /></IconButton></form>
+          <form action={enqueueAllContainerLogs}><PendingIconButton title="Open logs for all containers" onClick={expandAllLogs}><Icon name="terminal" /></PendingIconButton></form>
+          <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
         </div>
       </div>
 
@@ -256,7 +282,7 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
                   <form action={enqueueContainerAction} key={action}>
                     <input type="hidden" name="containerId" value={container.id} />
                     <input type="hidden" name="action" value={action} />
-                    <IconButton title={meta.title} primary={action === primaryAction} onClick={action === "container_logs" ? () => expandLog(container.id) : undefined}><Icon name={meta.icon} /></IconButton>
+                    <PendingIconButton title={meta.title} primary={action === primaryAction} busy={busyContainerActions.has(`${container.id}:${action}`)} onClick={action === "container_logs" ? () => expandLog(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
                   </form>
                 );
               })}</div>
@@ -286,6 +312,10 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
+  const busyRepositoryActions = useMemo(
+    () => new Set(deployments.filter(isActiveJob).map((job) => `${job.repositoryId}:${job.action}`)),
+    [deployments],
+  );
   const filteredRepositories = repositories.filter((repository) =>
     matchesQuery([
       repository.alias,
@@ -306,7 +336,7 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
         <div className="toolbar-actions">
           <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)} primary={showAddRepository}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
           <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
-          <form action={enqueueAllRepositories}><IconButton title="Sync all"><Icon name="sync" /></IconButton></form>
+          <form action={enqueueAllRepositories}><PendingIconButton title="Sync all"><Icon name="sync" /></PendingIconButton></form>
         </div>
       </div>
 
@@ -318,19 +348,19 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
           <article className="resource-row repo-resource-row" key={repository.id}>
             {index ? <div className="resource-divider" /> : null}
             <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || "docker-compose.yml" : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
+            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
             <div className="row-actions">
-              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository"><Icon name="sync" /></QueueButton>
+              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" busy={busyRepositoryActions.has(`${repository.id}:sync`)}><Icon name="sync" /></QueueButton>
               <IconButton
                 title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
                 onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
               >
                 <Icon name="sliders" />
               </IconButton>
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose"><Icon name="document" /></QueueButton> : null}
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary><Icon name="play" /></QueueButton>}
-              <QueueButton repositoryId={repository.id} action="stop" title="Stop"><Icon name="stop" /></QueueButton>
-              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><IconButton title="Remove repository"><Icon name="trash" /></IconButton></form>
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" busy={busyRepositoryActions.has(`${repository.id}:read_compose`)}><Icon name="document" /></QueueButton> : null}
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary busy={busyRepositoryActions.has(`${repository.id}:deploy`)}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary busy={busyRepositoryActions.has(`${repository.id}:build`)}><Icon name="play" /></QueueButton>}
+              <QueueButton repositoryId={repository.id} action="stop" title="Stop" busy={busyRepositoryActions.has(`${repository.id}:stop`)}><Icon name="stop" /></QueueButton>
+              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
             </div>
             <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
           </article>
@@ -406,12 +436,12 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
             </>
           ) : (
             <>
-              <label>Compose file<input name="composeFile" defaultValue="docker-compose.yml" /></label>
+              <label>Compose file<input name="composeFile" defaultValue={defaultComposeFile} /></label>
               <div className="compose-port-note"><span>Ports are read from the Compose file.</span></div>
             </>
           )}
           <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
-          <div className="register-action"><button className="primary" type="submit"><Icon name="download" />Clone and register</button></div>
+          <div className="register-action"><PendingSubmitButton><Icon name="download" />Clone and register</PendingSubmitButton></div>
         </div>
       </form>
     </section>
@@ -419,6 +449,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 }
 
 function RepositorySettings({ repository, credentials, open }: { repository: Repository; credentials: CredentialSummary[]; open: boolean }) {
+  if (!open) return null;
   return (
     <details className="inline-editor" open={open}>
       <summary><span>Edit settings</span><span>⌄</span></summary>
@@ -438,7 +469,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
         <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
         <label className="full">Environment JSON<textarea name="environmentJson" defaultValue={JSON.stringify(repository.environment || {}, null, 2)} rows={4} /></label>
-        <div className="full form-actions"><button className="primary">Save settings</button><button className="secondary" formAction={deleteRepository}>Remove registration</button></div>
+        <div className="full form-actions"><PendingSubmitButton>Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository}>Remove registration</PendingSubmitButton></div>
       </form>
       {repository.composeContent ? <pre className="code-viewer"><code>{repository.composeContent}</code></pre> : null}
     </details>
@@ -467,17 +498,17 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
           <label>Username<input name="username" /></label>
           <label>Personal access token<input name="token" type="password" required /></label>
           <a className="help-link" href="https://github.com/settings/tokens/new" target="_blank" rel="noreferrer">Generate a GitHub token</a>
-          <div className="form-actions"><button className="primary">Save credential</button></div>
+          <div className="form-actions"><PendingSubmitButton>Save credential</PendingSubmitButton></div>
         </form>
       ) : null}
       {showImportForm ? (
         <form action={saveCredentialsJson} className="form-grid one-column">
           <label>Credential JSON<textarea name="credentialsJson" rows={5} defaultValue={'{\n  "github": {\n    "username": "",\n    "token": ""\n  }\n}'} /></label>
-          <div className="form-actions"><button className="secondary">Import credentials</button></div>
+          <div className="form-actions"><PendingSubmitButton className="secondary">Import credentials</PendingSubmitButton></div>
         </form>
       ) : null}
       <div className="compact-list">{credentials.map((credential) => (
-        <div className="compact-row" key={credential.id}><div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask}</small></div><form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><IconButton title="Delete credential"><Icon name="trash" /></IconButton></form></div>
+        <div className="compact-row" key={credential.id}><div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask}</small></div><form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><PendingIconButton title="Delete credential"><Icon name="trash" /></PendingIconButton></form></div>
       ))}</div>
       {!credentials.length && !showCredentialForm ? <p className="empty-copy">No credentials saved.</p> : null}
     </section>
@@ -505,7 +536,7 @@ function DeploymentsPanel({ deployments }: { deployments: Deployment[] }) {
         <article className="activity-row" key={job.id}>
           <StatusBadge label={job.status} running={job.status === "running" || job.status === "completed"} />
           <div><strong>{job.repositoryId || "job"} · {job.action}</strong><small>{job.message || `Queued ${elapsed(job.createdAt)}`}</small></div>
-          {["queued", "leased", "running"].includes(job.status) ? <form action={cancelDeployment}><input type="hidden" name="jobId" value={job.id} /><IconButton title="Cancel"><Icon name="close" /></IconButton></form> : null}
+          {["queued", "leased", "running"].includes(job.status) ? <form action={cancelDeployment}><input type="hidden" name="jobId" value={job.id} /><PendingIconButton title="Cancel"><Icon name="close" /></PendingIconButton></form> : null}
         </article>
       ))}</div>
       {!deployments.length ? <p className="empty-copy">No deployment activity yet.</p> : null}

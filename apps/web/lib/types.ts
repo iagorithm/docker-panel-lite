@@ -30,6 +30,7 @@ export type CredentialSummary = {
 export type Deployment = {
   id: string;
   repositoryId: string;
+  containerId?: string;
   action: string;
   status: string;
   progress: number;

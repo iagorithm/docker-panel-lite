@@ -11,6 +11,7 @@ import { encryptSecret } from "@/lib/secrets";
 const aliasPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*[\\]+$/;
 const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
+const defaultComposeFile = "compose.yml";
 
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
@@ -18,7 +19,7 @@ const repositorySchema = z.object({
   url: z.string().trim().refine((value) => /^(https:\/\/|git@|ssh:\/\/)/.test(value), "Invalid Git URL"),
   branch: z.string().trim().refine((value) => !value || branchPattern.test(value), "Invalid branch"),
   mode: z.enum(["compose", "dockerfile"]),
-  composeFile: z.string().trim().default("docker-compose.yml"),
+  composeFile: z.string().trim().default(defaultComposeFile),
   dockerfile: z.string().trim().default("Dockerfile"),
   credentialId: z.string().trim().default(""),
   environmentJson: z.string().default("{}"),
@@ -86,7 +87,7 @@ export async function saveRepository(formData: FormData) {
     url: input.url,
     branch: input.branch,
     mode: input.mode,
-    composeFile: input.composeFile || "docker-compose.yml",
+    composeFile: input.composeFile || defaultComposeFile,
     dockerfile: input.dockerfile || "Dockerfile",
     credentialId: input.credentialId,
     environment: parseEnvironment(input.environmentJson),

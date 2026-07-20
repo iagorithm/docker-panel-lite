@@ -12,7 +12,7 @@ const adminApp =
   getApps()[0] ??
   initializeApp({
     credential: serviceAccountCredential(),
-    databaseURL: process.env.FIREBASE_DATABASE_URL,
+    databaseURL: process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
   });
 
 export const adminAuth = getAuth(adminApp);

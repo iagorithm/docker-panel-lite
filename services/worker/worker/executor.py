@@ -12,6 +12,8 @@ from worker.core import docker_ops, git, utils
 from worker.firebase_runtime import reference
 from worker.secrets import decrypt_secret
 
+DEFAULT_COMPOSE_FILE = "compose.yml"
+
 
 def _safe_name(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", value).strip("-_").lower()
@@ -99,7 +101,7 @@ def _run_compose(repository: dict, path: Path, settings: Settings, down: bool = 
     compose_file = _repository_file(
         path,
         repository.get("composeFile", ""),
-        "docker-compose.yml",
+        DEFAULT_COMPOSE_FILE,
         "Compose file",
         must_exist=True,
     )
@@ -190,7 +192,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
             compose_path = _repository_file(
                 path,
                 repository.get("composeFile", ""),
-                "docker-compose.yml",
+                DEFAULT_COMPOSE_FILE,
                 "Compose file",
                 must_exist=True,
             )
