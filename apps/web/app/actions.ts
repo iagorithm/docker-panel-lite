@@ -184,7 +184,7 @@ export async function enqueueAllRepositories() {
 export async function enqueueContainerAction(formData: FormData) {
   const user = await requireSession("operator");
   const containerId = z.string().min(1).parse(formData.get("containerId"));
-  const action = z.enum(["container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
+  const action = z.enum(["container_stop", "container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
   const existing = await adminDatabase.ref(`workspaces/${user.workspaceId}/containers/${containerId}`).get();
   if (!existing.exists()) throw new Error("Container not found");
   const jobRef = adminDatabase.ref("jobs").push();
