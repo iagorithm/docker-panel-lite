@@ -79,7 +79,7 @@ function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" 
       {name === "sliders" ? <path {...common} d="M4 7h8M16 7h4M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM4 17h4M12 17h8M8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z" /> : null}
       {name === "document" ? <path {...common} d="M7 3.5h6l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1ZM13 3.5V8h4M9 12h6M9 16h6" /> : null}
       {name === "play" ? <path {...common} d="M9 7.5v9l7-4.5-7-4.5Z" /> : null}
-      {name === "stop" ? <path {...common} d="M9 9h6v6H9z" /> : null}
+      {name === "stop" ? <rect x="8.25" y="8.25" width="7.5" height="7.5" rx="1.15" fill="currentColor" /> : null}
       {name === "terminal" ? <path {...common} d="M4.5 6.5h15v11h-15zM8 10l2 2-2 2M12 14h4" /> : null}
       {name === "trash" ? <path {...common} d="M5 7h14M10 11v6M14 11v6M8 7l1-3h6l1 3M7 7l1 13h8l1-13" /> : null}
       {name === "logout" ? <path {...common} d="M10 6H6v12h4M14 8l4 4-4 4M8 12h10" /> : null}
@@ -206,15 +206,30 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
 }) {
   const [query, setQuery] = useState("");
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+  const [hiddenLogs, setHiddenLogs] = useState<Set<string>>(new Set());
   const sortedContainers = [...containers].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, container.status, ...(container.ports || [])], query),
   );
   function expandLog(containerId: string) {
     setExpandedLogs((current) => new Set(current).add(containerId));
+    setHiddenLogs((current) => {
+      const next = new Set(current);
+      next.delete(containerId);
+      return next;
+    });
   }
   function expandAllLogs() {
     setExpandedLogs(new Set(filteredContainers.map((container) => container.id)));
+    setHiddenLogs(new Set());
+  }
+  function closeLog(containerId: string) {
+    setExpandedLogs((current) => {
+      const next = new Set(current);
+      next.delete(containerId);
+      return next;
+    });
+    setHiddenLogs((current) => new Set(current).add(containerId));
   }
   return (
     <div className="table-workspace containers-workspace">
@@ -245,13 +260,9 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
                   </form>
                 );
               })}</div>
-              {container.logTail || expandedLogs.has(container.id) ? (
+              {(container.logTail || expandedLogs.has(container.id)) && !hiddenLogs.has(container.id) ? (
                 <div className="logs-panel full-row">
-                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" onClick={() => setExpandedLogs((current) => {
-                    const next = new Set(current);
-                    next.delete(container.id);
-                    return next;
-                  })}><Icon name="close" /></button></div>
+                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" onClick={() => closeLog(container.id)}><Icon name="close" /></button></div>
                   <pre className="code-viewer"><code>{container.logTail || "Loading logs..."}</code></pre>
                 </div>
               ) : null}
@@ -333,6 +344,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
+  const [deployMode, setDeployMode] = useState<"dockerfile" | "compose">("dockerfile");
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -367,7 +379,6 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
   return (
     <section className="panel add-repository-panel">
       <form action={saveRepository} className="add-repository-form">
-        <input type="hidden" name="composeFile" value="docker-compose.yml" />
         <input type="hidden" name="poolId" value="default" />
         <input type="hidden" name="domain" value="" />
         <input type="hidden" name="service" value="web" />
@@ -377,8 +388,8 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           <fieldset className="mode-control">
             <legend>Deployment mode <Icon name="help" /></legend>
             <div className="segmented-radio">
-              <label><input type="radio" name="mode" value="dockerfile" defaultChecked /><span>Single Dockerfile</span></label>
-              <label><input type="radio" name="mode" value="compose" /><span>Docker Compose</span></label>
+              <label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => setDeployMode("dockerfile")} /><span>Single Dockerfile</span></label>
+              <label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => setDeployMode("compose")} /><span>Docker Compose</span></label>
             </div>
           </fieldset>
           <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
@@ -388,8 +399,17 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
           <label>Display name<input name="alias" required placeholder="my-service" /></label>
           <label>Branch<input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list="new-repository-branches" /><datalist id="new-repository-branches">{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
-          <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
-          <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
+          {deployMode === "dockerfile" ? (
+            <>
+              <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
+              <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
+            </>
+          ) : (
+            <>
+              <label>Compose file<input name="composeFile" defaultValue="docker-compose.yml" /></label>
+              <div className="compose-port-note"><span>Ports are read from the Compose file.</span></div>
+            </>
+          )}
           <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
           <div className="register-action"><button className="primary" type="submit"><Icon name="download" />Clone and register</button></div>
         </div>
