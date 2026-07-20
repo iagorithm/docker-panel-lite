@@ -825,14 +825,14 @@ a:hover { text-decoration-color: var(--ui-text); }
   flex-basis: 2.62rem;
 }
 .container-group .resource-row .resource-glyph.worker-glyph {
-  width: 3.05rem;
-  height: 3.05rem;
-  flex-basis: 3.05rem;
+  width: 2.72rem;
+  height: 2.72rem;
+  flex-basis: 2.72rem;
   background: #4196ff;
 }
 .container-group .resource-row .resource-glyph.worker-glyph svg {
-  width: 2.08rem;
-  height: 2.08rem;
+  width: 1.98rem;
+  height: 1.98rem;
 }
 .container-group .resource-row .resource-glyph.service-glyph svg {
   width: 1.72rem;
