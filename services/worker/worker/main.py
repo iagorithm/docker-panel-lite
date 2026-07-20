@@ -12,7 +12,7 @@ import traceback
 
 from worker.config import Settings
 from worker.core import docker_ops
-from worker.executor import container_inventory, execute, execute_container
+from worker.executor import container_inventory, execute, execute_container, execute_container_command, execute_worker_command
 from worker.firebase_runtime import initialize, reference
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -59,6 +59,8 @@ def job_action_label(action: str) -> str:
         "container_restart": "restart container",
         "container_delete": "delete container",
         "container_logs": "load container logs",
+        "container_exec": "run container command",
+        "worker_command": "run worker command",
     }.get(action, action)
 
 
@@ -375,6 +377,23 @@ class Worker:
                 LOG.info("Job %s running: refresh container inventory", job_id)
                 self._publish_container_inventory(job["workspaceId"])
                 message = "Container inventory refreshed"
+            elif job["action"] == "worker_command":
+                repository = None
+                if job.get("repositoryId"):
+                    repository = reference(f"workspaces/{job['workspaceId']}/repositories/{job['repositoryId']}").get()
+                    if not repository:
+                        raise ValueError("Repository no longer exists")
+                LOG.info("Job %s running: worker command on %s", job_id, self.worker_label or self.settings.worker_id)
+                message, command_output, exit_code = execute_worker_command(job, repository, self.settings)
+                self._publish(job, {"commandOutput": command_output, "commandExitCode": exit_code})
+                if exit_code:
+                    raise RuntimeError(message)
+            elif job["action"] == "container_exec":
+                LOG.info("Job %s running: container command on %s", job_id, job_subject(job))
+                message, command_output, exit_code = execute_container_command(job)
+                self._publish(job, {"commandOutput": command_output, "commandExitCode": exit_code})
+                if exit_code:
+                    raise RuntimeError(message)
             elif job["action"].startswith("container_"):
                 LOG.info("Job %s running: %s on %s", job_id, job_action_label(job["action"]), job_subject(job))
                 message, log_tail = execute_container(job)

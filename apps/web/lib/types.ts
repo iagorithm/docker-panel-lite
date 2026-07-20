@@ -27,6 +27,15 @@ export type CredentialSummary = {
   updatedAt: number;
 };
 
+export type CommandPreset = {
+  id: string;
+  name: string;
+  description?: string;
+  command: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type Deployment = {
   id: string;
   repositoryId: string;
@@ -38,6 +47,9 @@ export type Deployment = {
   workerId?: string;
   targetWorkerId?: string;
   message?: string;
+  command?: string;
+  commandOutput?: string;
+  commandExitCode?: number;
   createdAt: number;
   startedAt?: number;
   finishedAt?: number;

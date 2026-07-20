@@ -833,6 +833,36 @@ a:hover { text-decoration-color: var(--ui-text); }
 .resource-metadata small { color: var(--ui-text-tertiary); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.64rem; }
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.42rem; }
 .row-actions form { display: contents; }
+.row-actions .container-command-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+.container-command-select {
+  width: 9.6rem;
+  min-width: 9.6rem;
+  min-height: 2.18rem;
+  padding: 0.28rem 0.48rem;
+  color: var(--ui-text-secondary);
+  background: rgba(255, 255, 255, 0.56);
+  border-color: var(--ui-border);
+  border-radius: 0.48rem;
+  font-size: 0.68rem;
+  font-weight: 590;
+}
+.container-command-form .icon-button {
+  width: 2.18rem;
+  max-width: 2.18rem;
+  min-width: 2.18rem;
+  min-height: 2.18rem;
+  padding: 0.4rem;
+  border-radius: 0.48rem;
+}
+.container-command-form .ui-icon,
+.container-command-form .button-spinner {
+  width: 0.98rem;
+  height: 0.98rem;
+}
 .worker-target-select {
   width: 8.4rem;
   min-width: 8.4rem;
@@ -1113,6 +1143,140 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border: 0;
   font: 0.68rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
+}
+.command-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: calc(100vh - 5.2rem);
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.command-terminal-form {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.36rem;
+}
+.command-terminal-controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem;
+}
+.command-terminal-controls select,
+.command-terminal-controls input {
+  width: auto;
+  min-width: 9.5rem;
+  min-height: 1.92rem;
+  padding: 0.24rem 0.48rem;
+  color: var(--ui-text-secondary);
+  background: rgba(255, 255, 255, 0.56);
+  border-color: var(--ui-border);
+  border-radius: 0.42rem;
+  font-size: 0.68rem;
+}
+.command-terminal-controls input {
+  min-width: 5.1rem;
+  max-width: 5.1rem;
+}
+.command-terminal-controls .primary {
+  min-height: 1.92rem;
+  padding: 0.32rem 0.72rem;
+  border-radius: 0.42rem;
+  font-size: 0.68rem;
+}
+.command-terminal-controls .icon-button {
+  width: 1.92rem;
+  max-width: 1.92rem;
+  min-width: 1.92rem;
+  min-height: 1.92rem;
+  padding: 0.34rem;
+  border-radius: 0.42rem;
+  box-shadow: none;
+}
+.command-terminal-controls .icon-button .ui-icon,
+.command-terminal-controls .button-spinner {
+  width: 0.88rem;
+  height: 0.88rem;
+}
+.command-terminal-form textarea {
+  min-height: 4.15rem;
+  padding: 0.58rem 0.68rem;
+  color: #e8e8e2;
+  background: #101010;
+  border-color: #2b2b2b;
+  border-radius: var(--ui-radius-sm);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+.command-monitor {
+  min-height: 0;
+}
+.command-presets-panel {
+  width: min(100%, 54rem);
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: var(--ui-radius-sm);
+}
+.command-preset-form {
+  gap: 0.58rem;
+  margin-top: 0.65rem;
+}
+.command-preset-form label,
+.command-preset-item label {
+  font-size: 0.7rem;
+}
+.command-preset-form input,
+.command-preset-form textarea,
+.command-preset-item input,
+.command-preset-item textarea {
+  min-height: 2rem;
+  padding: 0.38rem 0.52rem;
+  font-size: 0.68rem;
+}
+.command-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  margin-top: 0.7rem;
+}
+.command-preset-item {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+}
+.command-preset-item summary {
+  min-height: 2.35rem;
+  padding: 0.48rem 0.62rem;
+}
+.command-preset-item summary > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.command-preset-item summary strong,
+.command-preset-item summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-preset-item summary strong {
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+.command-preset-item summary small {
+  color: var(--ui-text-tertiary);
+  font-size: 0.62rem;
+}
+.command-preset-item summary .ui-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--ui-text-tertiary);
+}
+.command-preset-item .form-grid {
+  padding: 0.68rem;
 }
 
 details.panel, details.compact-editor { padding: 0; overflow: hidden; }

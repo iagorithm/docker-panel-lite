@@ -13,7 +13,8 @@ const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*
 const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
-type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
+type JobAction = RepositoryAction | "container_exec";
 
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
@@ -37,6 +38,13 @@ const credentialSchema = z.object({
   alias: z.string().trim().regex(aliasPattern, "Invalid credential alias"),
   username: z.string().trim().max(200).default(""),
   token: z.string().trim().min(1, "Token is required"),
+});
+
+const commandPresetSchema = z.object({
+  commandId: z.string().trim().optional(),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(240).default(""),
+  command: z.string().trim().min(1).max(4000),
 });
 
 const repositoryImportSchema = z.object({
@@ -80,6 +88,10 @@ function parseJsonInput(value: string): unknown {
 function aliasFromUrl(url: string) {
   const tail = url.split("/").filter(Boolean).at(-1) || "repository";
   return tail.replace(/\.git$/i, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repository";
+}
+
+function aliasFromName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "command";
 }
 
 function normalizeEnvKey(key: string) {
@@ -177,7 +189,7 @@ function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 
 async function recordFailedDeployment(input: {
   workspaceId: string;
   repositoryId: string;
-  action: RepositoryAction;
+  action: JobAction;
   targetWorkerId: string;
   requestedBy: string;
   message: string;
@@ -329,6 +341,32 @@ export async function saveCredentialsJson(formData: FormData) {
   await adminDatabase.ref().update(updates);
 }
 
+export async function saveCommandPreset(formData: FormData) {
+  const user = await requireSession("operator");
+  const input = commandPresetSchema.parse(formObject(formData));
+  const commandId = input.commandId || aliasFromName(input.name);
+  if (!aliasPattern.test(commandId)) throw new Error("Invalid command id");
+  const now = Date.now();
+  const ref = adminDatabase.ref(`workspaces/${user.workspaceId}/commandPresets/${commandId}`);
+  const current = (await ref.get()).val();
+  await ref.set({
+    id: commandId,
+    name: input.name,
+    description: input.description,
+    command: input.command,
+    createdAt: current?.createdAt ?? now,
+    updatedAt: now,
+  });
+  revalidatePath("/dashboard");
+}
+
+export async function deleteCommandPreset(formData: FormData) {
+  const user = await requireSession("operator");
+  const commandId = z.string().min(1).parse(formData.get("commandId"));
+  await adminDatabase.ref(`workspaces/${user.workspaceId}/commandPresets/${commandId}`).remove();
+  revalidatePath("/dashboard");
+}
+
 export async function enqueueDeployment(formData: FormData) {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
@@ -420,6 +458,107 @@ export async function enqueueContainerAction(formData: FormData) {
   const containerRef = container.dockerId || container.name || submittedContainerRef || containerId;
   const job = { id: jobId, workspaceId: user.workspaceId, containerId, containerRef, repositoryId: "", action, poolId, shardId, targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
   await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
+}
+
+export async function enqueueWorkerCommand(formData: FormData) {
+  const user = await requireSession("operator");
+  const targetWorkerId = z.string().min(1).parse(formData.get("targetWorkerId"));
+  const repositoryId = z.string().trim().default("").parse(formData.get("repositoryId") || "");
+  const command = z.string().trim().min(1).max(4000).parse(formData.get("command"));
+  const timeoutSeconds = z.coerce.number().int().min(5).max(1800).default(600).parse(formData.get("timeoutSeconds") || 600);
+  const createdAt = Date.now();
+  const workspaceRoot = `workspaces/${user.workspaceId}`;
+  const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
+  if (!targetWorker) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
+    return;
+  }
+  if (!agentIsOnline(targetWorker, createdAt)) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
+    return;
+  }
+  if (repositoryId) {
+    const repository = await adminDatabase.ref(`${workspaceRoot}/repositories/${repositoryId}`).get();
+    if (!repository.exists()) throw new Error("Repository not found");
+  }
+
+  const jobRef = adminDatabase.ref("jobs").push();
+  const jobId = jobRef.key!;
+  const shardId = shardFor(`worker-command:${targetWorkerId}:${createdAt}`);
+  const poolId = String(targetWorker.poolId || "default");
+  const job = {
+    id: jobId,
+    workspaceId: user.workspaceId,
+    repositoryId,
+    action: "worker_command",
+    command,
+    timeoutSeconds,
+    poolId,
+    shardId,
+    targetWorkerId,
+    status: "queued",
+    progress: 0,
+    attempt: 0,
+    requestedBy: user.uid,
+    createdAt,
+  };
+  await adminDatabase.ref().update({
+    [`jobs/${jobId}`]: job,
+    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId },
+    [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
+  });
+}
+
+export async function enqueueContainerCommand(formData: FormData) {
+  const user = await requireSession("operator");
+  const containerId = z.string().min(1).parse(formData.get("containerId"));
+  const submittedContainerRef = z.string().optional().parse(formData.get("containerRef") || undefined);
+  const command = z.string().trim().min(1).max(4000).parse(formData.get("command"));
+  const timeoutSeconds = z.coerce.number().int().min(5).max(1800).default(600).parse(formData.get("timeoutSeconds") || 600);
+  const createdAt = Date.now();
+  const workspaceRoot = `workspaces/${user.workspaceId}`;
+  const existing = await adminDatabase.ref(`${workspaceRoot}/containers/${containerId}`).get();
+  if (!existing.exists()) throw new Error("Container not found");
+  const container = existing.val() as Record<string, string>;
+  const targetWorkerId = container.workerId || "";
+  if (!targetWorkerId) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: "", action: "container_exec", targetWorkerId, requestedBy: user.uid, message: "Container has no assigned worker" });
+    return;
+  }
+  const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
+  if (!targetWorker || !agentIsOnline(targetWorker, createdAt)) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: "", action: "container_exec", targetWorkerId, requestedBy: user.uid, message: "Container worker is not available" });
+    return;
+  }
+
+  const jobRef = adminDatabase.ref("jobs").push();
+  const jobId = jobRef.key!;
+  const shardId = shardFor(containerId);
+  const poolId = container.poolId || targetWorker.poolId || "default";
+  const containerRef = container.dockerId || container.name || submittedContainerRef || containerId;
+  const job = {
+    id: jobId,
+    workspaceId: user.workspaceId,
+    containerId,
+    containerRef,
+    repositoryId: "",
+    action: "container_exec",
+    command,
+    timeoutSeconds,
+    poolId,
+    shardId,
+    targetWorkerId,
+    status: "queued",
+    progress: 0,
+    attempt: 0,
+    requestedBy: user.uid,
+    createdAt,
+  };
+  await adminDatabase.ref().update({
+    [`jobs/${jobId}`]: job,
+    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId },
+    [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
+  });
 }
 
 export async function enqueueAllContainerLogs() {

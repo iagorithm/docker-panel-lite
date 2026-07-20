@@ -4,6 +4,7 @@ import os
 import json
 import logging
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -165,6 +166,72 @@ def _compact_process_error(stderr: str, stdout: str = "") -> str:
         )
     lines = [line.strip() for line in output.splitlines() if line.strip()]
     return "\n".join(lines[:12])[:2000]
+
+
+def _command_output(stdout: str, stderr: str) -> str:
+    parts = []
+    if stdout.strip():
+        parts.append(stdout.strip())
+    if stderr.strip():
+        parts.append(stderr.strip())
+    return "\n\n".join(parts)[-120_000:]
+
+
+def _decode_output(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return str(value)
+
+
+def _non_interactive_command(command: str) -> list[str]:
+    args = shlex.split(command)
+    if not args:
+        raise ValueError("Command is empty")
+    executable = args[0]
+    is_compose = executable == "docker-compose" or (len(args) > 1 and executable == "docker" and args[1] == "compose")
+    if not is_compose or "exec" not in args:
+        return args
+    exec_index = args.index("exec")
+    normalized = args[:exec_index + 1]
+    if "-T" not in args[exec_index + 1:] and "--no-TTY" not in args[exec_index + 1:]:
+        normalized.append("-T")
+    for item in args[exec_index + 1:]:
+        if item in {"-i", "-t", "-it", "-ti", "--interactive", "--tty"}:
+            continue
+        normalized.append(item)
+    return normalized
+
+
+def _container_exec_shell_command(command: str) -> str:
+    args = shlex.split(command)
+    if not args:
+        raise ValueError("Command is empty")
+    executable = args[0]
+    is_compose = executable == "docker-compose" or (len(args) > 1 and executable == "docker" and args[1] == "compose")
+    if not is_compose or "exec" not in args:
+        return command
+    index = args.index("exec") + 1
+    options_with_value = {"-e", "--env", "-u", "--user", "-w", "--workdir", "--index"}
+    while index < len(args):
+        item = args[index]
+        if item in {"-i", "-t", "-it", "-ti", "-T", "--interactive", "--tty", "--no-TTY", "--privileged"}:
+            index += 1
+            continue
+        if item in options_with_value:
+            index += 2
+            continue
+        if item.startswith("--env=") or item.startswith("--user=") or item.startswith("--workdir=") or item.startswith("--index="):
+            index += 1
+            continue
+        if item.startswith("-"):
+            index += 1
+            continue
+        break
+    if index >= len(args) - 1:
+        raise ValueError("Compose exec command must include a service and command")
+    return shlex.join(args[index + 1:])
 
 
 def _compose_service_names(compose_file: Path) -> list[str]:
@@ -343,6 +410,79 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     return _run_dockerfile(repository, path, settings, environment), {}
 
 
+def execute_worker_command(job: dict, repository: dict | None, settings: Settings) -> tuple[str, str, int]:
+    command = str(job.get("command") or "").strip()
+    if not command:
+        raise ValueError("Command is empty")
+    timeout = max(5, min(1800, int(job.get("timeoutSeconds") or 600)))
+    environment: dict[str, str] = {}
+    if repository:
+        path = _repo_path(settings, repository)
+        environment = _load_environment(repository, job["workspaceId"])
+    else:
+        path = settings.clone_dir.resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Working directory not found: {path}. Sync or deploy the repository first.")
+    args = _non_interactive_command(command)
+    LOG.info("Running worker command in %s: %s", path, " ".join(shlex.quote(item) for item in args[:8]))
+    try:
+        process = subprocess.run(
+            args,
+            cwd=path,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ | environment,
+        )
+    except subprocess.TimeoutExpired as error:
+        stdout = error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
+        stderr = error.stderr.decode(errors="replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
+        output = _command_output(stdout, stderr)
+        return f"Command timed out after {timeout}s", output or f"Command timed out after {timeout}s", 124
+    output = _command_output(process.stdout, process.stderr)
+    if process.returncode:
+        message = _compact_process_error(process.stderr, process.stdout)
+        return f"Command exited with code {process.returncode}: {message}", output, process.returncode
+    return "Command completed", output or "Command completed with no output.", 0
+
+
+def execute_container_command(job: dict) -> tuple[str, str, int]:
+    client = docker_ops.connect()
+    last_error = None
+    for candidate in _container_lookup_candidates(job):
+        try:
+            container = client.containers.get(candidate)
+            break
+        except NotFound as exc:
+            last_error = exc
+    else:
+        raise last_error or ValueError("Container reference is missing")
+    command = str(job.get("command") or "").strip()
+    if not command:
+        raise ValueError("Command is empty")
+    timeout = max(5, min(1800, int(job.get("timeoutSeconds") or 600)))
+    shell_command = _container_exec_shell_command(command)
+    LOG.info("Running command inside container %s: %s", container.name, shell_command[:160])
+    socket_timeout = getattr(client.api, "timeout", None)
+    try:
+        client.api.timeout = timeout
+        result = container.exec_run(["/bin/sh", "-lc", shell_command], stdout=True, stderr=True, stdin=False, tty=False, demux=True)
+    finally:
+        if socket_timeout is not None:
+            client.api.timeout = socket_timeout
+    output_value = result.output
+    if isinstance(output_value, tuple):
+        stdout, stderr = output_value
+    else:
+        stdout, stderr = output_value, b""
+    output = _command_output(_decode_output(stdout), _decode_output(stderr))
+    if result.exit_code:
+        message = f"Container command exited with code {result.exit_code}"
+        return message, output or message, int(result.exit_code)
+    return f"Command completed inside '{container.name}'", output or "Command completed with no output.", 0
+
+
 def _now() -> int:
     import time
     return int(time.time() * 1000)
@@ -403,4 +543,9 @@ def execute_container(job: dict) -> tuple[str, str | None]:
         return f"Container '{name}' deleted", None
     if job["action"] == "container_logs":
         return f"Loaded logs for '{container.name}'", container.logs(tail=100).decode(errors="replace")[-100_000:]
+    if job["action"] == "container_exec":
+        message, output, exit_code = execute_container_command(job)
+        if exit_code:
+            raise RuntimeError(message)
+        return message, output
     raise ValueError(f"Unknown container action: {job['action']}")
