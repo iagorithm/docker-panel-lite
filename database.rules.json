@@ -1,0 +1,19 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "workspaces": {
+      "$workspaceId": {
+        ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)",
+        ".write": false,
+        "repositories": { ".indexOn": ["updatedAt", "alias"] },
+        "deployments": { ".indexOn": ["createdAt", "status", "repositoryId"] },
+        "agents": { ".indexOn": ["lastHeartbeat", "poolId"] }
+      }
+    },
+    "jobs": { ".read": false, ".write": false, ".indexOn": ["status", "leaseExpiresAt", "workspaceId"] },
+    "queues": { ".read": false, ".write": false },
+    "locks": { ".read": false, ".write": false },
+    "secrets": { ".read": false, ".write": false }
+  }
+}
