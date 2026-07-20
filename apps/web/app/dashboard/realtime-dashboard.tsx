@@ -14,6 +14,7 @@ import {
   enqueueContainerAction,
   enqueueDeployment,
   enqueueInventoryRefresh,
+  importRepositoriesJson,
   saveCredential,
   saveCredentialsJson,
   saveRepository,
@@ -304,6 +305,7 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
 }) {
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
+  const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const busyRepositoryActions = useMemo(
@@ -351,12 +353,23 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
               >
                 <Icon name="sliders" />
               </IconButton>
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" busy={busyRepositoryActions.has(`${repository.id}:read_compose`)}><Icon name="document" /></QueueButton> : null}
+              {repository.mode === "compose" ? (
+                viewingComposeRepositoryId === repository.id ? (
+                  <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
+                ) : (
+                  <form action={enqueueDeployment}>
+                    <input type="hidden" name="repositoryId" value={repository.id} />
+                    <input type="hidden" name="action" value="read_compose" />
+                    <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(`${repository.id}:read_compose`)} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
+                  </form>
+                )
+              ) : null}
               {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary busy={busyRepositoryActions.has(`${repository.id}:deploy`)}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary busy={busyRepositoryActions.has(`${repository.id}:build`)}><Icon name="play" /></QueueButton>}
               <QueueButton repositoryId={repository.id} action="stop" title="Stop" busy={busyRepositoryActions.has(`${repository.id}:stop`)}><Icon name="stop" /></QueueButton>
               <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
             </div>
             <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
+            <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
           </article>
         )) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
       </section>
@@ -369,6 +382,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
   const [deployMode, setDeployMode] = useState<"dockerfile" | "compose">("dockerfile");
+  const [showRepositoryImport, setShowRepositoryImport] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -414,6 +428,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
             <div className="segmented-radio">
               <label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => setDeployMode("dockerfile")} /><span>Single Dockerfile</span></label>
               <label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => setDeployMode("compose")} /><span>Docker Compose</span></label>
+              <button type="button" className="segment-icon-button" title={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} aria-label={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} data-tooltip={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} onClick={() => setShowRepositoryImport((current) => !current)}><Icon name={showRepositoryImport ? "close" : "document"} /></button>
             </div>
           </fieldset>
           <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
@@ -438,6 +453,12 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
         </div>
       </form>
+      {showRepositoryImport ? (
+        <form action={importRepositoriesJson} className="repository-import-form">
+          <label>Repositories JSON<textarea name="repositoriesJson" rows={6} spellCheck={false} placeholder='{"my-repo":{"url":"https://github.com/org/repo.git","mode":"compose","compose_file":"compose.yml"}}' /></label>
+          <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import repositories from JSON">Import repositories</PendingSubmitButton></div>
+        </form>
+      ) : null}
     </section>
   );
 }
@@ -465,8 +486,20 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label className="full">Environment JSON<textarea name="environmentJson" defaultValue={JSON.stringify(repository.environment || {}, null, 2)} rows={4} /></label>
         <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository} tooltip="Remove this repository registration">Remove registration</PendingSubmitButton></div>
       </form>
-      {repository.composeContent ? <pre className="code-viewer"><code>{repository.composeContent}</code></pre> : null}
     </details>
+  );
+}
+
+function ComposeViewer({ repository, open, onClose }: { repository: Repository; open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  return (
+    <div className="compose-viewer full-row">
+      <div className="compose-viewer-header">
+        <div><strong>Docker Compose</strong><span>{repository.composeFile || defaultComposeFile}</span></div>
+        <button type="button" title="Close Compose" aria-label="Close Compose" data-tooltip="Close Compose" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <pre className="code-viewer"><code>{repository.composeContent || "Loading Compose file..."}</code></pre>
+    </div>
   );
 }
 

@@ -234,6 +234,27 @@ a:hover { text-decoration-color: var(--ui-text); }
   background: var(--ui-surface);
   box-shadow: var(--ui-shadow-xs);
 }
+.segment-icon-button {
+  display: grid;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  align-self: center;
+  padding: 0;
+  place-items: center;
+  color: var(--ui-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 0.5rem;
+}
+.segment-icon-button:hover {
+  color: var(--ui-text);
+  background: var(--ui-surface);
+}
+.segment-icon-button .ui-icon {
+  width: 1rem;
+  height: 1rem;
+}
 .credential-select {
   display: flex;
   min-width: 0;
@@ -336,6 +357,30 @@ a:hover { text-decoration-color: var(--ui-text); }
 .register-action .primary .ui-icon {
   width: 1.2rem;
   height: 1.2rem;
+}
+.repository-import-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: end;
+  padding: 0.8rem 0.9rem;
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+}
+.repository-import-form label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: var(--ui-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.repository-import-form textarea {
+  min-height: 7rem;
+  border-color: var(--ui-border);
+  font-size: 0.72rem;
 }
 .resource-panel { padding: 0; overflow: visible; background: rgba(255, 255, 255, 0.5); border-color: var(--ui-border-strong); border-radius: var(--ui-radius-sm); }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1rem 0.75rem; }
@@ -668,6 +713,65 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   border: 0;
   border-radius: 0;
 }
+.compose-viewer {
+  min-width: 0;
+  margin-left: 2.75rem;
+  overflow: hidden;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+}
+.compose-viewer-header {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.48rem 0.7rem;
+  border-bottom: 1px solid var(--ui-border);
+}
+.compose-viewer-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.compose-viewer-header strong {
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+.compose-viewer-header span {
+  overflow: hidden;
+  color: var(--ui-text-tertiary);
+  font: 0.64rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-viewer-header button {
+  display: grid;
+  width: 1.9rem;
+  min-width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0;
+  place-items: center;
+  color: var(--ui-text);
+  background: transparent;
+  border: 0;
+  border-radius: 0.38rem;
+}
+.compose-viewer-header button:hover {
+  background: var(--ui-surface-hover);
+}
+.compose-viewer-header .ui-icon {
+  width: 1rem;
+  height: 1rem;
+}
+.compose-viewer .code-viewer {
+  max-height: 420px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
 .code-viewer { max-height: 320px; overflow: auto; margin: 0.75rem; padding: 0.75rem; color: var(--ui-text); background: var(--ui-surface-subtle); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); font: 0.72rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .full-row { grid-column: 1 / -1; margin: 0; }
 
@@ -690,8 +794,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .metrics { grid-template-columns: 1fr; }
   .resource-row, .repo-resource-row { grid-template-columns: 1fr; }
   .row-actions { justify-content: flex-start; margin-left: 2.75rem; }
-  .inline-editor { margin-left: 0; }
+  .inline-editor, .compose-viewer { margin-left: 0; }
   .form-grid { grid-template-columns: 1fr; }
   .repo-resource-row .inline-editor .form-grid { grid-template-columns: 1fr; }
   .form-grid .wide { grid-column: span 1; }
+  .repository-import-form { grid-template-columns: 1fr; }
 }

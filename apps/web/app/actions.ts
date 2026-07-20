@@ -36,8 +36,47 @@ const credentialSchema = z.object({
   token: z.string().trim().min(1, "Token is required"),
 });
 
+const repositoryImportSchema = z.object({
+  alias: z.string().trim().optional(),
+  id: z.string().trim().optional(),
+  name: z.string().trim().optional(),
+  url: z.string().trim().refine((value) => /^(https:\/\/|git@|ssh:\/\/)/.test(value), "Invalid Git URL"),
+  branch: z.string().trim().optional().default(""),
+  mode: z.enum(["compose", "dockerfile"]).optional().default("compose"),
+  composeFile: z.string().trim().optional(),
+  compose_file: z.string().trim().optional(),
+  dockerfile: z.string().trim().optional().default("Dockerfile"),
+  credentialId: z.string().trim().optional(),
+  credential: z.string().trim().optional(),
+  environment: z.unknown().optional(),
+  env_vars: z.unknown().optional(),
+  env: z.unknown().optional(),
+  domain: z.string().trim().optional().default(""),
+  service: z.string().trim().optional().default("web"),
+  internalPort: z.coerce.number().int().min(1).max(65535).optional().default(3000),
+  internal_port: z.coerce.number().int().min(1).max(65535).optional(),
+  ports: z.string().trim().optional().default(""),
+  poolId: z.string().trim().optional().default("default"),
+  pool_id: z.string().trim().optional(),
+  added_at: z.string().trim().optional(),
+  createdAt: z.number().optional(),
+});
+
 function formObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
+}
+
+function parseJsonInput(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return JSON.parse(value.replace(/,\s*([}\]])/g, "$1"));
+  }
+}
+
+function aliasFromUrl(url: string) {
+  const tail = url.split("/").filter(Boolean).at(-1) || "repository";
+  return tail.replace(/\.git$/i, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repository";
 }
 
 function parseEnvironment(value: string): Record<string, string> {
@@ -62,6 +101,22 @@ function parseEnvironment(value: string): Record<string, string> {
   }
   return Object.fromEntries(
     Object.entries(parsed).map(([key, item]) => {
+      if (!key || typeof item === "object") throw new Error(`Environment value '${key}' must be scalar`);
+      return [key, item == null ? "" : String(item)];
+    }),
+  );
+}
+
+function normalizeEnvironment(value: unknown): Record<string, string> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw || /^https?:\/\//.test(raw)) return {};
+    return parseEnvironment(raw);
+  }
+  if (typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => {
       if (!key || typeof item === "object") throw new Error(`Environment value '${key}' must be scalar`);
       return [key, item == null ? "" : String(item)];
     }),
@@ -100,6 +155,57 @@ export async function saveRepository(formData: FormData) {
     updatedAt: now,
     updatedBy: user.uid,
   });
+  revalidatePath("/dashboard");
+}
+
+export async function importRepositoriesJson(formData: FormData) {
+  const user = await requireSession("operator");
+  const raw = z.string().min(2).parse(formData.get("repositoriesJson"));
+  const parsed = parseJsonInput(raw);
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Repository import must be a JSON object");
+
+  const entries = "url" in parsed
+    ? [[undefined, parsed]]
+    : Object.entries(parsed as Record<string, unknown>);
+  const updates: Record<string, unknown> = {};
+  const now = Date.now();
+
+  for (const [key, value] of entries) {
+    if (!value || Array.isArray(value) || typeof value !== "object") throw new Error(`Invalid repository '${key || "repository"}'`);
+    const input = repositoryImportSchema.parse({ ...(value as Record<string, unknown>), alias: (value as Record<string, unknown>).alias ?? key });
+    const repositoryId = input.id || input.alias || input.name || aliasFromUrl(input.url);
+    if (!aliasPattern.test(repositoryId)) throw new Error(`Invalid repository alias '${repositoryId}'`);
+    const branch = input.branch || "";
+    if (branch && !branchPattern.test(branch)) throw new Error(`Invalid branch for '${repositoryId}'`);
+    const environment = {
+      ...normalizeEnvironment(input.env_vars),
+      ...normalizeEnvironment(input.environment),
+    };
+    const createdAt = input.createdAt || (input.added_at ? Date.parse(input.added_at) : NaN);
+    updates[`workspaces/${user.workspaceId}/repositories/${repositoryId}`] = {
+      id: repositoryId,
+      alias: repositoryId,
+      url: input.url,
+      branch,
+      mode: input.mode,
+      composeFile: input.composeFile || input.compose_file || defaultComposeFile,
+      dockerfile: input.dockerfile || "Dockerfile",
+      credentialId: input.credentialId || input.credential || "",
+      environment,
+      env: typeof input.env === "string" ? input.env : "",
+      domain: input.domain || "",
+      service: input.service || "web",
+      internalPort: input.internalPort || input.internal_port || 3000,
+      ports: input.ports || "",
+      poolId: input.poolId || input.pool_id || "default",
+      createdAt: Number.isFinite(createdAt) ? createdAt : now,
+      updatedAt: now,
+      updatedBy: user.uid,
+    };
+  }
+
+  if (!Object.keys(updates).length) throw new Error("No repositories to import");
+  await adminDatabase.ref().update(updates);
   revalidatePath("/dashboard");
 }
 
