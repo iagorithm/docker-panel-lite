@@ -11,7 +11,6 @@ import {
   deleteCredential,
   deleteRepository,
   enqueueAllRepositories,
-  enqueueAllContainerLogs,
   enqueueContainerAction,
   enqueueDeployment,
   enqueueInventoryRefresh,
@@ -245,10 +244,6 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
       return next;
     });
   }
-  function expandAllLogs() {
-    setExpandedLogs(new Set(filteredContainers.map((container) => container.id)));
-    setHiddenLogs(new Set());
-  }
   function closeLog(containerId: string) {
     setExpandedLogs((current) => {
       const next = new Set(current);
@@ -262,7 +257,6 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
         <div className="toolbar-actions">
-          <form action={enqueueAllContainerLogs}><PendingIconButton title="Open logs for all containers" onClick={expandAllLogs}><Icon name="terminal" /></PendingIconButton></form>
           <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
         </div>
       </div>
@@ -286,7 +280,7 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
                   </form>
                 );
               })}</div>
-              {(container.logTail || expandedLogs.has(container.id)) && !hiddenLogs.has(container.id) ? (
+              {expandedLogs.has(container.id) && !hiddenLogs.has(container.id) ? (
                 <div className="logs-panel full-row">
                   <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" title="Close logs" aria-label="Close logs" data-tooltip="Close logs" onClick={() => closeLog(container.id)}><Icon name="close" /></button></div>
                   <pre className="code-viewer"><code>{container.logTail || "Loading logs..."}</code></pre>

@@ -304,9 +304,9 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .input-with-action button {
   display: grid;
-  width: 2.5rem;
-  min-width: 2.5rem;
-  min-height: 2.5rem;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   place-items: center;
   color: var(--ui-text);
   background: var(--ui-surface);
@@ -334,8 +334,8 @@ a:hover { text-decoration-color: var(--ui-text); }
   gap: 0.5rem;
 }
 .register-action .primary .ui-icon {
-  width: 1rem;
-  height: 1rem;
+  width: 1.2rem;
+  height: 1.2rem;
 }
 .resource-panel { padding: 0; overflow: visible; background: rgba(255, 255, 255, 0.5); border-color: var(--ui-border-strong); border-radius: var(--ui-radius-sm); }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1rem 0.75rem; }
@@ -482,8 +482,8 @@ button[data-tooltip]:disabled::after {
 .ui-icon { display: block; width: 1.12rem; height: 1.12rem; }
 .button-spinner {
   display: inline-block;
-  width: 1.28rem;
-  height: 1.28rem;
+  width: 1.32rem;
+  height: 1.32rem;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
@@ -496,11 +496,10 @@ button[data-tooltip]:disabled::after {
 @keyframes button-spin {
   to { transform: rotate(360deg); }
 }
-.top-toolbar .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.1rem; }
+.top-toolbar .icon-button { width: 3.15rem; max-width: 3.15rem; min-width: 3.15rem; min-height: 3.15rem; font-size: 1.1rem; }
 .top-toolbar .ui-icon { width: 1.32rem; height: 1.32rem; }
-.row-actions .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.02rem; }
-.row-actions .ui-icon { width: 1.35rem; height: 1.35rem; }
-.repositories-workspace .row-actions .icon-button.primary-icon .ui-icon { width: 1.18rem; height: 1.18rem; }
+.row-actions .icon-button { width: 3.15rem; max-width: 3.15rem; min-width: 3.15rem; min-height: 3.15rem; font-size: 1.02rem; }
+.row-actions .ui-icon { width: 1.32rem; height: 1.32rem; }
 .repositories-workspace .row-actions .icon-button { background: transparent; border-color: transparent; box-shadow: none; }
 .repositories-workspace .row-actions .icon-button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: transparent; }
 .repositories-workspace .row-actions .icon-button.primary-icon {
