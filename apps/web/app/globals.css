@@ -527,8 +527,8 @@ button[data-tooltip]:disabled::after {
 .ui-icon { display: block; width: 1.12rem; height: 1.12rem; }
 .button-spinner {
   display: inline-block;
-  width: 1.32rem;
-  height: 1.32rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
@@ -542,9 +542,9 @@ button[data-tooltip]:disabled::after {
   to { transform: rotate(360deg); }
 }
 .top-toolbar .icon-button { width: 3.15rem; max-width: 3.15rem; min-width: 3.15rem; min-height: 3.15rem; font-size: 1.1rem; }
-.top-toolbar .ui-icon { width: 1.32rem; height: 1.32rem; }
+.top-toolbar .ui-icon { width: 1.5rem; height: 1.5rem; }
 .row-actions .icon-button { width: 3.15rem; max-width: 3.15rem; min-width: 3.15rem; min-height: 3.15rem; font-size: 1.02rem; }
-.row-actions .ui-icon { width: 1.32rem; height: 1.32rem; }
+.row-actions .ui-icon { width: 1.5rem; height: 1.5rem; }
 .repositories-workspace .row-actions .icon-button { background: transparent; border-color: transparent; box-shadow: none; }
 .repositories-workspace .row-actions .icon-button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: transparent; }
 .repositories-workspace .row-actions .icon-button.primary-icon {
