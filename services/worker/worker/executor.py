@@ -104,20 +104,36 @@ def _validate_environment(environment: dict[str, str]) -> dict[str, str]:
 
 def _load_environment(repository: dict, workspace_id: str) -> dict[str, str]:
     repository_id = repository.get("id") or repository.get("alias")
-    environment = _normalize_environment(repository.get("environment"))
+    environment = _normalize_environment(reference(f"workspaces/{workspace_id}/environment").get())
+
+    # Legacy/imported records may still use env_vars or env in Firebase.
+    if repository_id:
+        environment.update(_normalize_environment(reference(f"workspaces/{workspace_id}/repositories/{repository_id}/env_vars").get()))
+        environment.update(_normalize_environment(reference(f"workspaces/{workspace_id}/repositories/{repository_id}/env").get()))
+    environment.update(_normalize_environment(repository.get("env_vars")))
+    environment.update(_normalize_environment(repository.get("env")))
+    environment.update(_normalize_environment(repository.get("environment")))
 
     if repository_id:
         firebase_environment = reference(f"workspaces/{workspace_id}/repositories/{repository_id}/environment").get()
         environment.update(_normalize_environment(firebase_environment))
 
-    # Legacy/imported records may still use env_vars or env in Firebase.
-    environment.update(_normalize_environment(repository.get("env_vars")))
-    environment.update(_normalize_environment(repository.get("env")))
     return _validate_environment(environment)
 
 
 def _environment_lines(environment: dict[str, str]) -> list[str]:
     return [f"{key}={value}" for key, value in environment.items()]
+
+
+def _compose_service_names(compose_file: Path) -> list[str]:
+    try:
+        payload = yaml.safe_load(compose_file.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return []
+    services = payload.get("services") if isinstance(payload, dict) else None
+    if not isinstance(services, dict):
+        return []
+    return [str(name) for name in services.keys() if str(name).strip()]
 
 
 def _repository_file(
@@ -141,17 +157,22 @@ def _repository_file(
     return resolved
 
 
-def _compose_override(repository: dict, settings: Settings) -> Path | None:
+def _compose_override(repository: dict, settings: Settings, environment: dict[str, str], compose_file: Path) -> Path | None:
     domain = repository.get("domain", "").strip()
-    if not domain:
+    if not domain and not environment:
         return None
     project = _safe_name(repository["alias"])
-    service = repository.get("service", "web")
+    configured_service = repository.get("service", "web")
+    service_names = _compose_service_names(compose_file) or [configured_service]
+    traefik_service = configured_service if configured_service in service_names else service_names[0]
     override_dir = settings.data_dir / "overrides"
     override_dir.mkdir(parents=True, exist_ok=True)
     override = override_dir / f"{project}.traefik.yml"
-    payload = {
-        "services": {service: {
+    service_payloads: dict[str, dict[str, object]] = {}
+    for service in service_names:
+        service_payloads[service] = {"environment": environment} if environment else {}
+    if domain:
+        service_payloads.setdefault(traefik_service, {}).update({
             "labels": [
                 "traefik.enable=true",
                 f"traefik.http.routers.{project}.rule=Host(`{domain}`)",
@@ -160,9 +181,10 @@ def _compose_override(repository: dict, settings: Settings) -> Path | None:
                 f"traefik.http.services.{project}.loadbalancer.server.port={int(repository.get('internalPort', 3000))}",
             ],
             "networks": [settings.traefik_network],
-        }},
-        "networks": {settings.traefik_network: {"external": True}},
-    }
+        })
+    payload: dict[str, object] = {"services": service_payloads}
+    if domain:
+        payload["networks"] = {settings.traefik_network: {"external": True}}
     override.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return override
 
@@ -178,7 +200,7 @@ def _run_compose(repository: dict, path: Path, settings: Settings, environment: 
     )
     docker_ops.write_env_file(str(path), _environment_lines(environment))
     command = ["docker", "compose", "-p", project, "-f", str(compose_file)]
-    override = _compose_override(repository, settings)
+    override = _compose_override(repository, settings, environment, compose_file)
     if override:
         command.extend(["-f", str(override)])
     command.extend(["down"] if down else ["up", "-d", "--build"])

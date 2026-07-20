@@ -105,7 +105,7 @@ function Spinner() {
 }
 
 function IconButton({ title, children, onClick, primary = false, disabled = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
-  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} onClick={onClick} disabled={disabled}>{children}</button>;
+  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
 function PendingIconButton({ title, children, onClick, primary = false, busy = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean }) {
@@ -114,9 +114,9 @@ function PendingIconButton({ title, children, onClick, primary = false, busy = f
   return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
-function PendingSubmitButton({ children, className = "primary", formAction }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void> }) {
+function PendingSubmitButton({ children, className = "primary", formAction, tooltip }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string }) {
   const { pending } = useFormStatus();
-  return <button className={className} type="submit" formAction={formAction} disabled={pending}>{pending ? <Spinner /> : children}</button>;
+  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={pending}>{pending ? <Spinner /> : children}</button>;
 }
 
 function QueueButton({ repositoryId, action, children, title, primary = false, busy = false }: {
@@ -198,8 +198,8 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
-          <button className={view === "repositories" ? "is-active" : ""} onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
         </nav>
 
         <div className="sidebar-footer">
@@ -288,7 +288,7 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
               })}</div>
               {(container.logTail || expandedLogs.has(container.id)) && !hiddenLogs.has(container.id) ? (
                 <div className="logs-panel full-row">
-                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" onClick={() => closeLog(container.id)}><Icon name="close" /></button></div>
+                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" title="Close logs" aria-label="Close logs" data-tooltip="Close logs" onClick={() => closeLog(container.id)}><Icon name="close" /></button></div>
                   <pre className="code-viewer"><code>{container.logTail || "Loading logs..."}</code></pre>
                 </div>
               ) : null}
@@ -426,7 +426,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
         </div>
 
         <div className="repository-input-card">
-          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
+          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
           <label>Display name<input name="alias" required placeholder="my-service" /></label>
           <label>Branch<input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list="new-repository-branches" /><datalist id="new-repository-branches">{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
           {deployMode === "dockerfile" ? (
@@ -441,7 +441,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
             </>
           )}
           <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
-          <div className="register-action"><PendingSubmitButton><Icon name="download" />Clone and register</PendingSubmitButton></div>
+          <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
         </div>
       </form>
     </section>
@@ -469,7 +469,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
         <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
         <label className="full">Environment JSON<textarea name="environmentJson" defaultValue={JSON.stringify(repository.environment || {}, null, 2)} rows={4} /></label>
-        <div className="full form-actions"><PendingSubmitButton>Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository}>Remove registration</PendingSubmitButton></div>
+        <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository} tooltip="Remove this repository registration">Remove registration</PendingSubmitButton></div>
       </form>
       {repository.composeContent ? <pre className="code-viewer"><code>{repository.composeContent}</code></pre> : null}
     </details>
@@ -498,13 +498,13 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
           <label>Username<input name="username" /></label>
           <label>Personal access token<input name="token" type="password" required /></label>
           <a className="help-link" href="https://github.com/settings/tokens/new" target="_blank" rel="noreferrer">Generate a GitHub token</a>
-          <div className="form-actions"><PendingSubmitButton>Save credential</PendingSubmitButton></div>
+          <div className="form-actions"><PendingSubmitButton tooltip="Save credential">Save credential</PendingSubmitButton></div>
         </form>
       ) : null}
       {showImportForm ? (
         <form action={saveCredentialsJson} className="form-grid one-column">
           <label>Credential JSON<textarea name="credentialsJson" rows={5} defaultValue={'{\n  "github": {\n    "username": "",\n    "token": ""\n  }\n}'} /></label>
-          <div className="form-actions"><PendingSubmitButton className="secondary">Import credentials</PendingSubmitButton></div>
+          <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import credentials from JSON">Import credentials</PendingSubmitButton></div>
         </form>
       ) : null}
       <div className="compact-list">{credentials.map((credential) => (
