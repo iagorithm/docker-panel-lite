@@ -530,7 +530,7 @@ def _is_worker_container_object(container) -> bool:
         return True
     if labels.get("com.docker.compose.service") == "worker":
         return True
-    return normalized.endswith("-worker-1") or normalized == "worker"
+    return bool(re.search(r"(^|[-_])worker([-_]1)?$", normalized))
 
 
 def execute_container(job: dict) -> tuple[str, str | None]:

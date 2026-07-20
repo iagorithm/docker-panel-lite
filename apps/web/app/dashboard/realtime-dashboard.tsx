@@ -140,10 +140,10 @@ function useVisiblePending(pending: boolean) {
   return pending && (!pendingStartedAt || Date.now() - pendingStartedAt < pendingButtonMaxAge);
 }
 
-function PendingIconButton({ title, children, onClick, primary = false, busy = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean }) {
+function PendingIconButton({ title, children, onClick, primary = false, busy = false, disabled = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean; disabled?: boolean }) {
   const { pending } = useFormStatus();
   const isBusy = useVisiblePending(pending) || busy;
-  return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
+  return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={disabled || isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
 function PendingSubmitButton({ children, className = "primary", formAction, tooltip }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string }) {
@@ -152,13 +152,14 @@ function PendingSubmitButton({ children, className = "primary", formAction, tool
   return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
 }
 
-function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, targetWorkerId = "" }: {
+function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, disabled = false, targetWorkerId = "" }: {
   repositoryId: string;
   action: RepositoryAction;
   children: React.ReactNode;
   title: string;
   primary?: boolean;
   busy?: boolean;
+  disabled?: boolean;
   targetWorkerId?: string;
 }) {
   return (
@@ -166,7 +167,7 @@ function QueueButton({ repositoryId, action, children, title, primary = false, b
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
       <input type="hidden" name="targetWorkerId" value={targetWorkerId || ""} />
-      <PendingIconButton title={title} primary={primary} busy={busy}>{children}</PendingIconButton>
+      <PendingIconButton title={disabled ? "Select a worker first" : title} primary={primary} busy={busy} disabled={disabled}>{children}</PendingIconButton>
     </form>
   );
 }
@@ -189,8 +190,14 @@ function containerPrimaryAction(status: string): ContainerAction {
   return status === "running" ? "container_stop" : "container_start";
 }
 
+function isWorkerControlContainer(container: ManagedContainer) {
+  const name = container.name.toLowerCase();
+  const composeService = (container.composeService || "").toLowerCase();
+  return Boolean(container.isWorkerContainer || composeService === "worker" || /(^|[-_])worker([-_]1)?$/.test(name));
+}
+
 function isProtectedContainerAction(container: ManagedContainer, action: string) {
-  return Boolean(container.protectedActions?.includes(action) || (container.isWorkerContainer && ["container_stop", "container_delete"].includes(action)));
+  return Boolean(container.protectedActions?.includes(action) || (isWorkerControlContainer(container) && ["container_stop", "container_delete", "container_exec"].includes(action)));
 }
 
 function containerActionMeta(action: ContainerAction) {
@@ -383,7 +390,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   const [showLogsMonitor, setShowLogsMonitor] = useState(false);
   const [showCommandTerminal, setShowCommandTerminal] = useState(false);
   const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
-  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("containers");
+  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("groups");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
   const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
@@ -482,19 +489,20 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   function renderContainerRow(container: ManagedContainer, showDivider: boolean) {
     const displayStatus = containerDisplayStatus(container) || "stopped";
     const workerOnline = Boolean(container.workerId && onlineWorkerIds.has(container.workerId));
+    const workerContainer = isWorkerControlContainer(container);
     const baseActions: ContainerAction[] = !workerOnline ? [] : displayStatus === "running"
       ? ["container_stop", "container_logs", "container_restart", "container_delete"]
       : ["container_start"];
     const actions = baseActions.filter((action) => !isProtectedContainerAction(container, action));
-    const primaryAction = container.isWorkerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
-    const canUseRunningTools = displayStatus === "running" && workerOnline && !container.isWorkerContainer;
+    const primaryAction = workerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
+    const canUseRunningTools = displayStatus === "running" && workerOnline && !workerContainer;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
-        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{container.isWorkerContainer ? " · Worker" : ""}</span></div></div>
+        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{workerContainer ? " · Worker" : ""}</span></div></div>
         <div className="resource-metadata">
           <StatusBadge label={displayStatus} running={displayStatus === "running"} />
           <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>
@@ -621,7 +629,7 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
   );
   const sortedContainers = useMemo(
     () => containers
-      .filter((container) => container.status === "running" && container.workerId && onlineWorkerIds.has(container.workerId))
+      .filter((container) => container.status === "running" && container.workerId && onlineWorkerIds.has(container.workerId) && !isWorkerControlContainer(container))
       .sort((a, b) => a.name.localeCompare(b.name)),
     [containers, onlineWorkerIds],
   );
@@ -873,6 +881,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
           const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
+          const workerSelected = Boolean(targetWorkerId);
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
@@ -884,7 +893,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
                   <option value="">Any worker</option>
                   {availableWorkers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}</option>)}
                 </select>
-                <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))}><Icon name="sync" /></QueueButton>
+                <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
                 <IconButton
                   title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
                   onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
@@ -899,12 +908,12 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
                       <input type="hidden" name="repositoryId" value={repository.id} />
                       <input type="hidden" name="action" value="read_compose" />
                       <input type="hidden" name="targetWorkerId" value={targetWorkerId} />
-                      <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
+                      <PendingIconButton title={workerSelected ? "View Compose" : "Select a worker first"} busy={busyRepositoryActions.has(actionKey("read_compose"))} disabled={!workerSelected} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
                     </form>
                   )
                 ) : null}
-                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))}><Icon name="play" /></QueueButton>}
-                <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))}><Icon name="stop" /></QueueButton>
+                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
+                <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
                 <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
               </div>
               <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />

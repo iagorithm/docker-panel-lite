@@ -189,6 +189,16 @@ function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 
   return agent.status === "online" && now - Number(agent.lastHeartbeat || 0) < freshness;
 }
 
+function isWorkerContainerRecord(container: Record<string, unknown>) {
+  const name = String(container.name || "").toLowerCase();
+  const composeService = String(container.composeService || "").toLowerCase();
+  return Boolean(
+    container.isWorkerContainer ||
+      composeService === "worker" ||
+      /(^|[-_])worker([-_]1)?$/.test(name),
+  );
+}
+
 async function recordFailedDeployment(input: {
   workspaceId: string;
   repositoryId: string;
@@ -249,7 +259,7 @@ async function resolveContainerTarget(input: {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container worker is not available" });
     return null;
   }
-  if (container.isWorkerContainer && ["container_stop", "container_delete", "container_exec"].includes(input.action)) {
+  if (isWorkerContainerRecord(container) && ["container_stop", "container_delete", "container_exec"].includes(input.action)) {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers can only be restarted or inspected with logs" });
     return null;
   }
@@ -424,6 +434,10 @@ export async function enqueueDeployment(formData: FormData) {
   ).val();
   if (!repository) throw new Error("Repository not found");
   const createdAt = Date.now();
+  if (!targetWorkerId) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Select a worker before running this action" });
+    return;
+  }
   const targetWorker = targetWorkerId
     ? (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${targetWorkerId}`).get()).val()
     : null;
@@ -435,15 +449,6 @@ export async function enqueueDeployment(formData: FormData) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
     return;
   }
-  if (!targetWorkerId) {
-    const agents = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents`).get()).val() ?? {};
-    const hasOnlineWorker = Object.values(agents as Record<string, Record<string, unknown>>).some((agent) => agentIsOnline(agent, createdAt));
-    if (!hasOnlineWorker) {
-      await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "No workers are available" });
-      return;
-    }
-  }
-
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;
   const shardId = shardFor(repositoryId);

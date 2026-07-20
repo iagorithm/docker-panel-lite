@@ -227,7 +227,7 @@ class Worker:
             return True
         if compose_service == "worker":
             return True
-        return normalized.endswith("-worker-1") or normalized == "worker"
+        return bool(re.search(r"(^|[-_])worker([-_]1)?$", normalized))
 
     def _heartbeat(self, status: str = "online", reset_inventory: bool = False) -> None:
         with self.lock:
