@@ -831,8 +831,8 @@ a:hover { text-decoration-color: var(--ui-text); }
   background: #4196ff;
 }
 .container-group .resource-row .resource-glyph.worker-glyph svg {
-  width: 1.82rem;
-  height: 1.82rem;
+  width: 2.08rem;
+  height: 2.08rem;
 }
 .container-group .resource-row .resource-glyph.service-glyph svg {
   width: 1.72rem;
@@ -979,8 +979,8 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .resource-glyph.worker-glyph svg {
   display: block;
-  width: 1.62rem;
-  height: 1.62rem;
+  width: 1.88rem;
+  height: 1.88rem;
 }
 .resource-glyph.worker-glyph svg path {
   fill: currentColor;
