@@ -82,6 +82,18 @@ function ResourceGlyph({ kind = "container" }: { kind?: "container" | "repo" | "
       </span>
     );
   }
+  if (kind === "container") {
+    return (
+      <span className="resource-glyph service-glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M12 3.6 19.2 7.75 12 11.9 4.8 7.75 12 3.6Z" />
+          <path d="M5.25 9.45 11.15 12.82v6.95L5.25 16.4V9.45Z" />
+          <path d="M18.75 9.45 12.85 12.82v6.95l5.9-3.37V9.45Z" />
+          <path className="service-glyph-line" d="m8.2 7.75 3.8 2.18 3.8-2.18M12 12.82v5.62" />
+        </svg>
+      </span>
+    );
+  }
   return <span className={`resource-glyph ${kind === "repo" ? "repo-glyph" : ""}`} aria-hidden="true"><span /></span>;
 }
 

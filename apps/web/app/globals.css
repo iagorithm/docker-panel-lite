@@ -680,8 +680,9 @@ a:hover { text-decoration-color: var(--ui-text); }
   box-shadow: var(--ui-shadow-xs);
 }
 .group-stack-icon .ui-icon {
-  width: 1.38rem;
-  height: 1.38rem;
+  width: 1.82rem;
+  height: 1.82rem;
+  stroke-width: 2.25;
 }
 .group-title {
   display: flex;
@@ -819,6 +820,11 @@ a:hover { text-decoration-color: var(--ui-text); }
   flex-basis: 1.92rem;
   background: rgba(255, 255, 255, 0.45);
 }
+.container-group .resource-row .resource-glyph.service-glyph {
+  width: 2.62rem;
+  height: 2.62rem;
+  flex-basis: 2.62rem;
+}
 .container-group .resource-row .resource-glyph.worker-glyph {
   width: 3.05rem;
   height: 3.05rem;
@@ -828,6 +834,10 @@ a:hover { text-decoration-color: var(--ui-text); }
 .container-group .resource-row .resource-glyph.worker-glyph svg {
   width: 1.82rem;
   height: 1.82rem;
+}
+.container-group .resource-row .resource-glyph.service-glyph svg {
+  width: 1.72rem;
+  height: 1.72rem;
 }
 .container-group .resource-row .resource-copy {
   gap: 0.08rem;
@@ -920,6 +930,37 @@ a:hover { text-decoration-color: var(--ui-text); }
 .resource-glyph.repo-glyph::before { top: 0.51rem; height: 0.42rem; background: #dededb; }
 .resource-glyph.repo-glyph::after { top: 1.14rem; height: 0.42rem; }
 .resource-glyph.repo-glyph span::before { display: none; }
+.resource-glyph.service-glyph {
+  display: grid;
+  place-items: center;
+  color: #f97316;
+  background: #fff7ed;
+  border-color: #fed7aa;
+  box-shadow: var(--ui-shadow-xs);
+}
+.resource-glyph.service-glyph::before,
+.resource-glyph.service-glyph::after,
+.resource-glyph.service-glyph span::before {
+  display: none;
+}
+.resource-glyph.service-glyph svg {
+  display: block;
+  width: 1.42rem;
+  height: 1.42rem;
+}
+.resource-glyph.service-glyph svg path {
+  fill: currentColor;
+  stroke: #fff7ed;
+  stroke-width: 0.3;
+  stroke-linejoin: round;
+}
+.resource-glyph.service-glyph svg .service-glyph-line {
+  fill: none;
+  stroke: #fff7ed;
+  stroke-width: 0.72;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .resource-glyph.worker-glyph {
   display: grid;
   width: 2.68rem;
@@ -1877,7 +1918,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .resource-row, .repo-resource-row { grid-template-columns: 1fr; }
   .container-group-header { padding: 0.68rem 0.78rem; }
   .group-stack-icon { width: 2.3rem; height: 2.3rem; flex-basis: 2.3rem; }
-  .group-stack-icon .ui-icon { width: 1.16rem; height: 1.16rem; }
+  .group-stack-icon .ui-icon { width: 1.52rem; height: 1.52rem; }
   .container-group .resource-row { margin: 0.34rem 0.55rem 0.34rem 1.65rem; padding: 0.62rem; }
   .container-group-body::before { left: 0.95rem; }
   .worker-stack-section .container-group-body::before { left: 0.95rem; }
