@@ -482,8 +482,8 @@ button[data-tooltip]:disabled::after {
 .ui-icon { display: block; width: 1.12rem; height: 1.12rem; }
 .button-spinner {
   display: inline-block;
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.28rem;
+  height: 1.28rem;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
@@ -497,9 +497,10 @@ button[data-tooltip]:disabled::after {
   to { transform: rotate(360deg); }
 }
 .top-toolbar .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.1rem; }
-.top-toolbar .ui-icon { width: 1.2rem; height: 1.2rem; }
+.top-toolbar .ui-icon { width: 1.32rem; height: 1.32rem; }
 .row-actions .icon-button { width: 3rem; max-width: 3rem; min-width: 3rem; min-height: 3rem; font-size: 1.02rem; }
-.row-actions .ui-icon { width: 1.15rem; height: 1.15rem; }
+.row-actions .ui-icon { width: 1.35rem; height: 1.35rem; }
+.repositories-workspace .row-actions .icon-button.primary-icon .ui-icon { width: 1.18rem; height: 1.18rem; }
 .repositories-workspace .row-actions .icon-button { background: transparent; border-color: transparent; box-shadow: none; }
 .repositories-workspace .row-actions .icon-button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: transparent; }
 .repositories-workspace .row-actions .icon-button.primary-icon {
