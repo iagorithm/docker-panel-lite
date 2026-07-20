@@ -680,9 +680,9 @@ a:hover { text-decoration-color: var(--ui-text); }
   box-shadow: var(--ui-shadow-xs);
 }
 .group-stack-icon .ui-icon {
-  width: 1.82rem;
-  height: 1.82rem;
-  stroke-width: 2.25;
+  width: 2.22rem;
+  height: 2.22rem;
+  stroke-width: 2.35;
 }
 .group-title {
   display: flex;
@@ -1918,7 +1918,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .resource-row, .repo-resource-row { grid-template-columns: 1fr; }
   .container-group-header { padding: 0.68rem 0.78rem; }
   .group-stack-icon { width: 2.3rem; height: 2.3rem; flex-basis: 2.3rem; }
-  .group-stack-icon .ui-icon { width: 1.52rem; height: 1.52rem; }
+  .group-stack-icon .ui-icon { width: 1.95rem; height: 1.95rem; }
   .container-group .resource-row { margin: 0.34rem 0.55rem 0.34rem 1.65rem; padding: 0.62rem; }
   .container-group-body::before { left: 0.95rem; }
   .worker-stack-section .container-group-body::before { left: 0.95rem; }
