@@ -64,6 +64,8 @@ export type Deployment = {
   command?: string;
   commandOutput?: string;
   commandExitCode?: number;
+  tunnelService?: string;
+  tunnelReset?: boolean;
   timeoutSeconds?: number;
   createdAt: number;
   startedAt?: number;

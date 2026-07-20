@@ -118,6 +118,10 @@ function aliasFromName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "command";
 }
 
+function safeDockerName(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").toLowerCase().slice(0, 63);
+}
+
 function secretMask(value: string) {
   return value.length > 10 ? `${value.slice(0, 5)}••••••••${value.slice(-4)}` : "••••••••";
 }
@@ -288,7 +292,7 @@ async function resolveContainerTarget(input: {
   containerId: string;
   submittedContainerRef?: string;
   createdAt: number;
-  action: ContainerJobAction;
+  action: JobAction;
   requestedBy: string;
 }) {
   const workspaceRoot = `workspaces/${input.workspaceId}`;
@@ -310,8 +314,16 @@ async function resolveContainerTarget(input: {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers can only be restarted or inspected with logs" });
     return null;
   }
+  if (isWorkerContainerRecord(container) && input.action === "tunnel_start") {
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers cannot be exposed publicly" });
+    return null;
+  }
   if (["container_stop", "container_restart", "container_logs", "container_exec"].includes(input.action) && container.status !== "running") {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container is not running" });
+    return null;
+  }
+  if (input.action === "tunnel_start" && container.status !== "running") {
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container must be running to regenerate its public URL" });
     return null;
   }
   return {
@@ -699,6 +711,66 @@ export async function enqueueContainerCommand(formData: FormData) {
   await adminDatabase.ref().update({
     [`jobs/${jobId}`]: job,
     [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId },
+    [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
+  });
+}
+
+export async function enqueueContainerTunnelRefresh(formData: FormData) {
+  const user = await requireSession("operator");
+  const containerId = z.string().min(1).parse(formData.get("containerId"));
+  const submittedContainerRef = z.string().optional().parse(formData.get("containerRef") || undefined);
+  const createdAt = Date.now();
+  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action: "tunnel_start", requestedBy: user.uid });
+  if (!target) return;
+
+  const container = target.container as Record<string, unknown>;
+  const repositories = (await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories`).get()).val() ?? {};
+  const containerProject = safeDockerName(String(container.project || ""));
+  const containerName = safeDockerName(String(container.name || ""));
+  const match = Object.entries(repositories as Record<string, Record<string, unknown>>).find(([repositoryId, repository]) => {
+    const alias = safeDockerName(String(repository.alias || repositoryId));
+    return Boolean(alias && (alias === containerProject || alias === containerName));
+  });
+  if (!match) {
+    await recordFailedDeployment({
+      workspaceId: user.workspaceId,
+      repositoryId: "container-tunnel",
+      containerId,
+      containerRef: target.containerRef,
+      action: "tunnel_start",
+      targetWorkerId: target.targetWorkerId,
+      requestedBy: user.uid,
+      message: "No repository registration matches this container",
+    });
+    return;
+  }
+
+  const [repositoryId, repository] = match;
+  const tunnelService = String(container.composeService || repository.service || "app").trim();
+  const jobRef = adminDatabase.ref("jobs").push();
+  const jobId = jobRef.key!;
+  const shardId = shardFor(`tunnel:${containerId}:${createdAt}`);
+  const job = {
+    id: jobId,
+    workspaceId: user.workspaceId,
+    repositoryId,
+    containerId,
+    containerRef: target.containerRef,
+    action: "tunnel_start",
+    tunnelService,
+    tunnelReset: true,
+    poolId: target.poolId,
+    shardId,
+    targetWorkerId: target.targetWorkerId,
+    status: "queued",
+    progress: 0,
+    attempt: 0,
+    requestedBy: user.uid,
+    createdAt,
+  };
+  await adminDatabase.ref().update({
+    [`jobs/${jobId}`]: job,
+    [`queues/${target.poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId: target.targetWorkerId },
     [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
   });
 }

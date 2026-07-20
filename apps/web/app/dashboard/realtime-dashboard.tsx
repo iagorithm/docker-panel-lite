@@ -15,6 +15,7 @@ import {
   enqueueAllContainerLogs,
   enqueueAllRepositories,
   enqueueContainerCommand,
+  enqueueContainerTunnelRefresh,
   enqueueContainerAction,
   enqueueDeployment,
   enqueueInventoryRefresh,
@@ -454,8 +455,11 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     }
     return items;
   }, [repositories]);
+  function containerRepository(container: ManagedContainer) {
+    return repositoryByProject.get(safeDockerName(container.project || "")) || repositoryByProject.get(safeDockerName(container.name || ""));
+  }
   function containerPublicLinks(container: ManagedContainer): Array<[string, string]> {
-    const repository = repositoryByProject.get(safeDockerName(container.project || "")) || repositoryByProject.get(safeDockerName(container.name || ""));
+    const repository = containerRepository(container);
     if (!repository) return [];
     const service = container.composeService || repository.service || "app";
     const urls = repository.publicUrls || {};
@@ -483,6 +487,9 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   function isContainerActionBusy(container: ManagedContainer, action: string, displayStatus = containerDisplayStatus(container) || "stopped") {
     if (containerActionSettled(action, displayStatus)) return false;
     return deployments.some((job) => job.containerId === container.id && job.action === action && isBusyContainerJob(job, now, onlineWorkerIds));
+  }
+  function isContainerTunnelBusy(container: ManagedContainer) {
+    return deployments.some((job) => job.containerId === container.id && job.action === "tunnel_start" && isActiveJob(job, now, 35_000));
   }
   const groupedContainers = useMemo(() => {
     const groups = new Map<string, ManagedContainer[]>();
@@ -574,6 +581,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
     const publicLinks = workerContainer ? [] : containerPublicLinks(container);
+    const canRegenerateTunnel = displayStatus === "running" && workerOnline && !workerContainer && Boolean(containerRepository(container));
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
@@ -598,6 +606,13 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
                 {commandPresets.map((preset) => <option value={preset.command} key={preset.id}>{preset.name}</option>)}
               </select>
               <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="play" /></PendingIconButton>
+            </form>
+          ) : null}
+          {canRegenerateTunnel ? (
+            <form action={enqueueContainerTunnelRefresh}>
+              <input type="hidden" name="containerId" value={container.id} />
+              <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
+              <PendingIconButton title={publicLinks.length ? "Regenerate public URL" : "Create public URL"} busy={isContainerTunnelBusy(container)}><Icon name="link" /></PendingIconButton>
             </form>
           ) : null}
           {actions.map((action) => {
@@ -1136,6 +1151,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
+  const [settingsTab, setSettingsTab] = useState<"general" | "build" | "environment" | "public" | "danger">("general");
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -1148,6 +1164,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
     setBranches(repository.availableBranches || []);
     setBranchMessage("");
     setLoadingBranches(false);
+    setSettingsTab("general");
     setShowDeleteConfirm(false);
   }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches]);
 
@@ -1180,30 +1197,62 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
 
   if (!open) return null;
   const branchOptions = [...new Set([branch, ...branches].filter(Boolean))];
+  const tabClass = (tab: typeof settingsTab) => `settings-tab-panel ${settingsTab === tab ? "is-active" : ""}`;
   return (
     <details className="inline-editor" open={open}>
       <summary><span>Edit settings</span><span>⌄</span></summary>
-      <form action={saveRepository} className="form-grid">
+      <form action={saveRepository} className="repository-settings-form">
         <input type="hidden" name="repositoryId" value={repository.id} />
         <input type="hidden" name="publicTunnelDomainsJson" value={JSON.stringify(repository.publicTunnelDomains || {})} />
         <input type="hidden" name="publicTunnelPortsJson" value={JSON.stringify(repository.publicTunnelPorts || {})} />
-        <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
-        <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
-        <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
-        <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
-        <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
-        <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
-        <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile} /></label>
-        <label>Worker pool<input name="poolId" defaultValue={repository.poolId || "default"} /></label>
-        <label>Domain<input name="domain" defaultValue={repository.domain} /></label>
-        <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
-        <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
-        <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
-        <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
-        <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
-        <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
-        <EnvironmentEditor className="full" environment={repository.environment || {}} />
-        <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button></div>
+        <div className="settings-tabs" role="tablist" aria-label="Repository settings">
+          {[
+            ["general", "General"],
+            ["build", "Build"],
+            ["environment", "Environment"],
+            ["public", "Public URL"],
+            ["danger", "Danger"],
+          ].map(([tab, label]) => (
+            <button type="button" role="tab" aria-selected={settingsTab === tab} className={settingsTab === tab ? "is-active" : ""} onClick={() => setSettingsTab(tab as typeof settingsTab)} key={tab}>{label}</button>
+          ))}
+        </div>
+        <div className={tabClass("general")} role="tabpanel" aria-label="General repository settings">
+          <div className="form-grid">
+            <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
+            <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
+            <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
+            <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+          </div>
+        </div>
+        <div className={tabClass("build")} role="tabpanel" aria-label="Build settings">
+          <div className="form-grid">
+            <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
+            <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
+            <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile} /></label>
+            <label>Worker pool<input name="poolId" defaultValue={repository.poolId || "default"} /></label>
+            <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
+            <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
+            <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
+          </div>
+        </div>
+        <div className={tabClass("environment")} role="tabpanel" aria-label="Environment variables">
+          <EnvironmentEditor className="full" environment={repository.environment || {}} />
+        </div>
+        <div className={tabClass("public")} role="tabpanel" aria-label="Public URL settings">
+          <div className="form-grid">
+            <label>Domain<input name="domain" defaultValue={repository.domain} /></label>
+            <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
+            <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
+            <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
+          </div>
+        </div>
+        <div className={tabClass("danger")} role="tabpanel" aria-label="Danger zone">
+          <div className="danger-tab-panel">
+            <div><strong>Remove repository registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
+            <button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button>
+          </div>
+        </div>
+        <div className="settings-form-footer"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton></div>
       </form>
       <RepositoryDeleteConfirm repository={repository} open={showDeleteConfirm} compact onClose={() => setShowDeleteConfirm(false)} />
     </details>

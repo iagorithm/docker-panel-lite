@@ -376,7 +376,7 @@ def _container_tunnel_target(container, fallback_port: int) -> str:
     return ""
 
 
-def _public_tunnel_targets(repository: dict, settings: Settings) -> dict[str, str]:
+def _public_tunnel_targets(repository: dict, settings: Settings, only_service: str = "") -> dict[str, str]:
     client = docker_ops.connect()
     project = _safe_name(repository["alias"])
     fallback_port = int(repository.get("internalPort") or 3000)
@@ -391,6 +391,8 @@ def _public_tunnel_targets(repository: dict, settings: Settings) -> dict[str, st
             if container.status != "running":
                 continue
             service = str(container.labels.get("com.docker.compose.service") or container.name).strip()
+            if only_service and service != only_service:
+                continue
             if service and service not in service_containers:
                 service_containers[service] = container
         targets = {}
@@ -400,7 +402,7 @@ def _public_tunnel_targets(repository: dict, settings: Settings) -> dict[str, st
                 targets[service] = target
         if targets:
             return targets
-        raise RuntimeError(f"No running compose services found for public tunnel '{project}'")
+        raise RuntimeError(f"No running compose services found for public tunnel '{project}'{f' service {only_service}' if only_service else ''}")
     try:
         container = client.containers.get(project)
     except NotFound:
@@ -437,17 +439,24 @@ def _ngrok_service(settings: Settings, authtoken: str = "") -> ngrok.NgrokServic
     )
 
 
-def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings) -> dict:
+def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings, only_service: str = "", reset: bool = False) -> dict:
     project = _safe_name(repository["alias"])
-    targets = _public_tunnel_targets(repository, settings)
+    targets = _public_tunnel_targets(repository, settings, only_service=only_service)
     authtoken = _repository_ngrok_authtoken(repository, workspace_id, settings)
     service = _ngrok_service(settings, authtoken)
     service_domains = _repository_public_tunnel_domains(repository)
     single_domain = _repository_public_tunnel_domain(repository)
-    public_urls = {}
-    public_tunnels = {}
+    existing_urls = repository.get("publicUrls") if isinstance(repository.get("publicUrls"), dict) else {}
+    existing_tunnels = repository.get("publicTunnels") if isinstance(repository.get("publicTunnels"), dict) else {}
+    public_urls = dict(existing_urls) if only_service else {}
+    public_tunnels = dict(existing_tunnels) if only_service else {}
     for service_name, target in targets.items():
-        tunnel_key = project if len(targets) == 1 else f"{project}--{_safe_name(service_name)}"
+        is_compose = repository.get("mode") == "compose"
+        tunnel_key = f"{project}--{_safe_name(service_name)}" if is_compose else project
+        if reset:
+            service.stop(tunnel_key)
+            if is_compose:
+                service.stop(project)
         domain = service_domains.get(service_name, "")
         if len(targets) == 1 and not domain:
             domain = single_domain
@@ -462,7 +471,7 @@ def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings
             "workerLabel": settings.worker_label,
             "updatedAt": _now(),
         }
-    first_service = next(iter(public_urls))
+    first_service = str(repository.get("service") or "") if repository.get("service") in public_urls else next(iter(public_urls))
     return {
         "publicUrl": public_urls[first_service],
         "publicUrls": public_urls,
@@ -635,7 +644,13 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     if action == "tunnel_stop":
         return "Public URL closed", _stop_public_tunnel(repository, settings)
     if action == "tunnel_start":
-        updates = _start_public_tunnel(repository, workspace_id, settings)
+        updates = _start_public_tunnel(
+            repository,
+            workspace_id,
+            settings,
+            only_service=str(job.get("tunnelService") or "").strip(),
+            reset=bool(job.get("tunnelReset")),
+        )
         return f"Public URLs ready: {len(updates.get('publicUrls') or {})}", updates
     path = _sync(repository, workspace_id, settings)
     if action in {"sync", "read_compose"}:
