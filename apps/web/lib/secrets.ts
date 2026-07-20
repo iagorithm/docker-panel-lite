@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 function encryptionKey() {
   const encoded = process.env.CREDENTIAL_ENCRYPTION_KEY;
@@ -19,4 +19,13 @@ export function encryptSecret(value: string) {
     tag: cipher.getAuthTag().toString("base64"),
     version: 1,
   };
+}
+
+export function decryptSecret(secret: { ciphertext: string; iv: string; tag: string }) {
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(secret.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(secret.tag, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(secret.ciphertext, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
 }

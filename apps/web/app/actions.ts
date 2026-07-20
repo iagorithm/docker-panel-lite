@@ -211,6 +211,37 @@ export async function enqueueContainerAction(formData: FormData) {
   await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
 }
 
+export async function enqueueAllContainerLogs() {
+  const user = await requireSession("operator");
+  const containers = (await adminDatabase.ref(`workspaces/${user.workspaceId}/containers`).get()).val() ?? {};
+  const updates: Record<string, unknown> = {};
+  const createdAt = Date.now();
+  const poolId = "default";
+  for (const containerId of Object.keys(containers)) {
+    const jobRef = adminDatabase.ref("jobs").push();
+    const jobId = jobRef.key!;
+    const shardId = shardFor(containerId);
+    const job = {
+      id: jobId,
+      workspaceId: user.workspaceId,
+      containerId,
+      repositoryId: "",
+      action: "container_logs",
+      poolId,
+      shardId,
+      status: "queued",
+      progress: 0,
+      attempt: 0,
+      requestedBy: user.uid,
+      createdAt,
+    };
+    updates[`jobs/${jobId}`] = job;
+    updates[`queues/${poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100 };
+    updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
+  }
+  if (Object.keys(updates).length) await adminDatabase.ref().update(updates);
+}
+
 export async function enqueueInventoryRefresh() {
   const user = await requireSession("operator");
   const jobRef = adminDatabase.ref("jobs").push();

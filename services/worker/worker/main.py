@@ -128,7 +128,9 @@ class Worker:
     def _release_repository_lock(self, job: dict) -> None:
         lock_key = job.get("repositoryId") or f"container-{job.get('containerId', 'unknown')}"
         lock_ref = reference(f"locks/{job['workspaceId']}/{lock_key}")
-        lock_ref.transaction(lambda current: None if current and current.get("jobId") == job["id"] else current)
+        current = lock_ref.get()
+        if current and current.get("jobId") == job["id"]:
+            lock_ref.delete()
 
     def _process(self, job_id: str, shard: str) -> None:
         renewal_stop = threading.Event()

@@ -10,6 +10,7 @@ import {
   deleteCredential,
   deleteRepository,
   enqueueAllRepositories,
+  enqueueAllContainerLogs,
   enqueueContainerAction,
   enqueueDeployment,
   enqueueInventoryRefresh,
@@ -204,15 +205,25 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
   now: number;
 }) {
   const [query, setQuery] = useState("");
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const sortedContainers = [...containers].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, container.status, ...(container.ports || [])], query),
   );
+  function expandLog(containerId: string) {
+    setExpandedLogs((current) => new Set(current).add(containerId));
+  }
+  function expandAllLogs() {
+    setExpandedLogs(new Set(filteredContainers.map((container) => container.id)));
+  }
   return (
     <div className="table-workspace containers-workspace">
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
-        <div className="toolbar-actions"><form action={enqueueInventoryRefresh}><IconButton title="Refresh containers"><Icon name="sync" /></IconButton></form></div>
+        <div className="toolbar-actions">
+          <form action={enqueueAllContainerLogs}><IconButton title="Open logs for all containers" onClick={expandAllLogs}><Icon name="terminal" /></IconButton></form>
+          <form action={enqueueInventoryRefresh}><IconButton title="Refresh containers"><Icon name="sync" /></IconButton></form>
+        </div>
       </div>
 
       <section className="panel resource-panel">
@@ -230,11 +241,20 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
                   <form action={enqueueContainerAction} key={action}>
                     <input type="hidden" name="containerId" value={container.id} />
                     <input type="hidden" name="action" value={action} />
-                    <IconButton title={meta.title} primary={action === primaryAction}><Icon name={meta.icon} /></IconButton>
+                    <IconButton title={meta.title} primary={action === primaryAction} onClick={action === "container_logs" ? () => expandLog(container.id) : undefined}><Icon name={meta.icon} /></IconButton>
                   </form>
                 );
               })}</div>
-              {container.logTail ? <pre className="code-viewer full-row"><code>{container.logTail}</code></pre> : null}
+              {container.logTail || expandedLogs.has(container.id) ? (
+                <div className="logs-panel full-row">
+                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" onClick={() => setExpandedLogs((current) => {
+                    const next = new Set(current);
+                    next.delete(container.id);
+                    return next;
+                  })}><Icon name="close" /></button></div>
+                  <pre className="code-viewer"><code>{container.logTail || "Loading logs..."}</code></pre>
+                </div>
+              ) : null}
             </article>
           );
         }) : <EmptyState title={containers.length ? "No matching containers" : "No containers yet"} copy={containers.length ? "Clear the search field to show every container." : "Run or deploy a repository to see it here."} />}
@@ -310,6 +330,40 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
 }
 
 function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] }) {
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [credentialId, setCredentialId] = useState("");
+  const [branch, setBranch] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchMessage, setBranchMessage] = useState("");
+  const [loadingBranches, setLoadingBranches] = useState(false);
+
+  async function discoverBranches() {
+    if (!repositoryUrl.trim()) {
+      setBranchMessage("Add a repository URL first.");
+      return;
+    }
+    setLoadingBranches(true);
+    setBranchMessage("");
+    try {
+      const response = await fetch("/api/branches", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: repositoryUrl, credentialId }),
+      });
+      const payload = await response.json() as { branches?: string[]; defaultBranch?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not load branches");
+      const nextBranches = payload.branches || [];
+      setBranches(nextBranches);
+      setBranch(payload.defaultBranch || nextBranches[0] || "");
+      setBranchMessage(nextBranches.length ? `${nextBranches.length} branches loaded.` : "No branches found.");
+    } catch (cause) {
+      setBranches([]);
+      setBranchMessage(cause instanceof Error ? cause.message : "Could not load branches");
+    } finally {
+      setLoadingBranches(false);
+    }
+  }
+
   return (
     <section className="panel add-repository-panel">
       <form action={saveRepository} className="add-repository-form">
@@ -327,13 +381,13 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
               <label><input type="radio" name="mode" value="compose" /><span>Docker Compose</span></label>
             </div>
           </fieldset>
-          <label className="credential-select">GitHub credential<select name="credentialId" defaultValue=""><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+          <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
         </div>
 
         <div className="repository-input-card">
-          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches"><Icon name="branch" /></button></div></label>
+          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
           <label>Display name<input name="alias" required placeholder="my-service" /></label>
-          <label>Branch<input name="branch" placeholder="Default" /></label>
+          <label>Branch<input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list="new-repository-branches" /><datalist id="new-repository-branches">{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
           <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
           <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
           <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
