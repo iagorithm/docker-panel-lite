@@ -990,9 +990,9 @@ a:hover { text-decoration-color: var(--ui-text); }
   line-height: 1;
 }
 .resource-type-badge.is-worker {
-  color: #166534;
-  background: var(--ui-success-bg);
-  border-color: var(--ui-success-border);
+  color: #6d28d9;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
 }
 .resource-type-badge.is-service {
   color: #9a3412;
