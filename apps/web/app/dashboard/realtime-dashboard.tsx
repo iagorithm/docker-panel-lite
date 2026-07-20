@@ -67,6 +67,27 @@ function GithubMark() {
   );
 }
 
+function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" }) {
+  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 1.9 };
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {name === "add" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
+      {name === "key" ? <path {...common} d="M14.5 10.5a4 4 0 1 0-3 3l2-2h2v-2h2l1.5-1.5M7.5 12.5h.01" /> : null}
+      {name === "sync" ? <path {...common} d="M17 2.5v5h-5M7 21.5v-5h5M18.6 9A7 7 0 0 0 6.2 6.2L4 8.4M5.4 15a7 7 0 0 0 12.4 2.8l2.2-2.2" /> : null}
+      {name === "sliders" ? <path {...common} d="M4 7h8M16 7h4M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM4 17h4M12 17h8M8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z" /> : null}
+      {name === "document" ? <path {...common} d="M7 3.5h6l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1ZM13 3.5V8h4M9 12h6M9 16h6" /> : null}
+      {name === "play" ? <path {...common} d="M9 7.5v9l7-4.5-7-4.5Z" /> : null}
+      {name === "stop" ? <path {...common} d="M9 9h6v6H9z" /> : null}
+      {name === "terminal" ? <path {...common} d="M4.5 6.5h15v11h-15zM8 10l2 2-2 2M12 14h4" /> : null}
+      {name === "trash" ? <path {...common} d="M5 7h14M10 11v6M14 11v6M8 7l1-3h6l1 3M7 7l1 13h8l1-13" /> : null}
+      {name === "logout" ? <path {...common} d="M10 6H6v12h4M14 8l4 4-4 4M8 12h10" /> : null}
+      {name === "container" ? <path {...common} d="M6 6.5h12M6 12h12M6 17.5h12M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5Z" /> : null}
+      {name === "repo" ? <path {...common} d="M6 5h12v14H6zM9 8h6M9 12h6M9 16h3" /> : null}
+      {name === "close" ? <path {...common} d="M7 7l10 10M17 7 7 17" /> : null}
+    </svg>
+  );
+}
+
 function StatusBadge({ label, running }: { label: string; running: boolean }) {
   return <span className={`ui-status-badge ${running ? "is-running" : "is-stopped"}`}><span className="ui-status-badge__dot" aria-hidden="true" />{label}</span>;
 }
@@ -137,13 +158,13 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} onClick={() => setView("containers")}><span />Containers</button>
-          <button className={view === "repositories" ? "is-active" : ""} onClick={() => setView("repositories")}><span />Repositories</button>
+          <button className={view === "containers" ? "is-active" : ""} onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
+          <button className={view === "repositories" ? "is-active" : ""} onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
         </nav>
 
         <div className="sidebar-footer">
           <div className="session-user"><span aria-hidden="true" /><div><small>Signed in</small><strong>{props.user.email || props.user.role}</strong></div></div>
-          <IconButton title="Sign out" onClick={logout}>⎋</IconButton>
+          <IconButton title="Sign out" onClick={logout}><Icon name="logout" /></IconButton>
         </div>
       </aside>
 
@@ -174,7 +195,7 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
     <div className="table-workspace containers-workspace">
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
-        <div className="toolbar-actions"><IconButton title="Refresh containers" onClick={() => window.location.reload()}>↻</IconButton></div>
+        <div className="toolbar-actions"><IconButton title="Refresh containers" onClick={() => window.location.reload()}><Icon name="sync" /></IconButton></div>
       </div>
 
       <section className="panel resource-panel">
@@ -187,7 +208,7 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
               <form action={enqueueContainerAction} key={action}>
                 <input type="hidden" name="containerId" value={container.id} />
                 <input type="hidden" name="action" value={action} />
-                <IconButton title={action} primary={action === "container_stop"}>{action === "container_stop" ? "□" : action === "container_logs" ? "▤" : action === "container_restart" ? "↻" : "⌫"}</IconButton>
+                <IconButton title={action} primary={action === "container_stop"}><Icon name={action === "container_stop" ? "stop" : action === "container_logs" ? "terminal" : action === "container_restart" ? "sync" : "trash"} /></IconButton>
               </form>
             ))}</div>
             {container.logTail ? <pre className="code-viewer full-row"><code>{container.logTail}</code></pre> : null}
@@ -228,9 +249,9 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
         <div className="toolbar-actions">
-          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)}>+</IconButton>
-          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}>⌘</IconButton>
-          <form action={enqueueAllRepositories}><IconButton title="Sync all">↻</IconButton></form>
+          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
+          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name={showCredentials ? "close" : "key"} /></IconButton>
+          <form action={enqueueAllRepositories}><IconButton title="Sync all"><Icon name="sync" /></IconButton></form>
         </div>
       </div>
 
@@ -244,17 +265,17 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
             <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
             <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.composeFile || repository.dockerfile} · Branch {repository.branch || "default"}</small></div>
             <div className="row-actions">
-              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository">↻</QueueButton>
+              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository"><Icon name="sync" /></QueueButton>
               <IconButton
                 title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
                 onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
               >
-                ⎇
+                <Icon name="sliders" />
               </IconButton>
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose">▤</QueueButton> : null}
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary>▶</QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary>▶</QueueButton>}
-              <QueueButton repositoryId={repository.id} action="stop" title="Stop">□</QueueButton>
-              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><IconButton title="Remove repository">⌫</IconButton></form>
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose"><Icon name="document" /></QueueButton> : null}
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary><Icon name="play" /></QueueButton>}
+              <QueueButton repositoryId={repository.id} action="stop" title="Stop"><Icon name="stop" /></QueueButton>
+              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><IconButton title="Remove repository"><Icon name="trash" /></IconButton></form>
             </div>
             <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
           </article>
@@ -269,7 +290,7 @@ function AddRepositoryPanel({ credentials, onClose }: { credentials: CredentialS
     <section className="panel editor-panel">
       <div className="editor-panel-header">
         <h2>Register repository</h2>
-        <IconButton title="Close repository form" onClick={onClose}>×</IconButton>
+        <IconButton title="Close repository form" onClick={onClose}><Icon name="close" /></IconButton>
       </div>
       <form action={saveRepository} className="form-grid">
         <label>Alias<input name="alias" required placeholder="api-production" /></label>
