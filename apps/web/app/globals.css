@@ -673,16 +673,15 @@ a:hover { text-decoration-color: var(--ui-text); }
   height: 2.75rem;
   flex: 0 0 2.75rem;
   place-items: center;
-  color: var(--ui-text-secondary);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-strong);
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
   border-radius: 0.68rem;
   box-shadow: var(--ui-shadow-xs);
 }
 .group-stack-icon .ui-icon {
   width: 2.22rem;
   height: 2.22rem;
-  stroke-width: 2.35;
 }
 .group-title {
   display: flex;
