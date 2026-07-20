@@ -184,7 +184,7 @@ export async function enqueueAllRepositories() {
 export async function enqueueContainerAction(formData: FormData) {
   const user = await requireSession("operator");
   const containerId = z.string().min(1).parse(formData.get("containerId"));
-  const action = z.enum(["container_stop", "container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
+  const action = z.enum(["container_start", "container_stop", "container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
   const existing = await adminDatabase.ref(`workspaces/${user.workspaceId}/containers/${containerId}`).get();
   if (!existing.exists()) throw new Error("Container not found");
   const jobRef = adminDatabase.ref("jobs").push();
@@ -194,6 +194,34 @@ export async function enqueueContainerAction(formData: FormData) {
   const poolId = "default";
   const job = { id: jobId, workspaceId: user.workspaceId, containerId, repositoryId: "", action, poolId, shardId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
   await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
+}
+
+export async function enqueueInventoryRefresh() {
+  const user = await requireSession("operator");
+  const jobRef = adminDatabase.ref("jobs").push();
+  const jobId = jobRef.key!;
+  const createdAt = Date.now();
+  const poolId = "default";
+  const shardId = shardFor(`inventory:${user.workspaceId}`);
+  const job = {
+    id: jobId,
+    workspaceId: user.workspaceId,
+    containerId: "",
+    repositoryId: "",
+    action: "inventory_refresh",
+    poolId,
+    shardId,
+    status: "queued",
+    progress: 0,
+    attempt: 0,
+    requestedBy: user.uid,
+    createdAt,
+  };
+  await adminDatabase.ref().update({
+    [`jobs/${jobId}`]: job,
+    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 },
+    [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
+  });
 }
 
 export async function deleteRepository(formData: FormData) {

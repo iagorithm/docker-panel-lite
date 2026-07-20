@@ -12,6 +12,7 @@ import {
   enqueueAllRepositories,
   enqueueContainerAction,
   enqueueDeployment,
+  enqueueInventoryRefresh,
   saveCredential,
   saveCredentialsJson,
   saveRepository,
@@ -31,7 +32,7 @@ type Props = {
 
 type View = "containers" | "repositories";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose";
-type ContainerAction = "container_stop" | "container_restart" | "container_delete" | "container_logs";
+type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -89,7 +90,8 @@ function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" 
 }
 
 function StatusBadge({ label, running }: { label: string; running: boolean }) {
-  return <span className={`ui-status-badge ${running ? "is-running" : "is-stopped"}`}><span className="ui-status-badge__dot" aria-hidden="true" />{label}</span>;
+  const display = label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : "Unknown";
+  return <span className={`ui-status-badge ${running ? "is-running" : "is-stopped"}`}><span className="ui-status-badge__dot" aria-hidden="true" />{display}</span>;
 }
 
 function IconButton({ title, children, onClick, primary = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean }) {
@@ -120,6 +122,18 @@ function matchesQuery(values: Array<string | undefined>, query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   return values.some((value) => (value || "").toLowerCase().includes(normalized));
+}
+
+function containerPrimaryAction(status: string): ContainerAction {
+  return status === "running" ? "container_stop" : "container_start";
+}
+
+function containerActionMeta(action: ContainerAction) {
+  if (action === "container_start") return { title: "Start container", icon: "play" as const };
+  if (action === "container_stop") return { title: "Stop container", icon: "stop" as const };
+  if (action === "container_logs") return { title: "View logs", icon: "terminal" as const };
+  if (action === "container_restart") return { title: "Restart container", icon: "sync" as const };
+  return { title: "Delete container", icon: "trash" as const };
 }
 
 export function RealtimeDashboard(props: Props) {
@@ -195,25 +209,32 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
     <div className="table-workspace containers-workspace">
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
-        <div className="toolbar-actions"><IconButton title="Refresh containers" onClick={() => window.location.reload()}><Icon name="sync" /></IconButton></div>
+        <div className="toolbar-actions"><form action={enqueueInventoryRefresh}><IconButton title="Refresh containers"><Icon name="sync" /></IconButton></form></div>
       </div>
 
       <section className="panel resource-panel">
-        {filteredContainers.length ? filteredContainers.map((container, index) => (
-          <article className="resource-row" key={container.id}>
-            {index ? <div className="resource-divider" /> : null}
-            <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
-            <div className="resource-metadata"><StatusBadge label={container.status} running={container.status === "running"} /><small>{(container.ports || []).join(", ") || "No published ports"}</small></div>
-            <div className="row-actions">{(["container_stop", "container_logs", "container_restart", "container_delete"] as ContainerAction[]).map((action) => (
-              <form action={enqueueContainerAction} key={action}>
-                <input type="hidden" name="containerId" value={container.id} />
-                <input type="hidden" name="action" value={action} />
-                <IconButton title={action} primary={action === "container_stop"}><Icon name={action === "container_stop" ? "stop" : action === "container_logs" ? "terminal" : action === "container_restart" ? "sync" : "trash"} /></IconButton>
-              </form>
-            ))}</div>
-            {container.logTail ? <pre className="code-viewer full-row"><code>{container.logTail}</code></pre> : null}
-          </article>
-        )) : <EmptyState title={containers.length ? "No matching containers" : "No containers yet"} copy={containers.length ? "Clear the search field to show every container." : "Run or deploy a repository to see it here."} />}
+        {filteredContainers.length ? filteredContainers.map((container, index) => {
+          const primaryAction = containerPrimaryAction(container.status);
+          const actions: ContainerAction[] = [primaryAction, "container_logs", "container_restart", "container_delete"];
+          return (
+            <article className="resource-row" key={container.id}>
+              {index ? <div className="resource-divider" /> : null}
+              <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
+              <div className="resource-metadata"><StatusBadge label={container.status} running={container.status === "running"} /><small>{(container.ports || []).join(", ") || "No published ports"}</small></div>
+              <div className="row-actions">{actions.map((action) => {
+                const meta = containerActionMeta(action);
+                return (
+                  <form action={enqueueContainerAction} key={action}>
+                    <input type="hidden" name="containerId" value={container.id} />
+                    <input type="hidden" name="action" value={action} />
+                    <IconButton title={meta.title} primary={action === primaryAction}><Icon name={meta.icon} /></IconButton>
+                  </form>
+                );
+              })}</div>
+              {container.logTail ? <pre className="code-viewer full-row"><code>{container.logTail}</code></pre> : null}
+            </article>
+          );
+        }) : <EmptyState title={containers.length ? "No matching containers" : "No containers yet"} copy={containers.length ? "Clear the search field to show every container." : "Run or deploy a repository to see it here."} />}
       </section>
     </div>
   );

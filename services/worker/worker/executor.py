@@ -230,6 +230,9 @@ def container_inventory() -> dict[str, dict]:
 def execute_container(job: dict) -> tuple[str, str | None]:
     client = docker_ops.connect()
     container = client.containers.get(job["containerId"])
+    if job["action"] == "container_start":
+        container.start()
+        return f"Container '{container.name}' started", None
     if job["action"] == "container_stop":
         container.stop(timeout=20)
         return f"Container '{container.name}' stopped", None

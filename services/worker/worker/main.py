@@ -58,14 +58,17 @@ class Worker:
         })
         if status == "online":
             try:
-                inventory = container_inventory()
-                existing = reference(f"workspaces/{self.settings.workspace_id}/containers").get() or {}
-                for container_id, item in inventory.items():
-                    if existing.get(container_id, {}).get("logTail"):
-                        item["logTail"] = existing[container_id]["logTail"]
-                reference(f"workspaces/{self.settings.workspace_id}/containers").set(inventory)
+                self._publish_container_inventory(self.settings.workspace_id)
             except Exception:
                 LOG.exception("Container inventory failed")
+
+    def _publish_container_inventory(self, workspace_id: str) -> None:
+        inventory = container_inventory()
+        existing = reference(f"workspaces/{workspace_id}/containers").get() or {}
+        for container_id, item in inventory.items():
+            if existing.get(container_id, {}).get("logTail"):
+                item["logTail"] = existing[container_id]["logTail"]
+        reference(f"workspaces/{workspace_id}/containers").set(inventory)
 
     def _heartbeat_loop(self) -> None:
         while not self.stop_event.wait(10):
@@ -152,7 +155,10 @@ class Worker:
                     reference(f"locks/{job['workspaceId']}/{lock_key}/expiresAt").set(now_ms() + self.settings.lease_seconds * 1000)
             threading.Thread(target=renew, daemon=True).start()
             self._publish(job, {"progress": 25, "message": f"Executing {job['action']}"})
-            if job["action"].startswith("container_"):
+            if job["action"] == "inventory_refresh":
+                self._publish_container_inventory(job["workspaceId"])
+                message = "Container inventory refreshed"
+            elif job["action"].startswith("container_"):
                 message, log_tail = execute_container(job)
                 if log_tail is not None:
                     reference(f"workspaces/{job['workspaceId']}/containers/{job['containerId']}/logTail").set(log_tail)
