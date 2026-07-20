@@ -71,21 +71,22 @@ function StatusBadge({ label, running }: { label: string; running: boolean }) {
   return <span className={`ui-status-badge ${running ? "is-running" : "is-stopped"}`}><span className="ui-status-badge__dot" aria-hidden="true" />{label}</span>;
 }
 
-function IconButton({ title, children, onClick }: { title: string; children: React.ReactNode; onClick?: () => void }) {
-  return <button className="icon-button" title={title} aria-label={title} onClick={onClick}>{children}</button>;
+function IconButton({ title, children, onClick, primary = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean }) {
+  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} onClick={onClick}>{children}</button>;
 }
 
-function QueueButton({ repositoryId, action, children, title }: {
+function QueueButton({ repositoryId, action, children, title, primary = false }: {
   repositoryId: string;
   action: RepositoryAction;
   children: React.ReactNode;
   title: string;
+  primary?: boolean;
 }) {
   return (
     <form action={enqueueDeployment}>
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
-      <IconButton title={title}>{children}</IconButton>
+      <IconButton title={title} primary={primary}>{children}</IconButton>
     </form>
   );
 }
@@ -223,6 +224,7 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
   const filteredRepositories = repositories.filter((repository) =>
     matchesQuery([
       repository.alias,
@@ -237,65 +239,43 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
     ], query),
   );
   return (
-    <>
-      <header className="workspace-header">
-        <div><p className="eyebrow">Workspace</p><h1>Repositories</h1></div>
-        <div className="header-actions">
-          <button className="primary" onClick={() => setShowAddRepository((current) => !current)}>
-            {showAddRepository ? "Close" : "Add repository"}
-          </button>
-          <form action={enqueueAllRepositories}><button className="secondary">Sync all</button></form>
+    <div className="table-workspace">
+      <div className="top-toolbar">
+        <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
+        <div className="toolbar-actions">
+          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)}>+</IconButton>
+          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}>⌘</IconButton>
+          <form action={enqueueAllRepositories}><IconButton title="Sync all">↻</IconButton></form>
         </div>
-      </header>
-
-      <section className="metrics">
-        <article><strong>{repositories.length}</strong><span>Repositories</span></article>
-        <article><strong>{activeJobs}</strong><span>Active jobs</span></article>
-        <article><strong>{agents.reduce((total, agent) => total + agent.maxConcurrency, 0)}</strong><span>Worker capacity</span></article>
-      </section>
-
-      <div className="content-grid">
-        <div className="main-stack">
-          {showAddRepository ? <AddRepositoryPanel credentials={credentials} onClose={() => setShowAddRepository(false)} /> : null}
-          <section className="panel resource-panel">
-            <div className="resource-toolbar">
-              <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories" /></label>
-            </div>
-            {filteredRepositories.length ? filteredRepositories.map((repository, index) => (
-              <article className="resource-row repo-resource-row" key={repository.id}>
-                {index ? <div className="resource-divider" /> : null}
-                <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-                <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.branch || "default branch"} · {repository.poolId || "default"}{repository.domain ? ` · ${repository.domain}` : ""}</small></div>
-                <div className="row-actions">
-                  <QueueButton repositoryId={repository.id} action="discover_branches" title="Load branches">⑂</QueueButton>
-                  <QueueButton repositoryId={repository.id} action="sync" title="Sync repository">↻</QueueButton>
-                  <IconButton
-                    title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
-                    onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
-                  >
-                    ⚙
-                  </IconButton>
-                  {repository.mode === "compose" ? (
-                    <>
-                      <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose">▤</QueueButton>
-                      <QueueButton repositoryId={repository.id} action="deploy" title="Deploy">▶</QueueButton>
-                    </>
-                  ) : <QueueButton repositoryId={repository.id} action="build" title="Build and run">◇</QueueButton>}
-                  <QueueButton repositoryId={repository.id} action="stop" title="Stop">■</QueueButton>
-                </div>
-                <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
-              </article>
-            )) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
-          </section>
-        </div>
-
-        <aside className="side-stack">
-          <CredentialsPanel credentials={credentials} />
-          <WorkersPanel agents={agents} now={now} />
-          <DeploymentsPanel deployments={deployments} />
-        </aside>
       </div>
-    </>
+
+      {showAddRepository ? <AddRepositoryPanel credentials={credentials} onClose={() => setShowAddRepository(false)} /> : null}
+      {showCredentials ? <CredentialsPanel credentials={credentials} /> : null}
+
+      <section className="panel resource-panel">
+        {filteredRepositories.length ? filteredRepositories.map((repository, index) => (
+          <article className="resource-row repo-resource-row" key={repository.id}>
+            {index ? <div className="resource-divider" /> : null}
+            <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
+            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.composeFile || repository.dockerfile} · Branch {repository.branch || "default"}</small></div>
+            <div className="row-actions">
+              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository">↻</QueueButton>
+              <IconButton
+                title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
+                onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
+              >
+                ⎇
+              </IconButton>
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose">▤</QueueButton> : null}
+              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary>▶</QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary>▶</QueueButton>}
+              <QueueButton repositoryId={repository.id} action="stop" title="Stop">□</QueueButton>
+              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><IconButton title="Remove repository">⌫</IconButton></form>
+            </div>
+            <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
+          </article>
+        )) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
+      </section>
+    </div>
   );
 }
 
