@@ -168,7 +168,7 @@ class Worker:
 
     def start(self) -> None:
         self.worker_label = self._resolve_worker_label()
-        self._heartbeat()
+        self._heartbeat(reset_inventory=True)
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         for shard in self.settings.shards:
             self.listeners.append(reference(f"queues/{self.settings.pool_id}/{shard}").listen(lambda _event: self.wake_event.set()))
@@ -211,7 +211,14 @@ class Worker:
         except Exception:
             LOG.exception("Could not mark worker stopping")
 
-    def _heartbeat(self, status: str = "online") -> None:
+    def _record_belongs_to_worker(self, record_id: str, item: dict) -> bool:
+        if item.get("workerId") == self.settings.worker_id or record_id.startswith(f"{self.settings.worker_id}--"):
+            return True
+        if self.worker_label and normalized_name(str(item.get("workerLabel") or "")) == normalized_name(self.worker_label):
+            return True
+        return bool(self.settings.hostname and item.get("workerHostname") == self.settings.hostname)
+
+    def _heartbeat(self, status: str = "online", reset_inventory: bool = False) -> None:
         with self.lock:
             active_jobs = len(self.active)
         payload = self._worker_payload(status, active_jobs)
@@ -220,11 +227,11 @@ class Worker:
         reference(f"workspaces/{self.settings.workspace_id}/agents/{self.settings.worker_id}").set(payload)
         if status == "online":
             try:
-                self._publish_container_inventory(self.settings.workspace_id)
+                self._publish_container_inventory(self.settings.workspace_id, reset_worker_records=reset_inventory)
             except Exception:
                 LOG.exception("Container inventory failed")
 
-    def _publish_container_inventory(self, workspace_id: str) -> None:
+    def _publish_container_inventory(self, workspace_id: str, reset_worker_records: bool = False) -> None:
         inventory = container_inventory()
         existing = reference(f"workspaces/{workspace_id}/containers").get() or {}
         updates = {}
@@ -232,7 +239,7 @@ class Worker:
         now = now_ms()
         for docker_id, item in inventory.items():
             record_id = container_record_id(self.settings.worker_id, item.get("name", docker_id))
-            previous = existing.get(record_id) or existing.get(docker_id) or {}
+            previous = {} if reset_worker_records else (existing.get(record_id) or existing.get(docker_id) or {})
             seen_record_ids.add(record_id)
             updated = {
                 **previous,
@@ -254,10 +261,14 @@ class Worker:
             if docker_id != record_id and existing.get(docker_id):
                 updates[f"workspaces/{workspace_id}/containers/{docker_id}"] = None
         for container_id, item in existing.items():
-            if item.get("workerId") == self.settings.worker_id and container_id not in seen_record_ids and container_id not in inventory:
+            if not isinstance(item, dict):
+                continue
+            if self._record_belongs_to_worker(container_id, item) and container_id not in seen_record_ids and container_id not in inventory:
                 updates[f"workspaces/{workspace_id}/containers/{container_id}"] = None
-                LOG.info("Removing stale container record %s for worker %s", container_id, self.settings.worker_id)
+                LOG.info("Removing stale container record %s for worker %s", container_id, self.worker_label or self.settings.worker_id)
         if updates:
+            if reset_worker_records:
+                LOG.info("Reset container records for worker %s with %s Docker containers", self.worker_label or self.settings.worker_id, len(inventory))
             reference().update(updates)
 
     def _heartbeat_loop(self) -> None:
@@ -398,6 +409,8 @@ class Worker:
                 message, log_tail = execute_container(job)
                 if log_tail is not None:
                     reference(f"workspaces/{job['workspaceId']}/containers/{job['containerId']}/logTail").set(log_tail)
+                else:
+                    self._publish_container_inventory(job["workspaceId"])
             else:
                 repository_ref = reference(f"workspaces/{job['workspaceId']}/repositories/{job['repositoryId']}")
                 repository = repository_ref.get()

@@ -14,6 +14,7 @@ const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
 const workerOnlineFreshness = 45_000;
+const orphanWorkerDeleteAge = 2 * 60_000;
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
 type JobAction = RepositoryAction | ContainerJobAction;
@@ -246,6 +247,10 @@ async function resolveContainerTarget(input: {
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
   if (!targetWorker || !agentIsOnline(targetWorker, input.createdAt)) {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container worker is not available" });
+    return null;
+  }
+  if (["container_stop", "container_restart", "container_logs", "container_exec"].includes(input.action) && container.status !== "running") {
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container is not running" });
     return null;
   }
   return {
@@ -595,34 +600,11 @@ export async function enqueueAllContainerLogs() {
   const updates: Record<string, unknown> = {};
   const createdAt = Date.now();
   for (const [containerId, container] of Object.entries(containers) as [string, Record<string, string>][]) {
+    if (container.status !== "running") continue;
     const targetWorkerId = container.workerId || "";
     const containerRef = container.dockerId || container.name || containerId;
     const targetWorker = targetWorkerId ? (agents as Record<string, Record<string, unknown>>)[targetWorkerId] : null;
-    if (!targetWorker || !agentIsOnline(targetWorker, createdAt)) {
-      const jobRef = adminDatabase.ref("jobs").push();
-      const jobId = jobRef.key!;
-      const job = {
-        id: jobId,
-        workspaceId: user.workspaceId,
-        repositoryId: "",
-        containerId,
-        containerRef,
-        action: "container_logs",
-        poolId: container.poolId || "default",
-        shardId: shardFor(containerId),
-        targetWorkerId,
-        status: "failed",
-        progress: 0,
-        attempt: 0,
-        requestedBy: user.uid,
-        createdAt,
-        finishedAt: createdAt,
-        message: targetWorkerId ? "Container worker is not available" : "Container has no assigned worker",
-      };
-      updates[`jobs/${jobId}`] = job;
-      updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
-      continue;
-    }
+    if (!targetWorker || !agentIsOnline(targetWorker, createdAt)) continue;
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(containerId);
@@ -698,7 +680,7 @@ export async function deleteWorker(formData: FormData) {
     const agent = agentSnapshot.val() as Record<string, unknown>;
     const now = Date.now();
     const lastHeartbeat = Number(agent.lastHeartbeat || 0);
-    if (agent.status === "online" && now - lastHeartbeat < workerOnlineFreshness) return;
+    if (agent.status === "online" || agent.status === "stopping" || now - lastHeartbeat < orphanWorkerDeleteAge) return;
 
     const deployments = (await adminDatabase.ref(`${workspaceRoot}/deployments`).get()).val() ?? {};
     const containers = (await adminDatabase.ref(`${workspaceRoot}/containers`).get()).val() ?? {};

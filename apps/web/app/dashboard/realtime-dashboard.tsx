@@ -44,8 +44,9 @@ type ContainerAction = "container_start" | "container_stop" | "container_restart
 const defaultComposeFile = "compose.yml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
 const workerOnlineFreshness = 45_000;
+const orphanWorkerDeleteAge = 2 * 60 * 1000;
 const activeJobMaxAge = 15 * 60 * 1000;
-const pendingButtonMaxAge = 35 * 1000;
+const pendingButtonMaxAge = 15 * 1000;
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -205,14 +206,20 @@ function isActiveJob(job: Deployment, now = Date.now(), maxAge = activeJobMaxAge
 
 function containerActionMaxAge(job: Deployment) {
   if (job.action === "container_exec") return (Number(job.timeoutSeconds || 600) + 30) * 1000;
-  if (job.action === "container_logs") return 45_000;
-  return 90_000;
+  if (job.action === "container_logs") return 20_000;
+  return 30_000;
 }
 
 function isBusyContainerJob(job: Deployment, now: number, onlineWorkerIds?: Set<string>) {
   if (!job.containerId || !job.action.startsWith("container_")) return false;
   if (job.targetWorkerId && onlineWorkerIds && !onlineWorkerIds.has(job.targetWorkerId)) return false;
   return isActiveJob(job, now, containerActionMaxAge(job));
+}
+
+function containerActionSettled(action: string, displayStatus: string) {
+  if (action === "container_start") return displayStatus === "running";
+  if (action === "container_stop" || action === "container_delete") return displayStatus !== "running";
+  return false;
 }
 
 function workerDisplayName(agent: Agent) {
@@ -395,10 +402,10 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, containerDisplayStatus(container), container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
-  const busyContainerActions = useMemo(
-    () => new Set(deployments.filter((job) => isBusyContainerJob(job, now, onlineWorkerIds)).map((job) => `${job.containerId || ""}:${job.action}`)),
-    [deployments, now, onlineWorkerIds],
-  );
+  function isContainerActionBusy(container: ManagedContainer, action: string, displayStatus = containerDisplayStatus(container) || "stopped") {
+    if (containerActionSettled(action, displayStatus)) return false;
+    return deployments.some((job) => job.containerId === container.id && job.action === action && isBusyContainerJob(job, now, onlineWorkerIds));
+  }
   const groupedContainers = useMemo(() => {
     const groups = new Map<string, ManagedContainer[]>();
     for (const container of filteredContainers) {
@@ -471,7 +478,11 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   function renderContainerRow(container: ManagedContainer, showDivider: boolean) {
     const displayStatus = containerDisplayStatus(container) || "stopped";
     const primaryAction = containerPrimaryAction(displayStatus);
-    const actions: ContainerAction[] = [primaryAction, "container_logs", "container_restart", "container_delete"];
+    const workerOnline = Boolean(container.workerId && onlineWorkerIds.has(container.workerId));
+    const actions: ContainerAction[] = !workerOnline ? [] : displayStatus === "running"
+      ? ["container_stop", "container_logs", "container_restart", "container_delete"]
+      : ["container_start"];
+    const canUseRunningTools = displayStatus === "running" && workerOnline;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
@@ -485,7 +496,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
           <small>{(container.ports || []).join(", ") || "No published ports"}</small>
         </div>
         <div className="row-actions">
-          {commandPresets.length ? (
+          {commandPresets.length && canUseRunningTools ? (
             <form action={enqueueContainerCommand} className="container-command-form">
               <input type="hidden" name="containerId" value={container.id} />
               <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
@@ -493,7 +504,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
               <select className="container-command-select" name="command" required title={`Command for ${container.name}`} aria-label={`Command for ${container.name}`}>
                 {commandPresets.map((preset) => <option value={preset.command} key={preset.id}>{preset.name}</option>)}
               </select>
-              <PendingIconButton title="Run command in container" busy={busyContainerActions.has(`${container.id}:container_exec`)}><Icon name="play" /></PendingIconButton>
+              <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="play" /></PendingIconButton>
             </form>
           ) : null}
           {actions.map((action) => {
@@ -503,7 +514,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
                 <input type="hidden" name="containerId" value={container.id} />
                 <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
                 <input type="hidden" name="action" value={action} />
-                <PendingIconButton title={meta.title} primary={action === primaryAction} busy={busyContainerActions.has(`${container.id}:${action}`)} onClick={action === "container_logs" ? () => openLogs(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
+                <PendingIconButton title={meta.title} primary={action === primaryAction} busy={isContainerActionBusy(container, action, displayStatus)} onClick={action === "container_logs" ? () => openLogs(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
               </form>
             );
           })}
@@ -532,7 +543,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
       {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} /> : null}
 
       {showLogsMonitor ? (
-        <LogsView containers={containers} deployments={deployments} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
+        <LogsView containers={containers} deployments={deployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
       ) : showCommandTerminal ? (
         <CommandTerminal containers={containers} commandPresets={commandPresets} agents={agents} deployments={deployments} now={now} onClose={() => setShowCommandTerminal(false)} />
       ) : (
@@ -687,9 +698,10 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
   );
 }
 
-function LogsView({ containers, deployments, selectedContainerId, now, onSelectContainer, onClose }: {
+function LogsView({ containers, deployments, agents, selectedContainerId, now, onSelectContainer, onClose }: {
   containers: ManagedContainer[];
   deployments: Deployment[];
+  agents: Agent[];
   selectedContainerId: string;
   now: number;
   onSelectContainer: (containerId: string) => void;
@@ -699,9 +711,15 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
   const [projectFilter, setProjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
+  const onlineWorkerIds = useMemo(
+    () => new Set(agents.filter((agent) => isWorkerOnline(agent, now)).map((agent) => agent.id)),
+    [agents, now],
+  );
   const sortedContainers = useMemo(
-    () => [...containers].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name)),
-    [containers],
+    () => containers
+      .filter((container) => container.status === "running" && container.workerId && onlineWorkerIds.has(container.workerId))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [containers, onlineWorkerIds],
   );
   const projects = useMemo(
     () => [...new Set(sortedContainers.map((container) => container.project || "Ungrouped"))].sort((a, b) => a.localeCompare(b)),
@@ -719,8 +737,8 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
     return matchesQuery([container.name, container.image, container.project, container.status, container.logTail], query);
   });
   const activeLogJobs = useMemo(
-    () => new Set(deployments.filter((job) => job.action === "container_logs" && isActiveJob(job, now, 45_000)).map((job) => job.containerId || "")),
-    [deployments, now],
+    () => new Set(deployments.filter((job) => job.action === "container_logs" && isBusyContainerJob(job, now, onlineWorkerIds)).map((job) => job.containerId || "")),
+    [deployments, now, onlineWorkerIds],
   );
   const consoleText = visibleContainers
     .map((container) => {
@@ -732,6 +750,7 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
     })
     .join("\n\n");
   const selectedContainer = selectedContainerId ? sortedContainers.find((container) => container.id === selectedContainerId) : undefined;
+  const canRefreshSelectedContainer = Boolean(selectedContainerId && selectedContainer);
   useEffect(() => {
     if (!fullscreen) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -760,7 +779,7 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
           </select>
         </div>
         <div className="toolbar-actions logs-actions">
-          {selectedContainerId ? (
+          {canRefreshSelectedContainer ? (
             <form action={enqueueContainerAction}>
               <input type="hidden" name="containerId" value={selectedContainerId} />
               <input type="hidden" name="containerRef" value={selectedContainer?.dockerId || selectedContainer?.name || selectedContainerId} />
@@ -768,7 +787,7 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
               <PendingIconButton title="Refresh selected logs" busy={activeLogJobs.has(selectedContainerId)}><Icon name="logs" /></PendingIconButton>
             </form>
           ) : null}
-          <form action={enqueueAllContainerLogs}><PendingIconButton title="Refresh all logs" busy={activeLogJobs.size > 0}><Icon name="sync" /></PendingIconButton></form>
+          {sortedContainers.length ? <form action={enqueueAllContainerLogs}><PendingIconButton title="Refresh all logs" busy={activeLogJobs.size > 0}><Icon name="sync" /></PendingIconButton></form> : null}
           <IconButton title={fullscreen ? "Exit fullscreen" : "Fullscreen logs"} onClick={() => setFullscreen((current) => !current)} primary={fullscreen}><Icon name={fullscreen ? "collapse" : "expand"} /></IconButton>
           <IconButton title="Close logs" onClick={onClose}><Icon name="close" /></IconButton>
         </div>
@@ -980,6 +999,49 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 }
 
 function RepositorySettings({ repository, credentials, open }: { repository: Repository; credentials: CredentialSummary[]; open: boolean }) {
+  const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
+  const [credentialId, setCredentialId] = useState(repository.credentialId || "");
+  const [branch, setBranch] = useState(repository.branch || "");
+  const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
+  const [branchMessage, setBranchMessage] = useState("");
+  const [loadingBranches, setLoadingBranches] = useState(false);
+
+  useEffect(() => {
+    setRepositoryUrl(repository.url);
+    setCredentialId(repository.credentialId || "");
+    setBranch(repository.branch || "");
+    setBranches(repository.availableBranches || []);
+    setBranchMessage("");
+    setLoadingBranches(false);
+  }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches]);
+
+  async function discoverBranches() {
+    if (!repositoryUrl.trim()) {
+      setBranchMessage("Add a repository URL first.");
+      return;
+    }
+    setLoadingBranches(true);
+    setBranchMessage("");
+    try {
+      const response = await fetch("/api/branches", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: repositoryUrl, credentialId }),
+      });
+      const payload = await response.json() as { branches?: string[]; defaultBranch?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not load branches");
+      const nextBranches = payload.branches || [];
+      setBranches(nextBranches);
+      setBranch(payload.defaultBranch || nextBranches[0] || branch);
+      setBranchMessage(nextBranches.length ? `${nextBranches.length} branches loaded.` : "No branches found.");
+    } catch (cause) {
+      setBranches([]);
+      setBranchMessage(cause instanceof Error ? cause.message : "Could not load branches");
+    } finally {
+      setLoadingBranches(false);
+    }
+  }
+
   if (!open) return null;
   return (
     <details className="inline-editor" open={open}>
@@ -987,10 +1049,9 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
       <form action={saveRepository} className="form-grid">
         <input type="hidden" name="repositoryId" value={repository.id} />
         <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
-        <label className="wide">Repository URL<input name="url" defaultValue={repository.url} required /></label>
-        <label>Branch<input name="branch" defaultValue={repository.branch} list={`branches-${repository.id}`} /></label>
-        <datalist id={`branches-${repository.id}`}>{repository.availableBranches?.map((branch) => <option key={branch} value={branch} />)}</datalist>
-        <label>Credential<select name="credentialId" defaultValue={repository.credentialId}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+        <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
+        <label>Branch<div className="input-with-action"><input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list={`branches-${repository.id}`} /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div><datalist id={`branches-${repository.id}`}>{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
+        <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
         <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
         <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
         <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile} /></label>
@@ -1110,12 +1171,12 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
         const online = isWorkerOnline(agent, now);
         const statusLabel = workerStatusLabel(agent, now);
         const ownedContainerCount = containers.filter((container) => container.workerId === agent.id).length;
-        const canDelete = !online && (agent.status === "offline" || now - agent.lastHeartbeat >= workerOnlineFreshness);
+        const canDelete = !online && agent.status === "offline" && now - agent.lastHeartbeat >= orphanWorkerDeleteAge;
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
         const deleteTitle = ownedContainerCount
-          ? `Delete orphan worker and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
-          : "Delete orphan worker";
+          ? `Remove stale worker record and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
+          : "Remove stale worker record";
         return (
           <details className="worker-card" key={agent.id}>
             <summary>
