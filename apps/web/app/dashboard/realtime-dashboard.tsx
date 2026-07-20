@@ -68,7 +68,10 @@ function elapsed(timestamp?: number) {
   return `${Math.floor(seconds / 3600)}h ago`;
 }
 
-function ResourceGlyph({ kind = "container" }: { kind?: "container" | "repo" }) {
+function ResourceGlyph({ kind = "container" }: { kind?: "container" | "repo" | "worker" }) {
+  if (kind === "worker") {
+    return <span className="resource-glyph worker-glyph" aria-hidden="true"><span><i /><i /></span></span>;
+  }
   return <span className={`resource-glyph ${kind === "repo" ? "repo-glyph" : ""}`} aria-hidden="true"><span /></span>;
 }
 
@@ -505,7 +508,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
-        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{workerContainer ? " · Worker" : ""}</span></div></div>
+        <div className="resource-identity"><ResourceGlyph kind={workerContainer ? "worker" : "container"} /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{workerContainer ? " · Worker" : ""}</span></div></div>
         <div className="resource-metadata">
           <StatusBadge label={displayStatus} running={displayStatus === "running"} />
           <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>
