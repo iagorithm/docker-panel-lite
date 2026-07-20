@@ -121,8 +121,8 @@ function Spinner() {
   return <span className="button-spinner" aria-hidden="true" />;
 }
 
-function IconButton({ title, children, onClick, primary = false, disabled = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
-  return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
+function IconButton({ title, children, onClick, primary = false, disabled = false, type = "button" }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean; type?: "button" | "submit" }) {
+  return <button type={type} className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
 function useVisiblePending(pending: boolean) {
@@ -143,7 +143,7 @@ function useVisiblePending(pending: boolean) {
 function PendingIconButton({ title, children, onClick, primary = false, busy = false, disabled = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean; disabled?: boolean }) {
   const { pending } = useFormStatus();
   const isBusy = useVisiblePending(pending) || busy;
-  return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={disabled || isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
+  return <IconButton type="submit" title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={disabled || isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
 function PendingSubmitButton({ children, className = "primary", formAction, tooltip }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string }) {
@@ -162,12 +162,15 @@ function QueueButton({ repositoryId, action, children, title, primary = false, b
   disabled?: boolean;
   targetWorkerId?: string;
 }) {
+  if (disabled) {
+    return <IconButton title="Select a worker first" primary={primary} disabled>{children}</IconButton>;
+  }
   return (
     <form action={enqueueDeployment}>
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
       <input type="hidden" name="targetWorkerId" value={targetWorkerId || ""} />
-      <PendingIconButton title={disabled ? "Select a worker first" : title} primary={primary} busy={busy} disabled={disabled}>{children}</PendingIconButton>
+      <PendingIconButton title={title} primary={primary} busy={busy}>{children}</PendingIconButton>
     </form>
   );
 }
@@ -890,7 +893,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
               <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
               <div className="row-actions">
                 <select className="worker-target-select" value={targetWorkerId} title="Run on worker" aria-label={`Run ${repository.alias} on worker`} onChange={(event) => setSelectedWorkerByRepository((current) => ({ ...current, [repository.id]: event.target.value }))}>
-                  <option value="">Any worker</option>
+                  <option value="">Select worker</option>
                   {availableWorkers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}</option>)}
                 </select>
                 <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
@@ -903,12 +906,14 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
                 {repository.mode === "compose" ? (
                   viewingComposeRepositoryId === repository.id ? (
                     <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
+                  ) : !workerSelected ? (
+                    <IconButton title="Select a worker first" disabled><Icon name="document" /></IconButton>
                   ) : (
                     <form action={enqueueDeployment}>
                       <input type="hidden" name="repositoryId" value={repository.id} />
                       <input type="hidden" name="action" value="read_compose" />
                       <input type="hidden" name="targetWorkerId" value={targetWorkerId} />
-                      <PendingIconButton title={workerSelected ? "View Compose" : "Select a worker first"} busy={busyRepositoryActions.has(actionKey("read_compose"))} disabled={!workerSelected} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
+                      <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
                     </form>
                   )
                 ) : null}
