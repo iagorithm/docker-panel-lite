@@ -43,6 +43,7 @@ type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branche
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "compose.yml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
+const workerOnlineFreshness = 45_000;
 const activeJobMaxAge = 15 * 60 * 1000;
 const pendingButtonMaxAge = 35 * 1000;
 
@@ -218,7 +219,7 @@ function workerDisplayName(agent: Agent) {
   return agent.label || agent.hostname || agent.id;
 }
 
-function isWorkerOnline(agent: Agent, now: number, freshness = 30_000) {
+function isWorkerOnline(agent: Agent, now: number, freshness = workerOnlineFreshness) {
   return agent.status === "online" && now - agent.lastHeartbeat < freshness;
 }
 
@@ -376,18 +377,23 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
   const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
   const onlineWorkerIds = useMemo(
-    () => new Set(agents.filter((agent) => isWorkerOnline(agent, now, 120_000)).map((agent) => agent.id)),
+    () => new Set(agents.filter((agent) => isWorkerOnline(agent, now)).map((agent) => agent.id)),
     [agents, now],
   );
+  const workerById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  function containerDisplayStatus(container: ManagedContainer) {
+    if (!container.workerId) return "";
+    const worker = workerById.get(container.workerId);
+    if (!worker) return "";
+    if (!isWorkerOnline(worker, now)) return "stopped";
+    return container.status === "running" ? "running" : "stopped";
+  }
   const visibleContainerRecords = containers.filter((container) => {
-    const status = (container.status || "").toLowerCase();
-    const isStopped = ["stopped", "exited", "dead", "missing"].includes(status);
-    if (!isStopped) return true;
-    return Boolean(container.workerId && onlineWorkerIds.has(container.workerId));
+    return Boolean(containerDisplayStatus(container));
   });
-  const sortedContainers = [...visibleContainerRecords].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name));
+  const sortedContainers = [...visibleContainerRecords].sort((a, b) => Number(containerDisplayStatus(b) === "running") - Number(containerDisplayStatus(a) === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
-    matchesQuery([container.name, container.image, container.project, container.status, container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
+    matchesQuery([container.name, container.image, container.project, containerDisplayStatus(container), container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
   const busyContainerActions = useMemo(
     () => new Set(deployments.filter((job) => isBusyContainerJob(job, now, onlineWorkerIds)).map((job) => `${job.containerId || ""}:${job.action}`)),
@@ -463,7 +469,8 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     setShowLogsMonitor(true);
   }
   function renderContainerRow(container: ManagedContainer, showDivider: boolean) {
-    const primaryAction = containerPrimaryAction(container.status);
+    const displayStatus = containerDisplayStatus(container) || "stopped";
+    const primaryAction = containerPrimaryAction(displayStatus);
     const actions: ContainerAction[] = [primaryAction, "container_logs", "container_restart", "container_delete"];
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const dockerId = container.dockerId || container.id;
@@ -473,7 +480,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
         {showDivider ? <div className="resource-divider" /> : null}
         <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
         <div className="resource-metadata">
-          <StatusBadge label={container.status} running={container.status === "running"} />
+          <StatusBadge label={displayStatus} running={displayStatus === "running"} />
           <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>
           <small>{(container.ports || []).join(", ") || "No published ports"}</small>
         </div>
@@ -533,7 +540,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
           {filteredContainers.length ? (
             containerViewMode === "workers" ? containersByWorker.map(([workerKey, worker], workerIndex) => {
               const isExpanded = expandedWorkers.has(workerKey);
-              const running = worker.containers.filter((container) => container.status === "running").length;
+              const running = worker.containers.filter((container) => containerDisplayStatus(container) === "running").length;
               const stacks = groupByStack(worker.containers);
               return (
                 <div className={`container-group worker-container-group ${isExpanded ? "is-expanded" : ""}`} key={workerKey}>
@@ -563,7 +570,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
               );
             }) : containerViewMode === "groups" ? groupedContainers.map(([group, groupContainers], groupIndex) => {
               const isExpanded = expandedGroups.has(group);
-              const running = groupContainers.filter((container) => container.status === "running").length;
+              const running = groupContainers.filter((container) => containerDisplayStatus(container) === "running").length;
               return (
                 <div className={`container-group ${isExpanded ? "is-expanded" : ""}`} key={group}>
                   {groupIndex ? <div className="resource-divider" /> : null}
@@ -592,9 +599,15 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
   now: number;
   onClose: () => void;
 }) {
+  const onlineWorkerIds = useMemo(
+    () => new Set(agents.filter((agent) => isWorkerOnline(agent, now)).map((agent) => agent.id)),
+    [agents, now],
+  );
   const sortedContainers = useMemo(
-    () => containers.filter((container) => container.status === "running").sort((a, b) => a.name.localeCompare(b.name)),
-    [containers],
+    () => containers
+      .filter((container) => container.status === "running" && container.workerId && onlineWorkerIds.has(container.workerId))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [containers, onlineWorkerIds],
   );
   const sortedCommandPresets = useMemo(
     () => [...commandPresets].sort((a, b) => a.name.localeCompare(b.name)),
@@ -789,7 +802,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
   const [showCommandPresets, setShowCommandPresets] = useState(false);
   const [selectedWorkerByRepository, setSelectedWorkerByRepository] = useState<Record<string, string>>({});
   const availableWorkers = useMemo(
-    () => agents.filter((agent) => isWorkerOnline(agent, now, 120_000)).sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))),
+    () => agents.filter((agent) => isWorkerOnline(agent, now)).sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))),
     [agents, now],
   );
   const availableWorkerKey = availableWorkers.map((agent) => agent.id).join("|");
@@ -1097,7 +1110,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
         const online = isWorkerOnline(agent, now);
         const statusLabel = workerStatusLabel(agent, now);
         const ownedContainerCount = containers.filter((container) => container.workerId === agent.id).length;
-        const canDelete = !online && (agent.status === "offline" || now - agent.lastHeartbeat >= 120_000);
+        const canDelete = !online && (agent.status === "offline" || now - agent.lastHeartbeat >= workerOnlineFreshness);
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
         const deleteTitle = ownedContainerCount

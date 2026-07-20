@@ -13,6 +13,7 @@ const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*
 const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
+const workerOnlineFreshness = 45_000;
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
 type JobAction = RepositoryAction | ContainerJobAction;
@@ -183,7 +184,7 @@ function shardFor(value: string) {
   return String(hash % shards).padStart(2, "0");
 }
 
-function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 120_000) {
+function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = workerOnlineFreshness) {
   return agent.status === "online" && now - Number(agent.lastHeartbeat || 0) < freshness;
 }
 
@@ -657,7 +658,7 @@ export async function enqueueInventoryRefresh() {
     .map(([agentId, agent]) => ({ agentId, poolId: agent.poolId || "default" }))
     .filter((agent) => {
       const record = (agents as Record<string, Record<string, string | number>>)[agent.agentId] || {};
-      return agent.agentId && record.status === "online" && createdAt - Number(record.lastHeartbeat || 0) < 120_000;
+      return agent.agentId && agentIsOnline(record, createdAt);
     });
   const fallbackTargets = targets.length ? targets : [{ agentId: "", poolId: "default" }];
   const updates: Record<string, unknown> = {};
@@ -697,7 +698,7 @@ export async function deleteWorker(formData: FormData) {
     const agent = agentSnapshot.val() as Record<string, unknown>;
     const now = Date.now();
     const lastHeartbeat = Number(agent.lastHeartbeat || 0);
-    if (agent.status === "online" && now - lastHeartbeat < 120_000) return;
+    if (agent.status === "online" && now - lastHeartbeat < workerOnlineFreshness) return;
 
     const deployments = (await adminDatabase.ref(`${workspaceRoot}/deployments`).get()).val() ?? {};
     const containers = (await adminDatabase.ref(`${workspaceRoot}/containers`).get()).val() ?? {};
