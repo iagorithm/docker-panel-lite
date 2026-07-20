@@ -288,7 +288,7 @@ export function RealtimeDashboard(props: Props) {
   }, []);
 
   const onlineAgents = useMemo(() => agents.filter((agent) => isWorkerOnline(agent, now)), [agents, now]);
-  const active = deployments.filter((item) => ["queued", "leased", "running"].includes(item.status));
+  const active = deployments.filter((item) => isActiveJob(item, now));
   const sortedDeployments = [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
 
   async function logout() {
