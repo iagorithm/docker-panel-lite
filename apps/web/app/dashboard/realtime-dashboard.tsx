@@ -70,7 +70,17 @@ function elapsed(timestamp?: number) {
 
 function ResourceGlyph({ kind = "container" }: { kind?: "container" | "repo" | "worker" }) {
   if (kind === "worker") {
-    return <span className="resource-glyph worker-glyph" aria-hidden="true"><span><i /><i /></span></span>;
+    return (
+      <span className="resource-glyph worker-glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M12 3.3 19.35 7.45 12 11.58 4.65 7.45 12 3.3Z" />
+          <path d="M5.25 9.1 11.2 12.45v7.05L5.25 16.15V9.1Z" />
+          <path d="M18.75 9.1 12.8 12.45v7.05l5.95-3.35V9.1Z" />
+          <path className="worker-glyph-line" d="m8.15 7.45 3.85 2.18 3.85-2.18M12 12.45v6.15" />
+        </svg>
+        <span />
+      </span>
+    );
   }
   return <span className={`resource-glyph ${kind === "repo" ? "repo-glyph" : ""}`} aria-hidden="true"><span /></span>;
 }

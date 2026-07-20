@@ -818,6 +818,16 @@ a:hover { text-decoration-color: var(--ui-text); }
   flex-basis: 1.92rem;
   background: rgba(255, 255, 255, 0.45);
 }
+.container-group .resource-row .resource-glyph.worker-glyph {
+  width: 2.55rem;
+  height: 2.55rem;
+  flex-basis: 2.55rem;
+  background: #4196ff;
+}
+.container-group .resource-row .resource-glyph.worker-glyph svg {
+  width: 1.56rem;
+  height: 1.56rem;
+}
 .container-group .resource-row .resource-copy {
   gap: 0.08rem;
 }
@@ -906,60 +916,47 @@ a:hover { text-decoration-color: var(--ui-text); }
 .resource-glyph.repo-glyph span::before { display: none; }
 .resource-glyph.worker-glyph {
   display: grid;
-  color: var(--ui-text);
+  width: 2.68rem;
+  height: 2.68rem;
+  flex-basis: 2.68rem;
   place-items: center;
-}
-.resource-glyph.worker-glyph::before {
-  top: 0.43rem;
-  right: 0.43rem;
-  left: 0.43rem;
-  height: 1.14rem;
-  background: var(--ui-surface);
-  border: 1.55px solid currentColor;
-  border-radius: 0.28rem;
-}
-.resource-glyph.worker-glyph::after {
-  top: auto;
-  right: 0.72rem;
-  bottom: 0.48rem;
-  left: 0.72rem;
-  height: 0.16rem;
-  background: currentColor;
+  color: #fff;
+  background: #4196ff;
   border: 0;
   border-radius: 999px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-.resource-glyph.worker-glyph > span {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  width: 0.82rem;
-  height: 0.52rem;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.16rem;
-  align-items: center;
-  justify-items: center;
-  margin-top: -0.16rem;
-  border: 1.35px solid currentColor;
-  border-radius: 0.18rem;
-}
-.resource-glyph.worker-glyph > span::before {
+.resource-glyph.worker-glyph::before,
+.resource-glyph.worker-glyph::after,
+.resource-glyph.worker-glyph span::before {
   display: none;
 }
-.resource-glyph.worker-glyph > span::after {
-  position: absolute;
-  top: -0.17rem;
-  left: 50%;
-  width: 0.12rem;
-  height: 0.12rem;
-  content: "";
-  background: currentColor;
-  border-radius: 999px;
-  transform: translateX(-50%);
+.resource-glyph.worker-glyph svg {
+  display: block;
+  width: 1.62rem;
+  height: 1.62rem;
 }
-.resource-glyph.worker-glyph i {
-  width: 0.12rem;
-  height: 0.12rem;
-  background: currentColor;
+.resource-glyph.worker-glyph svg path {
+  fill: currentColor;
+  stroke: #4196ff;
+  stroke-width: 0.32;
+  stroke-linejoin: round;
+}
+.resource-glyph.worker-glyph svg .worker-glyph-line {
+  fill: none;
+  stroke: #4196ff;
+  stroke-width: 0.72;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.resource-glyph.worker-glyph > span {
+  position: absolute;
+  right: -0.06rem;
+  bottom: 0.05rem;
+  width: 0.58rem;
+  height: 0.58rem;
+  background: #53d572;
+  border: 2px solid var(--ui-surface);
   border-radius: 999px;
 }
 .github-mark { display: grid; width: 2rem; height: 2rem; flex: 0 0 2rem; color: var(--ui-text); place-items: center; }
