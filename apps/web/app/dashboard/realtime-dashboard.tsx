@@ -415,7 +415,7 @@ export function RealtimeDashboard(props: Props) {
 
       <main className="main-shell">
         {view === "containers" ? (
-          <ContainersView containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         ) : (
           <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         )}
@@ -424,7 +424,8 @@ export function RealtimeDashboard(props: Props) {
   );
 }
 
-function ContainersView({ containers, commandPresets, deployments, agents, activeJobs, now }: {
+function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now }: {
+  repositories: Repository[];
   containers: ManagedContainer[];
   commandPresets: CommandPreset[];
   deployments: Deployment[];
@@ -445,6 +446,26 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     [agents, now],
   );
   const workerById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const repositoryByProject = useMemo(() => {
+    const items = new Map<string, Repository>();
+    for (const repository of repositories) {
+      items.set(safeDockerName(repository.alias || repository.id), repository);
+      items.set(safeDockerName(repository.id), repository);
+    }
+    return items;
+  }, [repositories]);
+  function containerPublicLinks(container: ManagedContainer): Array<[string, string]> {
+    const repository = repositoryByProject.get(safeDockerName(container.project || "")) || repositoryByProject.get(safeDockerName(container.name || ""));
+    if (!repository) return [];
+    const service = container.composeService || repository.service || "app";
+    const urls = repository.publicUrls || {};
+    const domains = repository.publicTunnelDomains || {};
+    const isPrimaryService = !container.composeService || service === (repository.service || "web");
+    const serviceUrl = urls[service] || (isPrimaryService ? repository.publicUrl || "" : "");
+    const serviceDomain = domains[service] || (isPrimaryService ? repository.publicTunnelDomain || "" : "");
+    const value = serviceUrl || serviceDomain;
+    return value ? [[service, value]] : [];
+  }
   function containerDisplayStatus(container: ManagedContainer) {
     if (!container.workerId) return "";
     const worker = workerById.get(container.workerId);
@@ -457,7 +478,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   });
   const sortedContainers = [...visibleContainerRecords].sort((a, b) => Number(containerDisplayStatus(b) === "running") - Number(containerDisplayStatus(a) === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
-    matchesQuery([container.name, container.image, container.project, containerDisplayStatus(container), container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
+    matchesQuery([container.name, container.image, container.project, containerDisplayStatus(container), container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...containerPublicLinks(container).flatMap(([service, url]) => [service, url]), ...(container.ports || [])], query),
   );
   function isContainerActionBusy(container: ManagedContainer, action: string, displayStatus = containerDisplayStatus(container) || "stopped") {
     if (containerActionSettled(action, displayStatus)) return false;
@@ -552,6 +573,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     const ownerTitle = workerContainer ? container.name : container.workerId || workerName;
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
+    const publicLinks = workerContainer ? [] : containerPublicLinks(container);
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
@@ -559,6 +581,11 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
         <div className="resource-metadata">
           <span className="resource-status-line"><StatusBadge label={displayStatus} running={displayStatus === "running"} /><span className={`resource-type-badge ${workerContainer ? "is-worker" : "is-service"}`}>{workerContainer ? "Worker" : "Service"}</span></span>
           <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>{ownerLabel}</b> <code title={ownerTitle}>{ownerValue}</code></span>
+          {publicLinks.length ? (
+            <div className="repo-public-urls container-public-urls" aria-label="Public service URLs">
+              {publicLinks.map(([service, url]) => <a className="repo-public-url" href={url.startsWith("http") ? url : `https://${url}`} target="_blank" rel="noreferrer" title={`${service}: ${url}`} key={`${service}:${url}`}><b>{service}</b>{url.replace(/^https?:\/\//, "")}</a>)}
+            </div>
+          ) : null}
           <small>{(container.ports || []).join(", ") || "No published ports"}</small>
         </div>
         <div className="row-actions">
@@ -933,8 +960,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       repository.service,
       repository.composeFile,
       repository.dockerfile,
-      repository.publicUrl,
-      ...repositoryPublicUrls(repository).flatMap(([service, url]) => [service, url]),
       repository.publicTunnelDomain,
       ...(workersByRepository.get(repository.id)?.map((worker) => worker.name) || []),
     ], query),
@@ -961,7 +986,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
           const workerSelected = Boolean(targetWorkerId);
           const deployedWorkers = workersByRepository.get(repository.id) || [];
           const publicUrls = repositoryPublicUrls(repository);
-          const primaryPublicUrl = publicUrls[0]?.[1] || "";
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
@@ -970,11 +994,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               <div className="resource-metadata">
                 <span title={repository.url}>{repository.url}</span>
                 <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small>
-                {publicUrls.length ? (
-                  <div className="repo-public-urls" aria-label="Public service URLs">
-                    {publicUrls.map(([service, url]) => <a className="repo-public-url" href={url} target="_blank" rel="noreferrer" title={`${service}: ${url}`} key={`${service}:${url}`}><b>{service}</b>{url.replace(/^https?:\/\//, "")}</a>)}
-                  </div>
-                ) : null}
                 {deployedWorkers.length ? (
                   <div className="repo-worker-flags" aria-label="Deployed workers">
                     {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
@@ -1009,7 +1028,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
                 <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
-                {primaryPublicUrl ? <a className="icon-button repo-open-public" href={primaryPublicUrl} target="_blank" rel="noreferrer" title="Open public URL" aria-label="Open public URL" data-tooltip="Open public URL"><Icon name="external" /></a> : null}
                 {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
                 <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton>
