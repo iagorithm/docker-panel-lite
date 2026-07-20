@@ -12,6 +12,11 @@ export type SessionUser = {
   workspaceId: string;
 };
 
+function defaultRole() {
+  const role = process.env.DEFAULT_USER_ROLE || "admin";
+  return ["viewer", "operator", "admin"].includes(role) ? role : "admin";
+}
+
 export async function getSessionUser(): Promise<SessionUser | null> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!session) return null;
@@ -20,7 +25,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return {
       uid: claims.uid,
       email: claims.email ?? "",
-      role: String(claims.role ?? "viewer"),
+      role: String(claims.role ?? defaultRole()),
       workspaceId: String(claims.workspaceId ?? process.env.DEFAULT_WORKSPACE_ID ?? "default"),
     };
   } catch {
