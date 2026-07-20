@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import shlex
+import socket
 import subprocess
 from pathlib import Path
 
@@ -458,6 +459,8 @@ def execute_container_command(job: dict) -> tuple[str, str, int]:
             last_error = exc
     else:
         raise last_error or ValueError("Container reference is missing")
+    if _is_worker_container_object(container):
+        raise ValueError("Worker containers can only be restarted or inspected with logs")
     command = str(job.get("command") or "").strip()
     if not command:
         raise ValueError("Command is empty")
@@ -500,6 +503,7 @@ def container_inventory() -> dict[str, dict]:
         inventory[container.id] = {
             "id": container.id, "name": container.name, "image": image_tags[0] if image_tags else container.image.short_id,
             "status": container.status, "project": container.labels.get("com.docker.compose.project", ""),
+            "composeService": container.labels.get("com.docker.compose.service", ""),
             "ports": ports, "updatedAt": _now(),
         }
     return inventory
@@ -517,6 +521,18 @@ def _container_lookup_candidates(job: dict) -> list[str]:
     return unique
 
 
+def _is_worker_container_object(container) -> bool:
+    hostname = socket.gethostname()
+    name = container.name or ""
+    labels = container.labels or {}
+    normalized = _safe_name(name)
+    if hostname and (container.id.startswith(hostname) or name == hostname):
+        return True
+    if labels.get("com.docker.compose.service") == "worker":
+        return True
+    return normalized.endswith("-worker-1") or normalized == "worker"
+
+
 def execute_container(job: dict) -> tuple[str, str | None]:
     client = docker_ops.connect()
     last_error = None
@@ -528,6 +544,8 @@ def execute_container(job: dict) -> tuple[str, str | None]:
             last_error = exc
     else:
         raise last_error or ValueError("Container reference is missing")
+    if _is_worker_container_object(container) and job["action"] in {"container_stop", "container_delete", "container_exec"}:
+        raise ValueError("Worker containers can only be restarted or inspected with logs")
     if job["action"] == "container_start":
         container.start()
         return f"Container '{container.name}' started", None

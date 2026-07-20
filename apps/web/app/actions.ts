@@ -237,9 +237,9 @@ async function resolveContainerTarget(input: {
   const workspaceRoot = `workspaces/${input.workspaceId}`;
   const existing = await adminDatabase.ref(`${workspaceRoot}/containers/${input.containerId}`).get();
   if (!existing.exists()) throw new Error("Container not found");
-  const container = existing.val() as Record<string, string>;
-  const targetWorkerId = container.workerId || "";
-  const containerRef = container.dockerId || container.name || input.submittedContainerRef || input.containerId;
+  const container = existing.val() as Record<string, unknown>;
+  const targetWorkerId = String(container.workerId || "");
+  const containerRef = String(container.dockerId || container.name || input.submittedContainerRef || input.containerId);
   if (!targetWorkerId) {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container has no assigned worker" });
     return null;
@@ -247,6 +247,10 @@ async function resolveContainerTarget(input: {
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
   if (!targetWorker || !agentIsOnline(targetWorker, input.createdAt)) {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container worker is not available" });
+    return null;
+  }
+  if (container.isWorkerContainer && ["container_stop", "container_delete", "container_exec"].includes(input.action)) {
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers can only be restarted or inspected with logs" });
     return null;
   }
   if (["container_stop", "container_restart", "container_logs", "container_exec"].includes(input.action) && container.status !== "running") {

@@ -103,10 +103,13 @@ export type ManagedContainer = {
   image: string;
   status: string;
   project: string;
+  composeService?: string;
   ports: string[];
   workerId?: string;
   workerLabel?: string;
   workerHostname?: string;
+  isWorkerContainer?: boolean;
+  protectedActions?: string[];
   poolId?: string;
   logTail?: string;
   createdAt?: number;

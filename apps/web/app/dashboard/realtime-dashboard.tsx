@@ -189,6 +189,10 @@ function containerPrimaryAction(status: string): ContainerAction {
   return status === "running" ? "container_stop" : "container_start";
 }
 
+function isProtectedContainerAction(container: ManagedContainer, action: string) {
+  return Boolean(container.protectedActions?.includes(action) || (container.isWorkerContainer && ["container_stop", "container_delete"].includes(action)));
+}
+
 function containerActionMeta(action: ContainerAction) {
   if (action === "container_start") return { title: "Start container", icon: "play" as const };
   if (action === "container_stop") return { title: "Stop container", icon: "stop" as const };
@@ -477,19 +481,20 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   }
   function renderContainerRow(container: ManagedContainer, showDivider: boolean) {
     const displayStatus = containerDisplayStatus(container) || "stopped";
-    const primaryAction = containerPrimaryAction(displayStatus);
     const workerOnline = Boolean(container.workerId && onlineWorkerIds.has(container.workerId));
-    const actions: ContainerAction[] = !workerOnline ? [] : displayStatus === "running"
+    const baseActions: ContainerAction[] = !workerOnline ? [] : displayStatus === "running"
       ? ["container_stop", "container_logs", "container_restart", "container_delete"]
       : ["container_start"];
-    const canUseRunningTools = displayStatus === "running" && workerOnline;
+    const actions = baseActions.filter((action) => !isProtectedContainerAction(container, action));
+    const primaryAction = container.isWorkerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
+    const canUseRunningTools = displayStatus === "running" && workerOnline && !container.isWorkerContainer;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
-        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
+        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{container.isWorkerContainer ? " · Worker" : ""}</span></div></div>
         <div className="resource-metadata">
           <StatusBadge label={displayStatus} running={displayStatus === "running"} />
           <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>

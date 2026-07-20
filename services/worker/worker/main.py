@@ -218,6 +218,17 @@ class Worker:
             return True
         return bool(self.settings.hostname and item.get("workerHostname") == self.settings.hostname)
 
+    def _is_worker_container(self, docker_id: str, item: dict) -> bool:
+        hostname = self.settings.hostname
+        name = str(item.get("name") or "")
+        compose_service = str(item.get("composeService") or "")
+        normalized = normalized_name(name)
+        if hostname and (docker_id.startswith(hostname) or name == hostname):
+            return True
+        if compose_service == "worker":
+            return True
+        return normalized.endswith("-worker-1") or normalized == "worker"
+
     def _heartbeat(self, status: str = "online", reset_inventory: bool = False) -> None:
         with self.lock:
             active_jobs = len(self.active)
@@ -241,6 +252,7 @@ class Worker:
             record_id = container_record_id(self.settings.worker_id, item.get("name", docker_id))
             previous = {} if reset_worker_records else (existing.get(record_id) or existing.get(docker_id) or {})
             seen_record_ids.add(record_id)
+            is_worker_container = self._is_worker_container(docker_id, item)
             updated = {
                 **previous,
                 **item,
@@ -250,6 +262,8 @@ class Worker:
                 "workerLabel": self.worker_label,
                 "workerHostname": self.settings.hostname,
                 "poolId": self.settings.pool_id,
+                "isWorkerContainer": is_worker_container,
+                "protectedActions": ["container_stop", "container_delete", "container_exec"] if is_worker_container else [],
                 "lastSeenAt": now,
                 "updatedAt": now,
                 "missingSince": None,
