@@ -33,11 +33,31 @@ if ! docker buildx version >/dev/null 2>&1; then
   exit 1
 fi
 
+ensure_builder() {
+  local builder="${WORKER_BUILDX_BUILDER:-docker-panel-lite-builder}"
+  if [[ "$PUSH" == "false" || "$PUSH" == "0" || "$PLATFORMS" != *,* ]]; then
+    return
+  fi
+  local current_driver
+  current_driver="$(docker buildx inspect 2>/dev/null | awk -F': +' '/^Driver:/ {print $2; exit}')"
+  if [[ "$current_driver" != "docker" ]]; then
+    return
+  fi
+  if docker buildx inspect "$builder" >/dev/null 2>&1; then
+    docker buildx use "$builder" >/dev/null
+  else
+    docker buildx create --name "$builder" --driver docker-container --use >/dev/null
+  fi
+  docker buildx inspect --bootstrap >/dev/null
+}
+
 OUTPUT_FLAG=(--push)
 if [[ "$PUSH" == "false" || "$PUSH" == "0" ]]; then
   OUTPUT_FLAG=(--load)
   PLATFORMS="${WORKER_IMAGE_PLATFORMS:-$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')}"
 fi
+
+ensure_builder
 
 echo "Building worker image:"
 echo "  image: $BASE_IMAGE"
