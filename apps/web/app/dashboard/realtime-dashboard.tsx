@@ -43,6 +43,7 @@ type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branche
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "compose.yml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
+const activeJobMaxAge = 15 * 60 * 1000;
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -177,8 +178,11 @@ function containerActionMeta(action: ContainerAction) {
   return { title: "Delete container", icon: "trash" as const };
 }
 
-function isActiveJob(job: Deployment) {
-  return ["queued", "leased", "running"].includes(job.status);
+function isActiveJob(job: Deployment, now = Date.now()) {
+  if (!["queued", "leased", "running"].includes(job.status)) return false;
+  if (job.finishedAt) return false;
+  if (job.leaseExpiresAt && job.leaseExpiresAt < now - 30_000) return false;
+  return now - (job.startedAt || job.createdAt || now) < activeJobMaxAge;
 }
 
 function workerDisplayName(agent: Agent) {
@@ -357,8 +361,8 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     matchesQuery([container.name, container.image, container.project, container.status, container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
   const busyContainerActions = useMemo(
-    () => new Set(deployments.filter(isActiveJob).map((job) => `${job.containerId || ""}:${job.action}`)),
-    [deployments],
+    () => new Set(deployments.filter((job) => isActiveJob(job, now)).map((job) => `${job.containerId || ""}:${job.action}`)),
+    [deployments, now],
   );
   const groupedContainers = useMemo(() => {
     const groups = new Map<string, ManagedContainer[]>();
@@ -492,7 +496,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
       {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} /> : null}
 
       {showLogsMonitor ? (
-        <LogsView containers={containers} deployments={deployments} selectedContainerId={selectedLogContainerId} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
+        <LogsView containers={containers} deployments={deployments} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
       ) : showCommandTerminal ? (
         <CommandTerminal containers={containers} commandPresets={commandPresets} agents={agents} deployments={deployments} now={now} onClose={() => setShowCommandTerminal(false)} />
       ) : (
@@ -580,7 +584,7 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
     .filter((job) => job.action === "container_exec" || job.action === "worker_command")
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 8);
-  const activeCommand = commandJobs.some(isActiveJob);
+  const activeCommand = commandJobs.some((job) => isActiveJob(job, now));
   const consoleText = commandJobs.map((job) => {
     const worker = agents.find((agent) => agent.id === (job.targetWorkerId || job.workerId));
     const container = containers.find((item) => item.id === job.containerId);
@@ -588,7 +592,7 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
       `$ ${job.command || "worker command"}`,
       `# ${job.status}${container ? ` · ${container.name}` : ""}${worker ? ` · ${workerDisplayName(worker)}` : ""}${job.repositoryId ? ` · ${job.repositoryId}` : ""}`,
     ];
-    const output = job.commandOutput?.trim() || job.message || (isActiveJob(job) ? "Running..." : "No output.");
+    const output = job.commandOutput?.trim() || job.message || (isActiveJob(job, now) ? "Running..." : "No output.");
     return [...header, output].join("\n");
   }).join("\n\n");
   return (
@@ -641,10 +645,11 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
   );
 }
 
-function LogsView({ containers, deployments, selectedContainerId, onSelectContainer, onClose }: {
+function LogsView({ containers, deployments, selectedContainerId, now, onSelectContainer, onClose }: {
   containers: ManagedContainer[];
   deployments: Deployment[];
   selectedContainerId: string;
+  now: number;
   onSelectContainer: (containerId: string) => void;
   onClose: () => void;
 }) {
@@ -672,8 +677,8 @@ function LogsView({ containers, deployments, selectedContainerId, onSelectContai
     return matchesQuery([container.name, container.image, container.project, container.status, container.logTail], query);
   });
   const activeLogJobs = useMemo(
-    () => new Set(deployments.filter((job) => isActiveJob(job) && job.action === "container_logs").map((job) => job.containerId || "")),
-    [deployments],
+    () => new Set(deployments.filter((job) => isActiveJob(job, now) && job.action === "container_logs").map((job) => job.containerId || "")),
+    [deployments, now],
   );
   const consoleText = visibleContainers
     .map((container) => {
@@ -761,8 +766,8 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
   const availableWorkerKey = availableWorkers.map((agent) => agent.id).join("|");
   const availableWorkerIds = useMemo(() => new Set(availableWorkers.map((agent) => agent.id)), [availableWorkerKey]);
   const busyRepositoryActions = useMemo(
-    () => new Set(deployments.filter((job) => isActiveJob(job) && (!job.targetWorkerId || availableWorkerIds.has(job.targetWorkerId))).map(activeRepositoryJobKey)),
-    [deployments, availableWorkerIds],
+    () => new Set(deployments.filter((job) => isActiveJob(job, now) && (!job.targetWorkerId || availableWorkerIds.has(job.targetWorkerId))).map(activeRepositoryJobKey)),
+    [deployments, availableWorkerIds, now],
   );
   useEffect(() => {
     setSelectedWorkerByRepository((current) => {

@@ -14,7 +14,8 @@ const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
-type JobAction = RepositoryAction | "container_exec";
+type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
+type JobAction = RepositoryAction | ContainerJobAction;
 
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
@@ -189,6 +190,8 @@ function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 
 async function recordFailedDeployment(input: {
   workspaceId: string;
   repositoryId: string;
+  containerId?: string;
+  containerRef?: string;
   action: JobAction;
   targetWorkerId: string;
   requestedBy: string;
@@ -201,6 +204,8 @@ async function recordFailedDeployment(input: {
     id: jobId,
     workspaceId: input.workspaceId,
     repositoryId: input.repositoryId,
+    containerId: input.containerId || "",
+    containerRef: input.containerRef || "",
     action: input.action,
     poolId: "default",
     shardId: shardFor(input.repositoryId),

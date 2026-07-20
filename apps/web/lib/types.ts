@@ -53,6 +53,7 @@ export type Deployment = {
   createdAt: number;
   startedAt?: number;
   finishedAt?: number;
+  leaseExpiresAt?: number;
 };
 
 export type Agent = {
