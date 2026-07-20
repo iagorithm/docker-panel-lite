@@ -255,9 +255,8 @@ class Worker:
                 updates[f"workspaces/{workspace_id}/containers/{docker_id}"] = None
         for container_id, item in existing.items():
             if item.get("workerId") == self.settings.worker_id and container_id not in seen_record_ids and container_id not in inventory:
-                updates[f"workspaces/{workspace_id}/containers/{container_id}/status"] = "missing"
-                updates[f"workspaces/{workspace_id}/containers/{container_id}/missingSince"] = item.get("missingSince") or now
-                updates[f"workspaces/{workspace_id}/containers/{container_id}/updatedAt"] = now
+                updates[f"workspaces/{workspace_id}/containers/{container_id}"] = None
+                LOG.info("Removing stale container record %s for worker %s", container_id, self.settings.worker_id)
         if updates:
             reference().update(updates)
 
