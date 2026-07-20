@@ -9,6 +9,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 
 class GitError(Exception):
@@ -24,14 +25,14 @@ class GitResult:
 def _inject_token(url: str, token: str) -> str:
     """Insert the token into an https:// URL without breaking it."""
     if token and url.startswith("https://"):
-        return url.replace("https://", f"https://{token}@", 1)
+        return url.replace("https://", f"https://x-access-token:{quote(token, safe='')}@", 1)
     return url
 
 
 def _sanitize_stderr(stderr: str, token: str) -> str:
     """Prevent the token from appearing in error messages."""
     if token:
-        return stderr.replace(token, "***")
+        return stderr.replace(token, "***").replace(quote(token, safe=""), "***")
     return stderr
 
 

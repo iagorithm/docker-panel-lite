@@ -1,0 +1,26 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*service-account*.json
+
+# JavaScript build/cache output
+node_modules/
+.next/
+.turbo/
+npm-debug.log*
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Runtime state, generated configuration, and repository clones
+streamlit/data/
+streamlit/repos/
+data/
+repos/
+clones/
