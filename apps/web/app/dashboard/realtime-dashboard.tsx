@@ -250,7 +250,7 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
         <div className="toolbar-actions">
           <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
-          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name={showCredentials ? "close" : "key"} /></IconButton>
+          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
           <form action={enqueueAllRepositories}><IconButton title="Sync all"><Icon name="sync" /></IconButton></form>
         </div>
       </div>
@@ -348,10 +348,10 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
         <div><h2>Credentials</h2></div>
         <div className="row-actions">
           <IconButton title={showCredentialForm ? "Close credential form" : "Add credential"} onClick={() => setShowCredentialForm((current) => !current)}>
-            +
+            <Icon name={showCredentialForm ? "close" : "add"} />
           </IconButton>
           <IconButton title={showImportForm ? "Close JSON import" : "Import JSON"} onClick={() => setShowImportForm((current) => !current)}>
-            ▤
+            <Icon name={showImportForm ? "close" : "document"} />
           </IconButton>
         </div>
       </div>
@@ -371,7 +371,7 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
         </form>
       ) : null}
       <div className="compact-list">{credentials.map((credential) => (
-        <div className="compact-row" key={credential.id}><div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask}</small></div><form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><IconButton title="Delete credential">×</IconButton></form></div>
+        <div className="compact-row" key={credential.id}><div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask}</small></div><form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><IconButton title="Delete credential"><Icon name="trash" /></IconButton></form></div>
       ))}</div>
       {!credentials.length && !showCredentialForm ? <p className="empty-copy">No credentials saved.</p> : null}
     </section>
@@ -399,7 +399,7 @@ function DeploymentsPanel({ deployments }: { deployments: Deployment[] }) {
         <article className="activity-row" key={job.id}>
           <StatusBadge label={job.status} running={job.status === "running" || job.status === "completed"} />
           <div><strong>{job.repositoryId || "job"} · {job.action}</strong><small>{job.message || `Queued ${elapsed(job.createdAt)}`}</small></div>
-          {["queued", "leased", "running"].includes(job.status) ? <form action={cancelDeployment}><input type="hidden" name="jobId" value={job.id} /><IconButton title="Cancel">×</IconButton></form> : null}
+          {["queued", "leased", "running"].includes(job.status) ? <form action={cancelDeployment}><input type="hidden" name="jobId" value={job.id} /><IconButton title="Cancel"><Icon name="close" /></IconButton></form> : null}
         </article>
       ))}</div>
       {!deployments.length ? <p className="empty-copy">No deployment activity yet.</p> : null}
