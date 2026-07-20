@@ -318,7 +318,7 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
           <article className="resource-row repo-resource-row" key={repository.id}>
             {index ? <div className="resource-divider" /> : null}
             <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.composeFile || repository.dockerfile} · Branch {repository.branch || "default"}</small></div>
+            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || "docker-compose.yml" : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
             <div className="row-actions">
               <QueueButton repositoryId={repository.id} action="sync" title="Sync repository"><Icon name="sync" /></QueueButton>
               <IconButton
