@@ -15,6 +15,7 @@ IMAGE="${WORKER_IMAGE:-iagorithm/docker-panel-lite-worker}"
 TAG="${WORKER_IMAGE_TAG:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 PLATFORMS="${WORKER_IMAGE_PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-true}"
+PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 
 if [[ "$IMAGE" == *:* ]]; then
   BASE_IMAGE="${IMAGE%:*}"
@@ -66,9 +67,20 @@ echo "  platforms: $PLATFORMS"
 echo "  push: $PUSH"
 
 docker buildx build \
+  --progress "$PROGRESS" \
   --platform "$PLATFORMS" \
   -f "$ROOT_DIR/services/worker/Dockerfile" \
   -t "$BASE_IMAGE:$TAG" \
   -t "$BASE_IMAGE:latest" \
   "${OUTPUT_FLAG[@]}" \
   "$ROOT_DIR"
+
+if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
+  echo
+  echo "Verifying pushed image:"
+  docker buildx imagetools inspect "$BASE_IMAGE:$TAG"
+  echo
+  echo "Pushed:"
+  echo "  $BASE_IMAGE:$TAG"
+  echo "  $BASE_IMAGE:latest"
+fi
