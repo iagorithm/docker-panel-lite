@@ -119,6 +119,12 @@ class NgrokService:
         except FileNotFoundError:
             pass
 
+    def stop_prefix(self, project: str) -> None:
+        prefix = f"{_safe_project(project)}--"
+        self.stop(project)
+        for state_path in self.root.glob(f"{prefix}*.json"):
+            self.stop(state_path.stem)
+
     def start(self, project: str, target: str, *, domain: str = "") -> Tunnel:
         if not self.enabled:
             raise NgrokError("ngrok is disabled. Set NGROK_ENABLED=true and NGROK_AUTHTOKEN in the worker environment.")

@@ -36,6 +36,8 @@ const repositorySchema = z.object({
   ports: z.string().trim().default(""),
   publicTunnelEnabled: z.preprocess((value) => value === "on" || value === "true" || value === true, z.boolean()).default(false),
   publicTunnelDomain: z.string().trim().default(""),
+  publicTunnelDomainsJson: z.string().trim().default(""),
+  publicTunnelPortsJson: z.string().trim().default(""),
   ngrokAuthtoken: z.string().trim().default(""),
   poolId: z.string().trim().regex(aliasPattern).default("default"),
 });
@@ -79,6 +81,10 @@ const repositoryImportSchema = z.object({
   expose_public: z.boolean().optional(),
   publicTunnelDomain: z.string().trim().optional(),
   public_tunnel_domain: z.string().trim().optional(),
+  publicTunnelDomains: z.unknown().optional(),
+  public_tunnel_domains: z.unknown().optional(),
+  publicTunnelPorts: z.unknown().optional(),
+  public_tunnel_ports: z.unknown().optional(),
   publicDomain: z.string().trim().optional(),
   ngrokDomain: z.string().trim().optional(),
   ngrokAuthtoken: z.string().trim().optional(),
@@ -198,6 +204,28 @@ function normalizeEnvironment(value: unknown): Record<string, string> {
   return environmentFromObject(value as Record<string, unknown>);
 }
 
+function normalizeStringMap(value: unknown): Record<string, string> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return {};
+    try {
+      const parsed = parseJsonInput(raw);
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return {};
+      return normalizeStringMap(parsed);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [rawKey, item] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (key && item != null) result[key] = String(item).trim();
+  }
+  return result;
+}
+
 function shardFor(value: string) {
   const shards = Math.max(1, Number(process.env.QUEUE_SHARDS ?? "16"));
   const hash = createHash("sha256").update(value).digest().readUInt32BE(0);
@@ -303,6 +331,8 @@ export async function saveRepository(formData: FormData) {
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
   const current = (await currentRef.get()).val();
   const environment = parseEnvironment(input.environmentJson, input.environmentFormat, current?.environment ?? {});
+  const publicTunnelDomains = input.publicTunnelDomainsJson ? normalizeStringMap(input.publicTunnelDomainsJson) : current?.publicTunnelDomains ?? {};
+  const publicTunnelPorts = input.publicTunnelPortsJson ? normalizeStringMap(input.publicTunnelPortsJson) : current?.publicTunnelPorts ?? {};
   const repositoryPayload = {
     id: repositoryId,
     alias: input.alias,
@@ -319,7 +349,11 @@ export async function saveRepository(formData: FormData) {
     ports: input.ports,
     publicTunnelEnabled: input.publicTunnelEnabled,
     publicTunnelDomain: input.publicTunnelDomain,
+    publicTunnelDomains,
+    publicTunnelPorts,
     publicUrl: current?.publicUrl ?? "",
+    publicUrls: current?.publicUrls ?? {},
+    publicTunnels: current?.publicTunnels ?? {},
     publicTunnelStatus: current?.publicTunnelStatus ?? "stopped",
     publicTunnelTarget: current?.publicTunnelTarget ?? "",
     publicTunnelWorkerId: current?.publicTunnelWorkerId ?? "",
@@ -388,7 +422,17 @@ export async function importRepositoriesJson(formData: FormData) {
       ports: input.ports || "",
       publicTunnelEnabled: Boolean(input.publicTunnelEnabled ?? input.public_tunnel_enabled ?? input.exposePublic ?? input.expose_public),
       publicTunnelDomain: input.publicTunnelDomain || input.public_tunnel_domain || input.publicDomain || input.ngrokDomain || "",
+      publicTunnelDomains: {
+        ...normalizeStringMap(input.publicTunnelDomains),
+        ...normalizeStringMap(input.public_tunnel_domains),
+      },
+      publicTunnelPorts: {
+        ...normalizeStringMap(input.publicTunnelPorts),
+        ...normalizeStringMap(input.public_tunnel_ports),
+      },
       publicUrl: "",
+      publicUrls: {},
+      publicTunnels: {},
       publicTunnelStatus: "stopped",
       publicTunnelTarget: "",
       publicTunnelWorkerId: "",

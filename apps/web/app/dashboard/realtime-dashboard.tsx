@@ -226,6 +226,12 @@ function safeDockerName(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").toLowerCase().slice(0, 63);
 }
 
+function repositoryPublicUrls(repository: Repository) {
+  const entries = Object.entries(repository.publicUrls || {}).filter(([, url]) => Boolean(url));
+  if (entries.length) return entries;
+  return repository.publicUrl ? [[repository.service || "app", repository.publicUrl] as [string, string]] : [];
+}
+
 function containerPrimaryAction(status: string): ContainerAction {
   return status === "running" ? "container_stop" : "container_start";
 }
@@ -928,6 +934,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       repository.composeFile,
       repository.dockerfile,
       repository.publicUrl,
+      ...repositoryPublicUrls(repository).flatMap(([service, url]) => [service, url]),
       repository.publicTunnelDomain,
       ...(workersByRepository.get(repository.id)?.map((worker) => worker.name) || []),
     ], query),
@@ -953,6 +960,8 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
           const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
           const workerSelected = Boolean(targetWorkerId);
           const deployedWorkers = workersByRepository.get(repository.id) || [];
+          const publicUrls = repositoryPublicUrls(repository);
+          const primaryPublicUrl = publicUrls[0]?.[1] || "";
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
@@ -961,7 +970,11 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               <div className="resource-metadata">
                 <span title={repository.url}>{repository.url}</span>
                 <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small>
-                {repository.publicUrl ? <a className="repo-public-url" href={repository.publicUrl} target="_blank" rel="noreferrer" title={repository.publicUrl}>{repository.publicUrl.replace(/^https?:\/\//, "")}</a> : null}
+                {publicUrls.length ? (
+                  <div className="repo-public-urls" aria-label="Public service URLs">
+                    {publicUrls.map(([service, url]) => <a className="repo-public-url" href={url} target="_blank" rel="noreferrer" title={`${service}: ${url}`} key={`${service}:${url}`}><b>{service}</b>{url.replace(/^https?:\/\//, "")}</a>)}
+                  </div>
+                ) : null}
                 {deployedWorkers.length ? (
                   <div className="repo-worker-flags" aria-label="Deployed workers">
                     {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
@@ -995,9 +1008,9 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                   )
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
-                <QueueButton repositoryId={repository.id} action="tunnel_start" title={repository.publicUrl ? "Refresh public URL" : "Open public URL"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
-                {repository.publicUrl ? <a className="icon-button repo-open-public" href={repository.publicUrl} target="_blank" rel="noreferrer" title="Open public URL" aria-label="Open public URL" data-tooltip="Open public URL"><Icon name="external" /></a> : null}
-                {repository.publicUrl ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URL" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
+                <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
+                {primaryPublicUrl ? <a className="icon-button repo-open-public" href={primaryPublicUrl} target="_blank" rel="noreferrer" title="Open public URL" aria-label="Open public URL" data-tooltip="Open public URL"><Icon name="external" /></a> : null}
+                {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
                 <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton>
               </div>
@@ -1154,6 +1167,8 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
       <summary><span>Edit settings</span><span>⌄</span></summary>
       <form action={saveRepository} className="form-grid">
         <input type="hidden" name="repositoryId" value={repository.id} />
+        <input type="hidden" name="publicTunnelDomainsJson" value={JSON.stringify(repository.publicTunnelDomains || {})} />
+        <input type="hidden" name="publicTunnelPortsJson" value={JSON.stringify(repository.publicTunnelPorts || {})} />
         <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
         <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
         <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>

@@ -263,6 +263,48 @@ def _repository_public_tunnel_domain(repository: dict) -> str:
     ).strip()
 
 
+def _repository_public_tunnel_domains(repository: dict) -> dict[str, str]:
+    value = repository.get("publicTunnelDomains") or repository.get("publicDomains") or repository.get("ngrokDomains") or {}
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{"):
+            try:
+                value = json.loads(re.sub(r",\s*([}\]])", r"\1", text))
+            except json.JSONDecodeError:
+                value = {}
+        else:
+            items = [item.strip() for item in re.split(r"[\n,]", text) if item.strip()]
+            value = dict(item.split("=", 1) for item in items if "=" in item)
+    if not isinstance(value, dict):
+        return {}
+    return {str(key).strip(): str(item).strip() for key, item in value.items() if str(key).strip() and str(item).strip()}
+
+
+def _repository_public_tunnel_ports(repository: dict) -> dict[str, int]:
+    value = repository.get("publicTunnelPorts") or repository.get("publicPorts") or repository.get("ngrokPorts") or {}
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{"):
+            try:
+                value = json.loads(re.sub(r",\s*([}\]])", r"\1", text))
+            except json.JSONDecodeError:
+                value = {}
+        else:
+            items = [item.strip() for item in re.split(r"[\n,]", text) if item.strip()]
+            value = dict(item.split("=", 1) for item in items if "=" in item)
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key, item in value.items():
+        try:
+            port = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= port <= 65535:
+            result[str(key).strip()] = port
+    return result
+
+
 def _container_ip(container) -> str:
     networks = (container.attrs.get("NetworkSettings", {}) or {}).get("Networks", {}) or {}
     for network in networks.values():
@@ -270,6 +312,44 @@ def _container_ip(container) -> str:
         if ip_address:
             return ip_address
     return ""
+
+
+def _container_internal_ports(container) -> list[int]:
+    ports = []
+    exposed = (container.attrs.get("Config", {}) or {}).get("ExposedPorts", {}) or {}
+    published = (container.attrs.get("NetworkSettings", {}) or {}).get("Ports", {}) or {}
+    for source in (exposed, published):
+        for key in source.keys():
+            try:
+                port = int(str(key).split("/", 1)[0])
+            except ValueError:
+                continue
+            if port not in ports:
+                ports.append(port)
+    return ports
+
+
+def _connect_worker_to_container_networks(container) -> None:
+    hostname = socket.gethostname()
+    if not hostname:
+        return
+    try:
+        client = docker_ops.connect()
+        worker_container = client.containers.get(hostname)
+    except Exception:
+        return
+    networks = (container.attrs.get("NetworkSettings", {}) or {}).get("Networks", {}) or {}
+    worker_networks = (worker_container.attrs.get("NetworkSettings", {}) or {}).get("Networks", {}) or {}
+    for network_name, network_data in networks.items():
+        if network_name in worker_networks:
+            continue
+        network_id = str((network_data or {}).get("NetworkID") or network_name)
+        try:
+            network = client.networks.get(network_id)
+            network.connect(worker_container)
+            LOG.info("Connected worker to Docker network %s for ngrok tunnel", network_name)
+        except Exception as error:
+            LOG.warning("Could not connect worker to Docker network %s: %s", network_name, error)
 
 
 def _host_port_target(container, internal_port: int) -> str:
@@ -284,33 +364,51 @@ def _host_port_target(container, internal_port: int) -> str:
     return f"http://host.docker.internal:{host_port}"
 
 
-def _public_tunnel_target(repository: dict, settings: Settings) -> str:
+def _container_tunnel_target(container, fallback_port: int) -> str:
+    internal_port = (_container_internal_ports(container) or [fallback_port])[0]
+    host_target = _host_port_target(container, internal_port)
+    if host_target:
+        return host_target
+    _connect_worker_to_container_networks(container)
+    ip_address = _container_ip(container)
+    if ip_address:
+        return f"http://{ip_address}:{internal_port}"
+    return ""
+
+
+def _public_tunnel_targets(repository: dict, settings: Settings) -> dict[str, str]:
     client = docker_ops.connect()
     project = _safe_name(repository["alias"])
-    service = str(repository.get("service") or "").strip()
-    internal_port = int(repository.get("internalPort") or 3000)
-    candidates = []
+    fallback_port = int(repository.get("internalPort") or 3000)
+    service_ports = _repository_public_tunnel_ports(repository)
     if repository.get("mode") == "compose":
         containers = client.containers.list(
             all=False,
             filters={"label": f"com.docker.compose.project={project}"},
         )
-        if service:
-            candidates.extend([item for item in containers if item.labels.get("com.docker.compose.service") == service])
-        candidates.extend([item for item in containers if item not in candidates])
-    else:
-        try:
-            candidates = [client.containers.get(project)]
-        except NotFound:
-            candidates = []
-    candidates = [item for item in candidates if item.status == "running"]
-    for container in candidates:
-        ip_address = _container_ip(container)
-        if ip_address:
-            return f"http://{ip_address}:{internal_port}"
-        target = _host_port_target(container, internal_port)
+        service_containers: dict[str, object] = {}
+        for container in sorted(containers, key=lambda item: item.name):
+            if container.status != "running":
+                continue
+            service = str(container.labels.get("com.docker.compose.service") or container.name).strip()
+            if service and service not in service_containers:
+                service_containers[service] = container
+        targets = {}
+        for service, container in service_containers.items():
+            target = _container_tunnel_target(container, service_ports.get(service, fallback_port))
+            if target:
+                targets[service] = target
+        if targets:
+            return targets
+        raise RuntimeError(f"No running compose services found for public tunnel '{project}'")
+    try:
+        container = client.containers.get(project)
+    except NotFound:
+        container = None
+    if container and container.status == "running":
+        target = _container_tunnel_target(container, fallback_port)
         if target:
-            return target
+            return {repository.get("service") or "app": target}
     raise RuntimeError(f"No running container found for public tunnel '{project}'")
 
 
@@ -341,13 +439,36 @@ def _ngrok_service(settings: Settings, authtoken: str = "") -> ngrok.NgrokServic
 
 def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings) -> dict:
     project = _safe_name(repository["alias"])
-    target = _public_tunnel_target(repository, settings)
+    targets = _public_tunnel_targets(repository, settings)
     authtoken = _repository_ngrok_authtoken(repository, workspace_id, settings)
-    tunnel = _ngrok_service(settings, authtoken).start(project, target, domain=_repository_public_tunnel_domain(repository))
+    service = _ngrok_service(settings, authtoken)
+    service_domains = _repository_public_tunnel_domains(repository)
+    single_domain = _repository_public_tunnel_domain(repository)
+    public_urls = {}
+    public_tunnels = {}
+    for service_name, target in targets.items():
+        tunnel_key = project if len(targets) == 1 else f"{project}--{_safe_name(service_name)}"
+        domain = service_domains.get(service_name, "")
+        if len(targets) == 1 and not domain:
+            domain = single_domain
+        tunnel = service.start(tunnel_key, target, domain=domain)
+        public_urls[service_name] = tunnel.url
+        public_tunnels[service_name] = {
+            "url": tunnel.url,
+            "target": tunnel.target,
+            "domain": tunnel.domain,
+            "pid": tunnel.pid,
+            "workerId": settings.worker_id,
+            "workerLabel": settings.worker_label,
+            "updatedAt": _now(),
+        }
+    first_service = next(iter(public_urls))
     return {
-        "publicUrl": tunnel.url,
+        "publicUrl": public_urls[first_service],
+        "publicUrls": public_urls,
+        "publicTunnels": public_tunnels,
         "publicTunnelStatus": "online",
-        "publicTunnelTarget": tunnel.target,
+        "publicTunnelTarget": public_tunnels[first_service]["target"],
         "publicTunnelWorkerId": settings.worker_id,
         "publicTunnelWorkerLabel": settings.worker_label,
         "publicTunnelUpdatedAt": _now(),
@@ -355,9 +476,11 @@ def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings
 
 
 def _stop_public_tunnel(repository: dict, settings: Settings) -> dict:
-    _ngrok_service(settings).stop(_safe_name(repository["alias"]))
+    _ngrok_service(settings).stop_prefix(_safe_name(repository["alias"]))
     return {
         "publicUrl": "",
+        "publicUrls": {},
+        "publicTunnels": {},
         "publicTunnelStatus": "stopped",
         "publicTunnelTarget": "",
         "publicTunnelWorkerId": "",
@@ -513,7 +636,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
         return "Public URL closed", _stop_public_tunnel(repository, settings)
     if action == "tunnel_start":
         updates = _start_public_tunnel(repository, workspace_id, settings)
-        return f"Public URL ready: {updates['publicUrl']}", updates
+        return f"Public URLs ready: {len(updates.get('publicUrls') or {})}", updates
     path = _sync(repository, workspace_id, settings)
     if action in {"sync", "read_compose"}:
         updates = {}
@@ -536,8 +659,8 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     else:
         message = _run_dockerfile(repository, path, settings, environment)
     updates = _start_public_tunnel(repository, workspace_id, settings) if _repository_public_tunnel_enabled(repository) else {}
-    if updates.get("publicUrl"):
-        message = f"{message}. Public URL: {updates['publicUrl']}"
+    if updates.get("publicUrls"):
+        message = f"{message}. Public URLs ready: {len(updates['publicUrls'])}"
     return message, updates
 
 

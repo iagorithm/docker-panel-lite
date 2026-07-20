@@ -14,7 +14,11 @@ export type Repository = {
   ports?: string;
   publicTunnelEnabled?: boolean;
   publicTunnelDomain?: string;
+  publicTunnelDomains?: Record<string, string>;
+  publicTunnelPorts?: Record<string, string>;
   publicUrl?: string;
+  publicUrls?: Record<string, string>;
+  publicTunnels?: Record<string, { url?: string; target?: string; domain?: string; workerId?: string; workerLabel?: string; updatedAt?: number }>;
   publicTunnelStatus?: string;
   publicTunnelTarget?: string;
   publicTunnelWorkerId?: string;
