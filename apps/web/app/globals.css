@@ -846,6 +846,11 @@ a:hover { text-decoration-color: var(--ui-text); }
   padding: 0.16rem 0.42rem;
   font-size: 0.62rem;
 }
+.container-group .resource-row .resource-type-badge {
+  min-height: 1.28rem;
+  padding: 0.16rem 0.42rem;
+  font-size: 0.6rem;
+}
 .container-group .resource-row .ui-status-badge__dot {
   width: 0.36rem;
   height: 0.36rem;
@@ -966,6 +971,34 @@ a:hover { text-decoration-color: var(--ui-text); }
 .resource-copy strong, .compact-row strong, .activity-row strong { overflow: hidden; color: var(--ui-text); font-size: 0.86rem; font-weight: 640; letter-spacing: -0.012em; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .resource-copy span, .resource-metadata span, .resource-metadata small { overflow: hidden; color: var(--ui-text-secondary); font-size: 0.7rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .resource-metadata > span { color: var(--ui-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; font-weight: 520; }
+.resource-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-width: 0;
+}
+.resource-type-badge {
+  display: inline-flex;
+  min-height: 1.55rem;
+  align-items: center;
+  padding: 0.24rem 0.52rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 720;
+  line-height: 1;
+}
+.resource-type-badge.is-worker {
+  color: #166534;
+  background: var(--ui-success-bg);
+  border-color: var(--ui-success-border);
+}
+.resource-type-badge.is-service {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
 .resource-metadata .container-meta-line {
   display: block;
   color: var(--ui-text-secondary);

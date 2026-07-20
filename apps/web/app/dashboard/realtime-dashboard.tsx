@@ -513,15 +513,22 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     const primaryAction = workerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
     const canUseRunningTools = displayStatus === "running" && workerOnline && !workerContainer;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
+    const primaryName = workerContainer ? workerName : container.name;
+    const secondaryText = workerContainer
+      ? `${container.name} · ${container.image}${container.project ? ` · ${container.project}` : ""}`
+      : `${container.image}${container.project ? ` · ${container.project}` : ""}`;
+    const ownerLabel = workerContainer ? "Container" : "Worker";
+    const ownerValue = workerContainer ? container.name : workerName;
+    const ownerTitle = workerContainer ? container.name : container.workerId || workerName;
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
-        <div className="resource-identity"><ResourceGlyph kind={workerContainer ? "worker" : "container"} /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}{workerContainer ? " · Worker" : ""}</span></div></div>
+        <div className="resource-identity"><ResourceGlyph kind={workerContainer ? "worker" : "container"} /><div className="resource-copy"><strong>{primaryName}</strong><span>{secondaryText}</span></div></div>
         <div className="resource-metadata">
-          <StatusBadge label={displayStatus} running={displayStatus === "running"} />
-          <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>
+          <span className="resource-status-line"><StatusBadge label={displayStatus} running={displayStatus === "running"} /><span className={`resource-type-badge ${workerContainer ? "is-worker" : "is-service"}`}>{workerContainer ? "Worker" : "Servicio"}</span></span>
+          <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>{ownerLabel}</b> <code title={ownerTitle}>{ownerValue}</code></span>
           <small>{(container.ports || []).join(", ") || "No published ports"}</small>
         </div>
         <div className="row-actions">
