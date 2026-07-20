@@ -50,6 +50,7 @@ export type Deployment = {
   command?: string;
   commandOutput?: string;
   commandExitCode?: number;
+  timeoutSeconds?: number;
   createdAt: number;
   startedAt?: number;
   finishedAt?: number;

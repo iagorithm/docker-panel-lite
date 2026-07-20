@@ -44,6 +44,7 @@ type ContainerAction = "container_start" | "container_stop" | "container_restart
 const defaultComposeFile = "compose.yml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
 const activeJobMaxAge = 15 * 60 * 1000;
+const pendingButtonMaxAge = 35 * 1000;
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -122,15 +123,31 @@ function IconButton({ title, children, onClick, primary = false, disabled = fals
   return <button className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
+function useVisiblePending(pending: boolean) {
+  const [pendingStartedAt, setPendingStartedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!pending) {
+      setPendingStartedAt(null);
+      return;
+    }
+    setPendingStartedAt((current) => current ?? Date.now());
+    const timer = setTimeout(() => setTick((current) => current + 1), pendingButtonMaxAge + 50);
+    return () => clearTimeout(timer);
+  }, [pending, tick]);
+  return pending && (!pendingStartedAt || Date.now() - pendingStartedAt < pendingButtonMaxAge);
+}
+
 function PendingIconButton({ title, children, onClick, primary = false, busy = false }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; busy?: boolean }) {
   const { pending } = useFormStatus();
-  const isBusy = pending || busy;
+  const isBusy = useVisiblePending(pending) || busy;
   return <IconButton title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
 function PendingSubmitButton({ children, className = "primary", formAction, tooltip }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string }) {
   const { pending } = useFormStatus();
-  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={pending}>{pending ? <Spinner /> : children}</button>;
+  const visiblePending = useVisiblePending(pending);
+  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
 }
 
 function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, targetWorkerId = "" }: {
@@ -178,11 +195,23 @@ function containerActionMeta(action: ContainerAction) {
   return { title: "Delete container", icon: "trash" as const };
 }
 
-function isActiveJob(job: Deployment, now = Date.now()) {
+function isActiveJob(job: Deployment, now = Date.now(), maxAge = activeJobMaxAge) {
   if (!["queued", "leased", "running"].includes(job.status)) return false;
   if (job.finishedAt) return false;
   if (job.leaseExpiresAt && job.leaseExpiresAt < now - 30_000) return false;
-  return now - (job.startedAt || job.createdAt || now) < activeJobMaxAge;
+  return now - (job.startedAt || job.createdAt || now) < maxAge;
+}
+
+function containerActionMaxAge(job: Deployment) {
+  if (job.action === "container_exec") return (Number(job.timeoutSeconds || 600) + 30) * 1000;
+  if (job.action === "container_logs") return 45_000;
+  return 90_000;
+}
+
+function isBusyContainerJob(job: Deployment, now: number, onlineWorkerIds?: Set<string>) {
+  if (!job.containerId || !job.action.startsWith("container_")) return false;
+  if (job.targetWorkerId && onlineWorkerIds && !onlineWorkerIds.has(job.targetWorkerId)) return false;
+  return isActiveJob(job, now, containerActionMaxAge(job));
 }
 
 function workerDisplayName(agent: Agent) {
@@ -361,8 +390,8 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
     matchesQuery([container.name, container.image, container.project, container.status, container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
   const busyContainerActions = useMemo(
-    () => new Set(deployments.filter((job) => isActiveJob(job, now)).map((job) => `${job.containerId || ""}:${job.action}`)),
-    [deployments, now],
+    () => new Set(deployments.filter((job) => isBusyContainerJob(job, now, onlineWorkerIds)).map((job) => `${job.containerId || ""}:${job.action}`)),
+    [deployments, now, onlineWorkerIds],
   );
   const groupedContainers = useMemo(() => {
     const groups = new Map<string, ManagedContainer[]>();
@@ -677,7 +706,7 @@ function LogsView({ containers, deployments, selectedContainerId, now, onSelectC
     return matchesQuery([container.name, container.image, container.project, container.status, container.logTail], query);
   });
   const activeLogJobs = useMemo(
-    () => new Set(deployments.filter((job) => isActiveJob(job, now) && job.action === "container_logs").map((job) => job.containerId || "")),
+    () => new Set(deployments.filter((job) => job.action === "container_logs" && isActiveJob(job, now, 45_000)).map((job) => job.containerId || "")),
     [deployments, now],
   );
   const consoleText = visibleContainers
