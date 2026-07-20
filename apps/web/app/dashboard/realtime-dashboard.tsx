@@ -220,6 +220,10 @@ function matchesQuery(values: Array<string | undefined>, query: string) {
   return values.some((value) => (value || "").toLowerCase().includes(normalized));
 }
 
+function safeDockerName(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").toLowerCase().slice(0, 63);
+}
+
 function containerPrimaryAction(status: string): ContainerAction {
   return status === "running" ? "container_stop" : "container_start";
 }
@@ -405,7 +409,7 @@ export function RealtimeDashboard(props: Props) {
         {view === "containers" ? (
           <ContainersView containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         ) : (
-          <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
+          <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         )}
       </main>
     </div>
@@ -858,10 +862,11 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
   );
 }
 
-function RepositoriesView({ repositories, commandPresets, credentials, deployments, agents, activeJobs, now }: {
+function RepositoriesView({ repositories, commandPresets, credentials, containers, deployments, agents, activeJobs, now }: {
   repositories: Repository[];
   commandPresets: CommandPreset[];
   credentials: CredentialSummary[];
+  containers: ManagedContainer[];
   deployments: Deployment[];
   agents: Agent[];
   activeJobs: number;
@@ -885,6 +890,24 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
     () => new Set(deployments.filter((job) => isActiveJob(job, now) && (!job.targetWorkerId || availableWorkerIds.has(job.targetWorkerId))).map(activeRepositoryJobKey)),
     [deployments, availableWorkerIds, now],
   );
+  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const workersByRepository = useMemo(() => {
+    const result = new Map<string, Array<{ id: string; name: string }>>();
+    for (const repository of repositories) {
+      const repoKey = safeDockerName(repository.alias || repository.id);
+      const workers = new Map<string, string>();
+      for (const container of containers) {
+        const project = safeDockerName(container.project || "");
+        const name = safeDockerName(container.name || "");
+        const belongsToRepository = project === repoKey || name === repoKey || name.startsWith(`${repoKey}-`) || name.startsWith(`${repoKey}_`);
+        if (!belongsToRepository || !container.workerId) continue;
+        const agent = agentById.get(container.workerId);
+        workers.set(container.workerId, agent ? workerDisplayName(agent) : container.workerLabel || container.workerHostname || container.workerId);
+      }
+      result.set(repository.id, [...workers.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    return result;
+  }, [repositories, containers, agentById]);
   useEffect(() => {
     setSelectedWorkerByRepository((current) => {
       const next = Object.fromEntries(Object.entries(current).filter(([, workerId]) => !workerId || availableWorkerIds.has(workerId)));
@@ -902,6 +925,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
       repository.service,
       repository.composeFile,
       repository.dockerfile,
+      ...(workersByRepository.get(repository.id)?.map((worker) => worker.name) || []),
     ], query),
   );
   return (
@@ -924,12 +948,21 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
           const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
           const workerSelected = Boolean(targetWorkerId);
+          const deployedWorkers = workersByRepository.get(repository.id) || [];
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
               {index ? <div className="resource-divider" /> : null}
               <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-              <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
+              <div className="resource-metadata">
+                <span title={repository.url}>{repository.url}</span>
+                <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small>
+                {deployedWorkers.length ? (
+                  <div className="repo-worker-flags" aria-label="Deployed workers">
+                    {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
+                  </div>
+                ) : null}
+              </div>
               <div className="row-actions">
                 <select className="worker-target-select" value={targetWorkerId} title="Run on worker" aria-label={`Run ${repository.alias} on worker`} onChange={(event) => setSelectedWorkerByRepository((current) => ({ ...current, [repository.id]: event.target.value }))}>
                   <option value="">Select worker</option>

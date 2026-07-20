@@ -1058,6 +1058,30 @@ a:hover { text-decoration-color: var(--ui-text); }
   font: inherit;
 }
 .resource-metadata small { color: var(--ui-text-tertiary); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.64rem; }
+.repo-worker-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.24rem;
+  margin-top: 0.1rem;
+}
+.repo-worker-flag {
+  display: inline-flex;
+  max-width: 7.5rem;
+  min-height: 1.24rem;
+  align-items: center;
+  padding: 0.16rem 0.42rem;
+  overflow: hidden;
+  color: #4c1d95;
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 999px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 0.62rem;
+  font-weight: 680;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.42rem; }
 .row-actions form { display: contents; }
 .row-actions .container-command-form {
