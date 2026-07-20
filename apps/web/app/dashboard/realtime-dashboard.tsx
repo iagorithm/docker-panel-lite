@@ -10,6 +10,8 @@ import {
   cancelDeployment,
   deleteCredential,
   deleteRepository,
+  deleteWorker,
+  enqueueAllContainerLogs,
   enqueueAllRepositories,
   enqueueContainerAction,
   enqueueDeployment,
@@ -71,7 +73,7 @@ function GithubMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" }) {
+function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -91,6 +93,11 @@ function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" 
       {name === "branch" ? <path {...common} d="M7 6.9a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0 0v5.25a3.35 3.35 0 0 0 3.35 3.35h3.3M17 17.4a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0-10.5a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0 0v1.85a3.35 3.35 0 0 1-3.35 3.35h-2" /> : null}
       {name === "download" ? <path {...common} d="M12 4.25v10.1M8.35 10.7 12 14.35l3.65-3.65M5.25 19.75h13.5" /> : null}
       {name === "help" ? <path {...common} d="M9.45 9a2.65 2.65 0 1 1 4.2 2.15c-.95.66-1.65 1.15-1.65 2.45M12 17.4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /> : null}
+      {name === "layers" ? <path {...common} d="m12 3.75 8 4.35-8 4.35-8-4.35 8-4.35Zm-5.9 8.4L12 15.25l5.9-3.1M6.1 16.05 12 19.25l5.9-3.2" /> : null}
+      {name === "chevron" ? <path {...common} d="m9 6 6 6-6 6" /> : null}
+      {name === "worker" ? <path {...common} d="M6.5 4.75h11A1.25 1.25 0 0 1 18.75 6v7A1.25 1.25 0 0 1 17.5 14.25h-11A1.25 1.25 0 0 1 5.25 13V6A1.25 1.25 0 0 1 6.5 4.75ZM8 18.75h8M12 14.25v4.5M8.25 8.25h.01M11 8.25h4.75M8.25 11h.01M11 11h4.75" /> : null}
+      {name === "expand" ? <path {...common} d="M8.25 4.75h-3.5v3.5M4.75 4.75l5 5M15.75 4.75h3.5v3.5M19.25 4.75l-5 5M8.25 19.25h-3.5v-3.5M4.75 19.25l5-5M15.75 19.25h3.5v-3.5M19.25 19.25l-5-5" /> : null}
+      {name === "collapse" ? <path {...common} d="M9.75 4.75v5h-5M9.75 9.75l-5-5M14.25 4.75v5h5M14.25 9.75l5-5M9.75 19.25v-5h-5M9.75 14.25l-5 5M14.25 19.25v-5h5M14.25 14.25l5 5" /> : null}
     </svg>
   );
 }
@@ -119,21 +126,27 @@ function PendingSubmitButton({ children, className = "primary", formAction, tool
   return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={pending}>{pending ? <Spinner /> : children}</button>;
 }
 
-function QueueButton({ repositoryId, action, children, title, primary = false, busy = false }: {
+function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, targetWorkerId = "" }: {
   repositoryId: string;
   action: RepositoryAction;
   children: React.ReactNode;
   title: string;
   primary?: boolean;
   busy?: boolean;
+  targetWorkerId?: string;
 }) {
   return (
     <form action={enqueueDeployment}>
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
+      <input type="hidden" name="targetWorkerId" value={targetWorkerId || ""} />
       <PendingIconButton title={title} primary={primary} busy={busy}>{children}</PendingIconButton>
     </form>
   );
+}
+
+function activeRepositoryJobKey(job: Deployment) {
+  return `${job.repositoryId}:${job.action}:${job.targetWorkerId || ""}`;
 }
 
 function EmptyState({ title, copy }: { title: string; copy: string }) {
@@ -162,6 +175,91 @@ function isActiveJob(job: Deployment) {
   return ["queued", "leased", "running"].includes(job.status);
 }
 
+function workerDisplayName(agent: Agent) {
+  return agent.label || agent.hostname || agent.id;
+}
+
+function isWorkerOnline(agent: Agent, now: number, freshness = 30_000) {
+  return agent.status === "online" && now - agent.lastHeartbeat < freshness;
+}
+
+function workerStatusLabel(agent: Agent, now: number) {
+  if (agent.status === "stopping") return "stopping";
+  if (isWorkerOnline(agent, now)) return "online";
+  return "offline";
+}
+
+function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: number; onOpenWorkers: () => void }) {
+  const sortedAgents = [...agents].sort((a, b) => {
+    const aOnline = Number(isWorkerOnline(a, now));
+    const bOnline = Number(isWorkerOnline(b, now));
+    return bOnline - aOnline || workerDisplayName(a).localeCompare(workerDisplayName(b));
+  });
+  const visibleAgents = sortedAgents.slice(0, 12);
+  const onlineCount = sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length;
+  return (
+    <section className="sidebar-workers" aria-label="Workers">
+      <button className="sidebar-workers-header" type="button" title="View workers" data-tooltip="View workers" onClick={onOpenWorkers}>
+        <span><Icon name="worker" /></span>
+        <strong>Workers</strong>
+        <small>{onlineCount}/{sortedAgents.length}</small>
+      </button>
+      {visibleAgents.length ? (
+        <div className="sidebar-worker-list">
+          {visibleAgents.map((agent) => {
+            const online = isWorkerOnline(agent, now);
+            const label = workerDisplayName(agent);
+            const status = workerStatusLabel(agent, now);
+            return (
+              <button className="sidebar-worker-item" type="button" title={`${label} · ${status}`} data-tooltip={`${label} · ${status}`} onClick={onOpenWorkers} key={agent.id}>
+                <span className={`sidebar-worker-dot ${online ? "is-online" : ""}`} aria-hidden="true" />
+                <span>
+                  <strong>{label}</strong>
+                  <small>{agent.poolId || "default"} · {elapsed(agent.lastHeartbeat)}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="sidebar-workers-empty">No workers</p>
+      )}
+      {sortedAgents.length > visibleAgents.length ? <small className="sidebar-workers-more">+{sortedAgents.length - visibleAgents.length} more</small> : null}
+    </section>
+  );
+}
+
+function environmentToText(environment: Record<string, string> = {}) {
+  return Object.entries(environment).map(([key, value]) => `${key}=${value}`).join("\n");
+}
+
+function EnvironmentEditor({ environment = {}, initialEnvText, className = "environment-field" }: { environment?: Record<string, string>; initialEnvText?: string; className?: string }) {
+  const [mode, setMode] = useState<"env" | "json">("env");
+  const [envText, setEnvText] = useState(initialEnvText ?? environmentToText(environment));
+  const [jsonText, setJsonText] = useState(JSON.stringify(environment, null, 2));
+  const value = mode === "env" ? envText : jsonText;
+  return (
+    <div className={`env-editor ${className}`}>
+      <input type="hidden" name="environmentFormat" value={mode} />
+      <div className="env-editor-header">
+        <span>Environment variables</span>
+        <div className="env-tabs" aria-label="Environment format">
+          <button type="button" className={mode === "env" ? "is-active" : ""} aria-pressed={mode === "env"} onClick={() => setMode("env")}>KEY=VALUE</button>
+          <button type="button" className={mode === "json" ? "is-active" : ""} aria-pressed={mode === "json"} onClick={() => setMode("json")}>JSON</button>
+        </div>
+      </div>
+      <textarea
+        name="environmentJson"
+        value={value}
+        onChange={(event) => (mode === "env" ? setEnvText(event.target.value) : setJsonText(event.target.value))}
+        rows={4}
+        spellCheck={false}
+        placeholder={mode === "env" ? "PORT=8080\nDEBUG=true" : '{\n  "PORT": "8080",\n  "DEBUG": "true"\n}'}
+      />
+    </div>
+  );
+}
+
 export function RealtimeDashboard(props: Props) {
   const router = useRouter();
   const base = `workspaces/${props.workspaceId}`;
@@ -178,7 +276,7 @@ export function RealtimeDashboard(props: Props) {
     return () => clearInterval(timer);
   }, []);
 
-  const onlineAgents = useMemo(() => agents.filter((agent) => agent.status !== "offline" && now - agent.lastHeartbeat < 30_000), [agents, now]);
+  const onlineAgents = useMemo(() => agents.filter((agent) => isWorkerOnline(agent, now)), [agents, now]);
   const active = deployments.filter((item) => ["queued", "leased", "running"].includes(item.status));
   const sortedDeployments = [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
 
@@ -201,6 +299,8 @@ export function RealtimeDashboard(props: Props) {
           <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
           <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
         </nav>
+
+        <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
 
         <div className="sidebar-footer">
           <div className="session-user"><span aria-hidden="true" /><div><small>Signed in</small><strong>{props.user.email || props.user.role}</strong></div></div>
@@ -227,69 +327,286 @@ function ContainersView({ containers, deployments, agents, activeJobs, now }: {
   now: number;
 }) {
   const [query, setQuery] = useState("");
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
-  const [hiddenLogs, setHiddenLogs] = useState<Set<string>>(new Set());
+  const [showLogsMonitor, setShowLogsMonitor] = useState(false);
+  const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
+  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("containers");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
+  const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
   const sortedContainers = [...containers].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
-    matchesQuery([container.name, container.image, container.project, container.status, ...(container.ports || [])], query),
+    matchesQuery([container.name, container.image, container.project, container.status, container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
   const busyContainerActions = useMemo(
     () => new Set(deployments.filter(isActiveJob).map((job) => `${job.containerId || ""}:${job.action}`)),
     [deployments],
   );
-  function expandLog(containerId: string) {
-    setExpandedLogs((current) => new Set(current).add(containerId));
-    setHiddenLogs((current) => {
+  const groupedContainers = useMemo(() => {
+    const groups = new Map<string, ManagedContainer[]>();
+    for (const container of filteredContainers) {
+      const key = container.project || "Ungrouped";
+      groups.set(key, [...(groups.get(key) || []), container]);
+    }
+    return [...groups.entries()].sort(([groupA], [groupB]) => {
+      if (groupA === "Ungrouped") return 1;
+      if (groupB === "Ungrouped") return -1;
+      return groupA.localeCompare(groupB);
+    });
+  }, [filteredContainers]);
+  const containersByWorker = useMemo(() => {
+    const workers = new Map<string, { label: string; containers: ManagedContainer[] }>();
+    for (const container of filteredContainers) {
+      const key = container.workerId || container.workerHostname || "unknown-worker";
+      const label = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
+      const group = workers.get(key) || { label, containers: [] };
+      group.containers.push(container);
+      workers.set(key, group);
+    }
+    return [...workers.entries()].sort(([, workerA], [, workerB]) => {
+      if (workerA.label === "Unknown worker") return 1;
+      if (workerB.label === "Unknown worker") return -1;
+      return workerA.label.localeCompare(workerB.label);
+    });
+  }, [filteredContainers]);
+  function groupByStack(items: ManagedContainer[]) {
+    const stacks = new Map<string, ManagedContainer[]>();
+    for (const container of items) {
+      const key = container.project || "Ungrouped";
+      stacks.set(key, [...(stacks.get(key) || []), container]);
+    }
+    return [...stacks.entries()].sort(([stackA], [stackB]) => {
+      if (stackA === "Ungrouped") return 1;
+      if (stackB === "Ungrouped") return -1;
+      return stackA.localeCompare(stackB);
+    });
+  }
+  function toggleGroup(group: string) {
+    setExpandedGroups((current) => {
       const next = new Set(current);
-      next.delete(containerId);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
       return next;
     });
   }
-  function closeLog(containerId: string) {
-    setExpandedLogs((current) => {
+  function toggleWorker(worker: string) {
+    setExpandedWorkers((current) => {
       const next = new Set(current);
-      next.delete(containerId);
+      if (next.has(worker)) next.delete(worker);
+      else next.add(worker);
       return next;
     });
-    setHiddenLogs((current) => new Set(current).add(containerId));
+  }
+  function toggleWorkerStack(worker: string, stack: string) {
+    const key = `${worker}:${stack}`;
+    setExpandedWorkerStacks((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function openLogs(containerId = "") {
+    setSelectedLogContainerId(containerId);
+    setShowLogsMonitor(true);
+  }
+  function renderContainerRow(container: ManagedContainer, showDivider: boolean) {
+    const primaryAction = containerPrimaryAction(container.status);
+    const actions: ContainerAction[] = [primaryAction, "container_logs", "container_restart", "container_delete"];
+    const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
+    const dockerId = container.dockerId || container.id;
+    const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
+    return (
+      <article className="resource-row" key={container.id}>
+        {showDivider ? <div className="resource-divider" /> : null}
+        <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
+        <div className="resource-metadata">
+          <StatusBadge label={container.status} running={container.status === "running"} />
+          <span className="container-meta-line"><b>Docker</b> <code title={dockerId}>{dockerIdShort}</code> <b>Worker</b> <code title={container.workerId || workerName}>{workerName}</code></span>
+          <small>{(container.ports || []).join(", ") || "No published ports"}</small>
+        </div>
+        <div className="row-actions">{actions.map((action) => {
+          const meta = containerActionMeta(action);
+          return (
+            <form action={enqueueContainerAction} key={action}>
+              <input type="hidden" name="containerId" value={container.id} />
+              <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
+              <input type="hidden" name="action" value={action} />
+              <PendingIconButton title={meta.title} primary={action === primaryAction} busy={busyContainerActions.has(`${container.id}:${action}`)} onClick={action === "container_logs" ? () => openLogs(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
+            </form>
+          );
+        })}</div>
+      </article>
+    );
   }
   return (
     <div className="table-workspace containers-workspace">
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
         <div className="toolbar-actions">
+          {!showLogsMonitor ? (
+            <div className="icon-toggle" aria-label="Container view mode">
+              <button type="button" className={containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={containerViewMode === "containers"} data-tooltip="View containers" onClick={() => setContainerViewMode("containers")}><Icon name="container" /></button>
+              <button type="button" className={containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={containerViewMode === "groups"} data-tooltip="View groups" onClick={() => setContainerViewMode("groups")}><Icon name="layers" /></button>
+              <button type="button" className={containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={containerViewMode === "workers"} data-tooltip="View workers" onClick={() => setContainerViewMode("workers")}><Icon name="worker" /></button>
+            </div>
+          ) : null}
+          <IconButton title={showLogsMonitor ? "Show containers" : "Monitor logs"} onClick={() => setShowLogsMonitor((current) => !current)} primary={showLogsMonitor}><Icon name={showLogsMonitor ? "container" : "terminal"} /></IconButton>
           <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
         </div>
       </div>
 
-      <section className="panel resource-panel">
-        {filteredContainers.length ? filteredContainers.map((container, index) => {
-          const primaryAction = containerPrimaryAction(container.status);
-          const actions: ContainerAction[] = [primaryAction, "container_logs", "container_restart", "container_delete"];
-          return (
-            <article className="resource-row" key={container.id}>
-              {index ? <div className="resource-divider" /> : null}
-              <div className="resource-identity"><ResourceGlyph /><div className="resource-copy"><strong>{container.name}</strong><span>{container.image}{container.project ? ` · ${container.project}` : ""}</span></div></div>
-              <div className="resource-metadata"><StatusBadge label={container.status} running={container.status === "running"} /><small>{(container.ports || []).join(", ") || "No published ports"}</small></div>
-              <div className="row-actions">{actions.map((action) => {
-                const meta = containerActionMeta(action);
-                return (
-                  <form action={enqueueContainerAction} key={action}>
-                    <input type="hidden" name="containerId" value={container.id} />
-                    <input type="hidden" name="action" value={action} />
-                    <PendingIconButton title={meta.title} primary={action === primaryAction} busy={busyContainerActions.has(`${container.id}:${action}`)} onClick={action === "container_logs" ? () => expandLog(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
-                  </form>
-                );
-              })}</div>
-              {expandedLogs.has(container.id) && !hiddenLogs.has(container.id) ? (
-                <div className="logs-panel full-row">
-                  <div className="logs-panel-header"><strong>{container.name}</strong><button type="button" title="Close logs" aria-label="Close logs" data-tooltip="Close logs" onClick={() => closeLog(container.id)}><Icon name="close" /></button></div>
-                  <pre className="code-viewer"><code>{container.logTail || "Loading logs..."}</code></pre>
+      {!showLogsMonitor && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} /> : null}
+
+      {showLogsMonitor ? (
+        <LogsView containers={containers} deployments={deployments} selectedContainerId={selectedLogContainerId} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
+      ) : (
+        <section className="panel resource-panel">
+          {filteredContainers.length ? (
+            containerViewMode === "workers" ? containersByWorker.map(([workerKey, worker], workerIndex) => {
+              const isExpanded = expandedWorkers.has(workerKey);
+              const running = worker.containers.filter((container) => container.status === "running").length;
+              const stacks = groupByStack(worker.containers);
+              return (
+                <div className={`container-group worker-container-group ${isExpanded ? "is-expanded" : ""}`} key={workerKey}>
+                  {workerIndex ? <div className="resource-divider" /> : null}
+                  <button type="button" className="container-group-header worker-group-header" aria-expanded={isExpanded} onClick={() => toggleWorker(workerKey)}>
+                    <span className={`group-chevron ${isExpanded ? "is-open" : ""}`}><Icon name="chevron" /></span>
+                    <span className="group-stack-icon worker-stack-icon"><Icon name="worker" /></span>
+                    <span className="group-title"><strong>{worker.label}</strong><small>{stacks.length} stacks · {running} running · {worker.containers.length - running} stopped</small></span>
+                    <span className="group-count">{worker.containers.length}</span>
+                  </button>
+                  {isExpanded ? (
+                    <div className="worker-stack-list">
+                      {stacks.map(([stack, stackContainers], stackIndex) => (
+                        <div className="worker-stack-section" key={`${workerKey}:${stack}`}>
+                          {stackIndex ? <div className="resource-divider" /> : null}
+                          <button type="button" className="worker-stack-header" aria-expanded={expandedWorkerStacks.has(`${workerKey}:${stack}`)} onClick={() => toggleWorkerStack(workerKey, stack)}>
+                            <span className={`group-chevron stack-chevron ${expandedWorkerStacks.has(`${workerKey}:${stack}`) ? "is-open" : ""}`}><Icon name="chevron" /></span>
+                            <span className="worker-stack-title"><Icon name="layers" />{stack}</span>
+                            <small>{stackContainers.length} containers</small>
+                          </button>
+                          {expandedWorkerStacks.has(`${workerKey}:${stack}`) ? <div className="container-group-body">{stackContainers.map((container, index) => renderContainerRow(container, index > 0))}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </article>
-          );
-        }) : <EmptyState title={containers.length ? "No matching containers" : "No containers yet"} copy={containers.length ? "Clear the search field to show every container." : "Run or deploy a repository to see it here."} />}
+              );
+            }) : containerViewMode === "groups" ? groupedContainers.map(([group, groupContainers], groupIndex) => {
+              const isExpanded = expandedGroups.has(group);
+              const running = groupContainers.filter((container) => container.status === "running").length;
+              return (
+                <div className={`container-group ${isExpanded ? "is-expanded" : ""}`} key={group}>
+                  {groupIndex ? <div className="resource-divider" /> : null}
+                  <button type="button" className="container-group-header" aria-expanded={isExpanded} onClick={() => toggleGroup(group)}>
+                    <span className={`group-chevron ${isExpanded ? "is-open" : ""}`}><Icon name="chevron" /></span>
+                    <span className="group-stack-icon"><Icon name="layers" /></span>
+                    <span className="group-title"><strong>{group}</strong><small>{running} running · {groupContainers.length - running} stopped</small></span>
+                    <span className="group-count">{groupContainers.length}</span>
+                  </button>
+                  {isExpanded ? <div className="container-group-body">{groupContainers.map((container, index) => renderContainerRow(container, index > 0))}</div> : null}
+                </div>
+              );
+            }) : filteredContainers.map((container, index) => renderContainerRow(container, index > 0))
+          ) : <EmptyState title={containers.length ? "No matching containers" : "No containers yet"} copy={containers.length ? "Clear the search field to show every container." : "Run or deploy a repository to see it here."} />}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function LogsView({ containers, deployments, selectedContainerId, onSelectContainer, onClose }: {
+  containers: ManagedContainer[];
+  deployments: Deployment[];
+  selectedContainerId: string;
+  onSelectContainer: (containerId: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
+  const sortedContainers = useMemo(
+    () => [...containers].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name)),
+    [containers],
+  );
+  const projects = useMemo(
+    () => [...new Set(sortedContainers.map((container) => container.project || "Ungrouped"))].sort((a, b) => a.localeCompare(b)),
+    [sortedContainers],
+  );
+  const statuses = useMemo(
+    () => [...new Set(sortedContainers.map((container) => container.status).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [sortedContainers],
+  );
+  const visibleContainers = sortedContainers.filter((container) => {
+    if (selectedContainerId && container.id !== selectedContainerId) return false;
+    if (projectFilter && (container.project || "Ungrouped") !== projectFilter) return false;
+    if (statusFilter && container.status !== statusFilter) return false;
+    if (!query.trim()) return true;
+    return matchesQuery([container.name, container.image, container.project, container.status, container.logTail], query);
+  });
+  const activeLogJobs = useMemo(
+    () => new Set(deployments.filter((job) => isActiveJob(job) && job.action === "container_logs").map((job) => job.containerId || "")),
+    [deployments],
+  );
+  const consoleText = visibleContainers
+    .map((container) => {
+      const lines = [
+        `$ ${container.name}  [${container.status}${container.project ? ` · ${container.project}` : ""}]`,
+        container.logTail?.trim() || "No logs loaded yet. Refresh logs to request the latest tail.",
+      ];
+      return lines.join("\n");
+    })
+    .join("\n\n");
+  const selectedContainer = selectedContainerId ? sortedContainers.find((container) => container.id === selectedContainerId) : undefined;
+  useEffect(() => {
+    if (!fullscreen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setFullscreen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullscreen]);
+
+  return (
+    <div className={`logs-workspace ${fullscreen ? "is-fullscreen" : ""}`}>
+      <div className="top-toolbar logs-toolbar">
+        <label className="search-field"><span>Search logs</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter logs..." /></label>
+        <div className="logs-filters">
+          <select value={selectedContainerId} aria-label="Filter by container" onChange={(event) => onSelectContainer(event.target.value)}>
+            <option value="">All containers</option>
+            {sortedContainers.map((container) => <option value={container.id} key={container.id}>{container.name}</option>)}
+          </select>
+          <select value={projectFilter} aria-label="Filter by group" onChange={(event) => setProjectFilter(event.target.value)}>
+            <option value="">All groups</option>
+            {projects.map((project) => <option value={project} key={project}>{project}</option>)}
+          </select>
+          <select value={statusFilter} aria-label="Filter by status" onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">Any status</option>
+            {statuses.map((status) => <option value={status} key={status}>{status}</option>)}
+          </select>
+        </div>
+        <div className="toolbar-actions logs-actions">
+          {selectedContainerId ? (
+            <form action={enqueueContainerAction}>
+              <input type="hidden" name="containerId" value={selectedContainerId} />
+              <input type="hidden" name="containerRef" value={selectedContainer?.dockerId || selectedContainer?.name || selectedContainerId} />
+              <input type="hidden" name="action" value="container_logs" />
+              <PendingIconButton title="Refresh selected logs" busy={activeLogJobs.has(selectedContainerId)}><Icon name="terminal" /></PendingIconButton>
+            </form>
+          ) : null}
+          <form action={enqueueAllContainerLogs}><PendingIconButton title="Refresh all logs" busy={activeLogJobs.size > 0}><Icon name="sync" /></PendingIconButton></form>
+          <IconButton title={fullscreen ? "Exit fullscreen" : "Fullscreen logs"} onClick={() => setFullscreen((current) => !current)} primary={fullscreen}><Icon name={fullscreen ? "collapse" : "expand"} /></IconButton>
+          <IconButton title="Close logs" onClick={onClose}><Icon name="close" /></IconButton>
+        </div>
+      </div>
+
+      <section className="logs-monitor">
+        <div className="logs-monitor-header">
+          <div><strong>Live logs</strong><span>{visibleContainers.length} of {containers.length} containers</span></div>
+          {selectedContainerId ? <button type="button" title="Show all containers" data-tooltip="Show all containers" onClick={() => onSelectContainer("")}><Icon name="close" /></button> : null}
+        </div>
+        <pre className="logs-monitor-console"><code>{consoleText || "No containers match the current filters."}</code></pre>
       </section>
     </div>
   );
@@ -308,10 +625,23 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
-  const busyRepositoryActions = useMemo(
-    () => new Set(deployments.filter(isActiveJob).map((job) => `${job.repositoryId}:${job.action}`)),
-    [deployments],
+  const [selectedWorkerByRepository, setSelectedWorkerByRepository] = useState<Record<string, string>>({});
+  const availableWorkers = useMemo(
+    () => agents.filter((agent) => isWorkerOnline(agent, now, 120_000)).sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))),
+    [agents, now],
   );
+  const availableWorkerKey = availableWorkers.map((agent) => agent.id).join("|");
+  const availableWorkerIds = useMemo(() => new Set(availableWorkers.map((agent) => agent.id)), [availableWorkerKey]);
+  const busyRepositoryActions = useMemo(
+    () => new Set(deployments.filter((job) => isActiveJob(job) && (!job.targetWorkerId || availableWorkerIds.has(job.targetWorkerId))).map(activeRepositoryJobKey)),
+    [deployments, availableWorkerIds],
+  );
+  useEffect(() => {
+    setSelectedWorkerByRepository((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([, workerId]) => !workerId || availableWorkerIds.has(workerId)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [availableWorkerIds]);
   const filteredRepositories = repositories.filter((repository) =>
     matchesQuery([
       repository.alias,
@@ -340,38 +670,47 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
       {showCredentials ? <CredentialsPanel credentials={credentials} /> : null}
 
       <section className="panel resource-panel">
-        {filteredRepositories.length ? filteredRepositories.map((repository, index) => (
-          <article className="resource-row repo-resource-row" key={repository.id}>
-            {index ? <div className="resource-divider" /> : null}
-            <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-            <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
-            <div className="row-actions">
-              <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" busy={busyRepositoryActions.has(`${repository.id}:sync`)}><Icon name="sync" /></QueueButton>
-              <IconButton
-                title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
-                onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
-              >
-                <Icon name="sliders" />
-              </IconButton>
-              {repository.mode === "compose" ? (
-                viewingComposeRepositoryId === repository.id ? (
-                  <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
-                ) : (
-                  <form action={enqueueDeployment}>
-                    <input type="hidden" name="repositoryId" value={repository.id} />
-                    <input type="hidden" name="action" value="read_compose" />
-                    <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(`${repository.id}:read_compose`)} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
-                  </form>
-                )
-              ) : null}
-              {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" primary busy={busyRepositoryActions.has(`${repository.id}:deploy`)}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" primary busy={busyRepositoryActions.has(`${repository.id}:build`)}><Icon name="play" /></QueueButton>}
-              <QueueButton repositoryId={repository.id} action="stop" title="Stop" busy={busyRepositoryActions.has(`${repository.id}:stop`)}><Icon name="stop" /></QueueButton>
-              <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
-            </div>
-            <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
-            <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
-          </article>
-        )) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
+        {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
+          const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
+          const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
+          return (
+            <article className="resource-row repo-resource-row" key={repository.id}>
+              {index ? <div className="resource-divider" /> : null}
+              <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
+              <div className="resource-metadata"><span title={repository.url}>{repository.url}</span><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small></div>
+              <div className="row-actions">
+                <select className="worker-target-select" value={targetWorkerId} title="Run on worker" aria-label={`Run ${repository.alias} on worker`} onChange={(event) => setSelectedWorkerByRepository((current) => ({ ...current, [repository.id]: event.target.value }))}>
+                  <option value="">Any worker</option>
+                  {availableWorkers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}</option>)}
+                </select>
+                <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))}><Icon name="sync" /></QueueButton>
+                <IconButton
+                  title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
+                  onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
+                >
+                  <Icon name="sliders" />
+                </IconButton>
+                {repository.mode === "compose" ? (
+                  viewingComposeRepositoryId === repository.id ? (
+                    <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
+                  ) : (
+                    <form action={enqueueDeployment}>
+                      <input type="hidden" name="repositoryId" value={repository.id} />
+                      <input type="hidden" name="action" value="read_compose" />
+                      <input type="hidden" name="targetWorkerId" value={targetWorkerId} />
+                      <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
+                    </form>
+                  )
+                ) : null}
+                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))}><Icon name="play" /></QueueButton>}
+                <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))}><Icon name="stop" /></QueueButton>
+                <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
+              </div>
+              <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
+              <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
+            </article>
+          );
+        }) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
       </section>
     </div>
   );
@@ -449,7 +788,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
               <div className="compose-port-note"><span>Ports are read from the Compose file.</span></div>
             </>
           )}
-          <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
+          <EnvironmentEditor initialEnvText="" />
           <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
         </div>
       </form>
@@ -483,7 +822,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
         <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
         <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
-        <label className="full">Environment JSON<textarea name="environmentJson" defaultValue={JSON.stringify(repository.environment || {}, null, 2)} rows={4} /></label>
+        <EnvironmentEditor className="full" environment={repository.environment || {}} />
         <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository} tooltip="Remove this repository registration">Remove registration</PendingSubmitButton></div>
       </form>
     </details>
@@ -542,15 +881,59 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
   );
 }
 
-function WorkersPanel({ agents, now }: { agents: Agent[]; now: number }) {
+function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers: ManagedContainer[]; now: number }) {
+  const sortedAgents = [...agents].sort((a, b) => {
+    const aOnline = Number(isWorkerOnline(a, now));
+    const bOnline = Number(isWorkerOnline(b, now));
+    return bOnline - aOnline || (a.label || a.hostname || a.id).localeCompare(b.label || b.hostname || b.id);
+  });
   return (
-    <section className="panel">
-      <div className="section-title"><div><h2>Workers</h2></div></div>
-      <div className="compact-list">{agents.map((agent) => {
-        const online = now - agent.lastHeartbeat < 30_000;
-        return <div className="compact-row" key={agent.id}><StatusBadge label={online ? "online" : "offline"} running={online} /><div><strong>{agent.hostname || agent.id}</strong><small>{agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {elapsed(agent.lastHeartbeat)}</small></div></div>;
+    <section className="workers-panel">
+      <div className="workers-panel-header">
+        <strong>Workers</strong>
+        <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
+      </div>
+      <div className="workers-grid">{sortedAgents.map((agent) => {
+        const online = isWorkerOnline(agent, now);
+        const statusLabel = workerStatusLabel(agent, now);
+        const ownedContainerCount = containers.filter((container) => container.workerId === agent.id).length;
+        const canDelete = !online && (agent.status === "offline" || now - agent.lastHeartbeat >= 120_000);
+        const displayName = agent.label || agent.hostname || agent.id;
+        const docker = agent.docker;
+        const deleteTitle = ownedContainerCount
+          ? `Delete orphan worker and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
+          : "Delete orphan worker";
+        return (
+          <details className="worker-card" key={agent.id}>
+            <summary>
+              <StatusBadge label={statusLabel} running={online} />
+              <div className="worker-card-title">
+                <strong>{displayName}</strong>
+                <small>{agent.poolId || "default"} · {agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {elapsed(agent.lastHeartbeat)}</small>
+              </div>
+              <span className="worker-card-chevron"><Icon name="chevron" /></span>
+            </summary>
+            <div className="worker-details">
+              <span><strong>ID</strong><small>{agent.id}</small></span>
+              <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
+              <span><strong>Host</strong><small>{agent.hostname || "Unknown"}{agent.location ? ` · ${agent.location}` : ""}</small></span>
+              <span><strong>Shards</strong><small>{agent.shards?.length ? agent.shards.join(", ") : "all/default"}</small></span>
+              <span><strong>Runtime</strong><small>Python {agent.pythonVersion || "unknown"} · {agent.machine || agent.system || "host"}</small></span>
+              <span><strong>Paths</strong><small>{agent.cloneDir || "/app/clones"} · {agent.dataDir || "/app/data"}</small></span>
+              <span><strong>Docker</strong><small>{docker?.available ? `${docker.containersRunning || 0}/${docker.containers || 0} running · ${docker.images || 0} images · ${docker.serverVersion || "Docker"}` : docker?.error || "Unavailable"}</small></span>
+              <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>
+              <span><strong>Traefik</strong><small>{agent.traefikEnabled ? agent.traefikNetwork || "proxy" : "disabled"}</small></span>
+              {canDelete ? (
+                <form action={deleteWorker} className="worker-delete-form">
+                  <input type="hidden" name="workerId" value={agent.id} />
+                  <PendingIconButton title={deleteTitle}><Icon name="trash" /></PendingIconButton>
+                </form>
+              ) : null}
+            </div>
+          </details>
+        );
       })}</div>
-      {!agents.length ? <p className="empty-copy">No worker has checked in yet.</p> : null}
+      {!sortedAgents.length ? <p className="empty-copy">No worker has checked in yet.</p> : null}
     </section>
   );
 }

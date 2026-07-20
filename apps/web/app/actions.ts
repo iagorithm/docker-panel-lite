@@ -11,7 +11,9 @@ import { encryptSecret } from "@/lib/secrets";
 const aliasPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*[\\]+$/;
 const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
+const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose";
 
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
@@ -23,6 +25,7 @@ const repositorySchema = z.object({
   dockerfile: z.string().trim().default("Dockerfile"),
   credentialId: z.string().trim().default(""),
   environmentJson: z.string().default("{}"),
+  environmentFormat: z.enum(["env", "json"]).default("env"),
   domain: z.string().trim().refine((value) => !value || hostnamePattern.test(value), "Invalid domain"),
   service: z.string().trim().default("web"),
   internalPort: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -79,32 +82,75 @@ function aliasFromUrl(url: string) {
   return tail.replace(/\.git$/i, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repository";
 }
 
-function parseEnvironment(value: string): Record<string, string> {
+function normalizeEnvKey(key: string) {
+  const normalized = key.trim();
+  return envKeyPattern.test(normalized) ? normalized : "";
+}
+
+function compactJsonText(value: string) {
+  const text = value.trim();
+  if (!text || !["{", "["].includes(text[0])) return value;
+  try {
+    return JSON.stringify(parseJsonInput(text));
+  } catch {
+    return value;
+  }
+}
+
+function normalizeEnvValue(item: unknown) {
+  if (item == null) return "";
+  if (typeof item === "object") return JSON.stringify(item);
+  return compactJsonText(String(item)).replace(/\u0000/g, "");
+}
+
+function environmentFromObject(value: Record<string, unknown>) {
+  const result: Record<string, string> = {};
+  for (const [rawKey, item] of Object.entries(value)) {
+    const key = normalizeEnvKey(rawKey);
+    if (key) result[key] = normalizeEnvValue(item);
+  }
+  return result;
+}
+
+function parseEnvValue(value: string) {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+  if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+    const inner = trimmed.slice(1, -1);
+    return quote === '"' ? inner.replace(/\\n/g, "\n").replace(/\\"/g, '"') : inner;
+  }
+  return trimmed.replace(/\s+#.*$/, "").trim();
+}
+
+function parseEnvironment(value: string, format: "env" | "json" = "env", fallback: Record<string, string> = {}): Record<string, string> {
   const raw = value.trim();
   if (!raw) return {};
-  if (!raw.startsWith("{")) {
-    return Object.fromEntries(
-      raw
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#"))
-        .map((line) => {
-          const separator = line.indexOf("=");
-          if (separator < 1) throw new Error(`Environment line must be KEY=value: ${line}`);
-          return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
-        }),
-    );
+  if (format === "json" || raw.startsWith("{")) {
+    let parsed: unknown;
+    try {
+      parsed = parseJsonInput(raw);
+    } catch {
+      return fallback;
+    }
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      return fallback;
+    }
+    return environmentFromObject(parsed as Record<string, unknown>);
   }
-  const parsed = JSON.parse(raw);
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error("Environment JSON must be an object");
+  const result: Record<string, string> = {};
+  let currentKey = "";
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (match) {
+      currentKey = match[1];
+      result[currentKey] = normalizeEnvValue(parseEnvValue(match[2]));
+      continue;
+    }
+    if (currentKey) result[currentKey] = normalizeEnvValue(`${result[currentKey]}\n${rawLine}`);
   }
-  return Object.fromEntries(
-    Object.entries(parsed).map(([key, item]) => {
-      if (!key || typeof item === "object") throw new Error(`Environment value '${key}' must be scalar`);
-      return [key, item == null ? "" : String(item)];
-    }),
-  );
+  return result;
 }
 
 function normalizeEnvironment(value: unknown): Record<string, string> {
@@ -115,18 +161,50 @@ function normalizeEnvironment(value: unknown): Record<string, string> {
     return parseEnvironment(raw);
   }
   if (typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, item]) => {
-      if (!key || typeof item === "object") throw new Error(`Environment value '${key}' must be scalar`);
-      return [key, item == null ? "" : String(item)];
-    }),
-  );
+  return environmentFromObject(value as Record<string, unknown>);
 }
 
 function shardFor(value: string) {
   const shards = Math.max(1, Number(process.env.QUEUE_SHARDS ?? "16"));
   const hash = createHash("sha256").update(value).digest().readUInt32BE(0);
   return String(hash % shards).padStart(2, "0");
+}
+
+function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 120_000) {
+  return agent.status === "online" && now - Number(agent.lastHeartbeat || 0) < freshness;
+}
+
+async function recordFailedDeployment(input: {
+  workspaceId: string;
+  repositoryId: string;
+  action: RepositoryAction;
+  targetWorkerId: string;
+  requestedBy: string;
+  message: string;
+}) {
+  const createdAt = Date.now();
+  const jobRef = adminDatabase.ref("jobs").push();
+  const jobId = jobRef.key!;
+  const job = {
+    id: jobId,
+    workspaceId: input.workspaceId,
+    repositoryId: input.repositoryId,
+    action: input.action,
+    poolId: "default",
+    shardId: shardFor(input.repositoryId),
+    targetWorkerId: input.targetWorkerId,
+    status: "failed",
+    progress: 0,
+    attempt: 0,
+    requestedBy: input.requestedBy,
+    createdAt,
+    finishedAt: createdAt,
+    message: input.message,
+  };
+  await adminDatabase.ref().update({
+    [`jobs/${jobId}`]: job,
+    [`workspaces/${input.workspaceId}/deployments/${jobId}`]: job,
+  });
 }
 
 export async function saveRepository(formData: FormData) {
@@ -136,6 +214,7 @@ export async function saveRepository(formData: FormData) {
   const now = Date.now();
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
   const current = (await currentRef.get()).val();
+  const environment = parseEnvironment(input.environmentJson, input.environmentFormat, current?.environment ?? {});
   await currentRef.set({
     id: repositoryId,
     alias: input.alias,
@@ -145,7 +224,7 @@ export async function saveRepository(formData: FormData) {
     composeFile: input.composeFile || defaultComposeFile,
     dockerfile: input.dockerfile || "Dockerfile",
     credentialId: input.credentialId,
-    environment: parseEnvironment(input.environmentJson),
+    environment,
     domain: input.domain,
     service: input.service || "web",
     internalPort: input.internalPort,
@@ -254,16 +333,36 @@ export async function enqueueDeployment(formData: FormData) {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
   const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose"]).parse(formData.get("action"));
+  const targetWorkerId = z.string().trim().default("").parse(formData.get("targetWorkerId") || "");
   const repository = (
     await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).get()
   ).val();
   if (!repository) throw new Error("Repository not found");
+  const createdAt = Date.now();
+  const targetWorker = targetWorkerId
+    ? (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${targetWorkerId}`).get()).val()
+    : null;
+  if (targetWorkerId && !targetWorker) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
+    return;
+  }
+  if (targetWorkerId && !agentIsOnline(targetWorker, createdAt)) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
+    return;
+  }
+  if (!targetWorkerId) {
+    const agents = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents`).get()).val() ?? {};
+    const hasOnlineWorker = Object.values(agents as Record<string, Record<string, unknown>>).some((agent) => agentIsOnline(agent, createdAt));
+    if (!hasOnlineWorker) {
+      await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "No workers are available" });
+      return;
+    }
+  }
 
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;
-  const createdAt = Date.now();
   const shardId = shardFor(repositoryId);
-  const poolId = repository.poolId || "default";
+  const poolId = targetWorker?.poolId || repository.poolId || "default";
   const job = {
     id: jobId,
     workspaceId: user.workspaceId,
@@ -271,16 +370,17 @@ export async function enqueueDeployment(formData: FormData) {
     action,
     poolId,
     shardId,
+    targetWorkerId,
     status: "queued",
     progress: 0,
     attempt: 0,
-    idempotencyKey: `${user.workspaceId}:${repositoryId}:${action}:${createdAt}`,
+    idempotencyKey: `${user.workspaceId}:${repositoryId}:${action}:${targetWorkerId || "any"}:${createdAt}`,
     requestedBy: user.uid,
     createdAt,
   };
   await adminDatabase.ref().update({
     [`jobs/${jobId}`]: job,
-    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 },
+    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId },
     [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
   });
 }
@@ -306,16 +406,20 @@ export async function enqueueAllRepositories() {
 export async function enqueueContainerAction(formData: FormData) {
   const user = await requireSession("operator");
   const containerId = z.string().min(1).parse(formData.get("containerId"));
+  const submittedContainerRef = z.string().optional().parse(formData.get("containerRef") || undefined);
   const action = z.enum(["container_start", "container_stop", "container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
   const existing = await adminDatabase.ref(`workspaces/${user.workspaceId}/containers/${containerId}`).get();
   if (!existing.exists()) throw new Error("Container not found");
+  const container = existing.val() as Record<string, string>;
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;
   const createdAt = Date.now();
   const shardId = shardFor(containerId);
-  const poolId = "default";
-  const job = { id: jobId, workspaceId: user.workspaceId, containerId, repositoryId: "", action, poolId, shardId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
-  await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
+  const poolId = container.poolId || "default";
+  const targetWorkerId = container.workerId || "";
+  const containerRef = container.dockerId || container.name || submittedContainerRef || containerId;
+  const job = { id: jobId, workspaceId: user.workspaceId, containerId, containerRef, repositoryId: "", action, poolId, shardId, targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+  await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
 }
 
 export async function enqueueAllContainerLogs() {
@@ -323,19 +427,23 @@ export async function enqueueAllContainerLogs() {
   const containers = (await adminDatabase.ref(`workspaces/${user.workspaceId}/containers`).get()).val() ?? {};
   const updates: Record<string, unknown> = {};
   const createdAt = Date.now();
-  const poolId = "default";
-  for (const containerId of Object.keys(containers)) {
+  for (const [containerId, container] of Object.entries(containers) as [string, Record<string, string>][]) {
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(containerId);
+    const poolId = container.poolId || "default";
+    const targetWorkerId = container.workerId || "";
+    const containerRef = container.dockerId || container.name || containerId;
     const job = {
       id: jobId,
       workspaceId: user.workspaceId,
       containerId,
+      containerRef,
       repositoryId: "",
       action: "container_logs",
       poolId,
       shardId,
+      targetWorkerId,
       status: "queued",
       progress: 0,
       attempt: 0,
@@ -343,7 +451,7 @@ export async function enqueueAllContainerLogs() {
       createdAt,
     };
     updates[`jobs/${jobId}`] = job;
-    updates[`queues/${poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100 };
+    updates[`queues/${poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId };
     updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
   }
   if (Object.keys(updates).length) await adminDatabase.ref().update(updates);
@@ -351,30 +459,79 @@ export async function enqueueAllContainerLogs() {
 
 export async function enqueueInventoryRefresh() {
   const user = await requireSession("operator");
-  const jobRef = adminDatabase.ref("jobs").push();
-  const jobId = jobRef.key!;
   const createdAt = Date.now();
-  const poolId = "default";
-  const shardId = shardFor(`inventory:${user.workspaceId}`);
-  const job = {
-    id: jobId,
-    workspaceId: user.workspaceId,
-    containerId: "",
-    repositoryId: "",
-    action: "inventory_refresh",
-    poolId,
-    shardId,
-    status: "queued",
-    progress: 0,
-    attempt: 0,
-    requestedBy: user.uid,
-    createdAt,
-  };
-  await adminDatabase.ref().update({
-    [`jobs/${jobId}`]: job,
-    [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100 },
-    [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
-  });
+  const agents = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents`).get()).val() ?? {};
+  const targets = Object.entries(agents as Record<string, Record<string, string>>)
+    .map(([agentId, agent]) => ({ agentId, poolId: agent.poolId || "default" }))
+    .filter((agent) => {
+      const record = (agents as Record<string, Record<string, string | number>>)[agent.agentId] || {};
+      return agent.agentId && record.status === "online" && createdAt - Number(record.lastHeartbeat || 0) < 120_000;
+    });
+  const fallbackTargets = targets.length ? targets : [{ agentId: "", poolId: "default" }];
+  const updates: Record<string, unknown> = {};
+  for (const target of fallbackTargets) {
+    const jobRef = adminDatabase.ref("jobs").push();
+    const jobId = jobRef.key!;
+    const shardId = shardFor(`inventory:${user.workspaceId}:${target.agentId || "default"}`);
+    const job = {
+      id: jobId,
+      workspaceId: user.workspaceId,
+      containerId: "",
+      repositoryId: "",
+      action: "inventory_refresh",
+      poolId: target.poolId,
+      shardId,
+      targetWorkerId: target.agentId,
+      status: "queued",
+      progress: 0,
+      attempt: 0,
+      requestedBy: user.uid,
+      createdAt,
+    };
+    updates[`jobs/${jobId}`] = job;
+    updates[`queues/${target.poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId: target.agentId };
+    updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
+  }
+  await adminDatabase.ref().update(updates);
+}
+
+export async function deleteWorker(formData: FormData) {
+  try {
+    const user = await requireSession("operator");
+    const workerId = z.string().min(1).parse(formData.get("workerId"));
+    const workspaceRoot = `workspaces/${user.workspaceId}`;
+    const agentSnapshot = await adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`).get();
+    if (!agentSnapshot.exists()) return;
+    const agent = agentSnapshot.val() as Record<string, unknown>;
+    const now = Date.now();
+    const lastHeartbeat = Number(agent.lastHeartbeat || 0);
+    if (agent.status === "online" && now - lastHeartbeat < 120_000) return;
+
+    const deployments = (await adminDatabase.ref(`${workspaceRoot}/deployments`).get()).val() ?? {};
+    const containers = (await adminDatabase.ref(`${workspaceRoot}/containers`).get()).val() ?? {};
+    const ownedContainers = Object.entries(containers as Record<string, Record<string, unknown> | null>).filter(([, container]) => container?.workerId === workerId);
+
+    const updates: Record<string, unknown> = { [`${workspaceRoot}/agents/${workerId}`]: null };
+    for (const [jobId, job] of Object.entries(deployments as Record<string, Record<string, unknown> | null>)) {
+      if (!job || !["queued", "leased", "running"].includes(String(job.status || ""))) continue;
+      if (job.workerId !== workerId && job.targetWorkerId !== workerId) continue;
+      const message = `Worker ${String(agent.label || workerId)} was removed`;
+      updates[`jobs/${jobId}/status`] = "failed";
+      updates[`jobs/${jobId}/finishedAt`] = now;
+      updates[`jobs/${jobId}/message`] = message;
+      updates[`${workspaceRoot}/deployments/${jobId}/status`] = "failed";
+      updates[`${workspaceRoot}/deployments/${jobId}/finishedAt`] = now;
+      updates[`${workspaceRoot}/deployments/${jobId}/message`] = message;
+      if (job.poolId && job.shardId) updates[`queues/${String(job.poolId)}/${String(job.shardId)}/${jobId}`] = null;
+    }
+    for (const [containerId] of ownedContainers) {
+      updates[`${workspaceRoot}/containers/${containerId}`] = null;
+    }
+    await adminDatabase.ref().update(updates);
+    revalidatePath("/dashboard");
+  } catch (error) {
+    console.error("deleteWorker failed", error);
+  }
 }
 
 export async function deleteRepository(formData: FormData) {

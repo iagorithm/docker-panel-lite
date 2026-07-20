@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 import json
+import logging
 import re
 import subprocess
 from pathlib import Path
 
 import yaml
+from docker.errors import NotFound
 
 from worker.config import Settings
 from worker.core import docker_ops, git, utils
@@ -15,6 +17,7 @@ from worker.secrets import decrypt_secret
 
 DEFAULT_COMPOSE_FILE = "compose.yml"
 ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+LOG = logging.getLogger("deployment-worker")
 
 
 def _safe_name(value: str) -> str:
@@ -47,26 +50,56 @@ def _sync(repository: dict, workspace_id: str, settings: Settings) -> Path:
     return path
 
 
+def _compact_json_text(value: str) -> str:
+    text = value.strip()
+    if not text or text[0] not in "{[":
+        return value
+    try:
+        return json.dumps(json.loads(re.sub(r",\s*([}\]])", r"\1", text)), separators=(",", ":"))
+    except json.JSONDecodeError:
+        return value
+
+
+def _normalize_environment_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"))
+    return _compact_json_text(str(value)).replace("\x00", "")
+
+
 def _parse_environment_text(value: str) -> dict[str, str]:
     raw = value.strip()
     if not raw:
         return {}
     if raw.startswith("{"):
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(re.sub(r",\s*([}\]])", r"\1", raw))
         except json.JSONDecodeError as error:
             raise ValueError("Environment JSON from Firebase is invalid") from error
         return _normalize_environment(parsed)
     result: dict[str, str] = {}
+    current_key = ""
     for line in raw.splitlines():
         item = line.strip()
         if not item or item.startswith("#"):
             continue
-        if "=" not in item:
+        match = re.match(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$", line)
+        if not match:
+            if current_key:
+                result[current_key] = f"{result[current_key]}\n{line}"
             continue
-        key, env_value = item.split("=", 1)
-        result[key.strip()] = env_value.strip()
-    return result
+        key, env_value = match.group(1), match.group(2)
+        value_text = env_value.strip()
+        if len(value_text) >= 2 and value_text[0] == value_text[-1] and value_text[0] in {"'", '"'}:
+            value_text = value_text[1:-1]
+            if env_value.strip().startswith('"'):
+                value_text = value_text.replace("\\n", "\n").replace('\\"', '"')
+        else:
+            value_text = re.sub(r"\s+#.*$", "", value_text).strip()
+        current_key = key.strip()
+        result[current_key] = value_text
+    return {key: _normalize_environment_value(env_value) for key, env_value in result.items()}
 
 
 def _normalize_environment(value: object) -> dict[str, str]:
@@ -82,7 +115,7 @@ def _normalize_environment(value: object) -> dict[str, str]:
             elif isinstance(item, dict):
                 key = str(item.get("key") or item.get("name") or "").strip()
                 if key:
-                    result[key] = "" if item.get("value") is None else str(item.get("value"))
+                    result[key] = _normalize_environment_value(item.get("value"))
         return result
     if isinstance(value, dict):
         result: dict[str, str] = {}
@@ -90,16 +123,13 @@ def _normalize_environment(value: object) -> dict[str, str]:
             key_text = str(key).strip()
             if isinstance(item, dict) and ("value" in item or "Value" in item):
                 item = item.get("value", item.get("Value"))
-            result[key_text] = "" if item is None else str(item)
+            result[key_text] = _normalize_environment_value(item)
         return result
     return {}
 
 
 def _validate_environment(environment: dict[str, str]) -> dict[str, str]:
-    invalid = [key for key in environment if not ENV_KEY_PATTERN.match(key)]
-    if invalid:
-        raise ValueError(f"Invalid environment variable name from Firebase: {invalid[0]}")
-    return environment
+    return {key: value for key, value in environment.items() if ENV_KEY_PATTERN.match(key)}
 
 
 def _load_environment(repository: dict, workspace_id: str) -> dict[str, str]:
@@ -118,11 +148,23 @@ def _load_environment(repository: dict, workspace_id: str) -> dict[str, str]:
         firebase_environment = reference(f"workspaces/{workspace_id}/repositories/{repository_id}/environment").get()
         environment.update(_normalize_environment(firebase_environment))
 
-    return _validate_environment(environment)
+    validated = _validate_environment(environment)
+    if repository_id:
+        LOG.info("Loaded %s environment vars for %s", len(validated), repository_id)
+    return validated
 
 
-def _environment_lines(environment: dict[str, str]) -> list[str]:
-    return [f"{key}={value}" for key, value in environment.items()]
+def _compact_process_error(stderr: str, stdout: str = "") -> str:
+    output = (stderr or stdout or "").strip()
+    if not output:
+        return "docker command failed"
+    if "SIGSEGV" in output or "segmentation violation" in output:
+        return (
+            "docker compose crashed with SIGSEGV. Rebuild the worker image so Docker CLI/Compose "
+            "match this machine architecture."
+        )
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return "\n".join(lines[:12])[:2000]
 
 
 def _compose_service_names(compose_file: Path) -> list[str]:
@@ -158,7 +200,7 @@ def _repository_file(
 
 
 def _compose_override(repository: dict, settings: Settings, environment: dict[str, str], compose_file: Path) -> Path | None:
-    domain = repository.get("domain", "").strip()
+    domain = repository.get("domain", "").strip() if settings.traefik_enabled else ""
     if not domain and not environment:
         return None
     project = _safe_name(repository["alias"])
@@ -198,7 +240,7 @@ def _run_compose(repository: dict, path: Path, settings: Settings, environment: 
         "Compose file",
         must_exist=True,
     )
-    docker_ops.write_env_file(str(path), _environment_lines(environment))
+    docker_ops.write_env_file(str(path), environment)
     command = ["docker", "compose", "-p", project, "-f", str(compose_file)]
     override = _compose_override(repository, settings, environment, compose_file)
     if override:
@@ -213,7 +255,7 @@ def _run_compose(repository: dict, path: Path, settings: Settings, environment: 
         env=os.environ | environment,
     )
     if process.returncode:
-        raise RuntimeError(process.stderr.strip() or "docker compose failed")
+        raise RuntimeError(_compact_process_error(process.stderr, process.stdout))
     return process.stdout.strip() or ("Stack stopped" if down else "Stack deployed")
 
 
@@ -229,7 +271,7 @@ def _run_dockerfile(repository: dict, path: Path, settings: Settings, environmen
     )
     labels: dict[str, str] = {}
     network = None
-    domain = repository.get("domain", "").strip()
+    domain = repository.get("domain", "").strip() if settings.traefik_enabled else ""
     if domain:
         network = settings.traefik_network
         labels = {
@@ -323,9 +365,29 @@ def container_inventory() -> dict[str, dict]:
     return inventory
 
 
+def _container_lookup_candidates(job: dict) -> list[str]:
+    candidates = [job.get("containerRef"), job.get("containerId")]
+    for value in list(candidates):
+        if isinstance(value, str) and "--" in value:
+            candidates.append(value.split("--", 1)[1])
+    unique = []
+    for value in candidates:
+        if isinstance(value, str) and value and value not in unique:
+            unique.append(value)
+    return unique
+
+
 def execute_container(job: dict) -> tuple[str, str | None]:
     client = docker_ops.connect()
-    container = client.containers.get(job["containerId"])
+    last_error = None
+    for candidate in _container_lookup_candidates(job):
+        try:
+            container = client.containers.get(candidate)
+            break
+        except NotFound as exc:
+            last_error = exc
+    else:
+        raise last_error or ValueError("Container reference is missing")
     if job["action"] == "container_start":
         container.start()
         return f"Container '{container.name}' started", None

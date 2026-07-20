@@ -31,10 +31,12 @@ export type Deployment = {
   id: string;
   repositoryId: string;
   containerId?: string;
+  containerRef?: string;
   action: string;
   status: string;
   progress: number;
   workerId?: string;
+  targetWorkerId?: string;
   message?: string;
   createdAt: number;
   startedAt?: number;
@@ -43,20 +45,58 @@ export type Deployment = {
 
 export type Agent = {
   id: string;
-  status: "online" | "offline" | "draining";
+  identitySource?: string;
+  status: "online" | "offline" | "draining" | "stopping";
+  label?: string;
   hostname: string;
+  location?: string;
+  poolId?: string;
   activeJobs: number;
   maxConcurrency: number;
+  shards?: string[];
   lastHeartbeat: number;
+  startedAt?: number;
+  stoppingAt?: number;
+  pid?: number;
+  pythonVersion?: string;
+  platform?: string;
+  system?: string;
+  machine?: string;
+  executable?: string;
+  cloneDir?: string;
+  dataDir?: string;
+  traefikEnabled?: boolean;
+  traefikNetwork?: string;
+  leaseSeconds?: number;
+  pollSeconds?: number;
+  docker?: {
+    available?: boolean;
+    serverVersion?: string;
+    apiVersion?: string;
+    os?: string;
+    architecture?: string;
+    containers?: number;
+    containersRunning?: number;
+    images?: number;
+    error?: string;
+  };
 };
 
 export type ManagedContainer = {
   id: string;
+  dockerId?: string;
   name: string;
   image: string;
   status: string;
   project: string;
   ports: string[];
+  workerId?: string;
+  workerLabel?: string;
+  workerHostname?: string;
+  poolId?: string;
   logTail?: string;
+  createdAt?: number;
+  lastSeenAt?: number;
+  missingSince?: number;
   updatedAt: number;
 };

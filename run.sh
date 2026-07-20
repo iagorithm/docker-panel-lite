@@ -12,7 +12,7 @@ Usage:
   ./run.sh [command]
 
 Commands:
-  up                  Build and start web, worker, and traefik
+  up                  Build and start web and worker
   down                Stop and remove the stack containers
   restart             Restart the stack
   ps                  Show service status
@@ -139,7 +139,7 @@ main() {
         echo "Usage: ./run.sh scale-worker N"
         exit 1
       fi
-      compose up -d --build --scale "worker=$count" worker web traefik
+      compose up -d --build --scale "worker=$count" worker web
       compose ps
       ;;
     *)

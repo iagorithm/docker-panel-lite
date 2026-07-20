@@ -47,11 +47,16 @@ services:
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       WORKER_WORKSPACE_ID: ${WORKER_WORKSPACE_ID:-default}
       WORKER_POOL: ${WORKER_POOL:-default}
+      WORKER_ID: ${WORKER_ID:-}
+      WORKER_MACHINE_ID: ${WORKER_MACHINE_ID:-}
+      WORKER_LABEL: ${WORKER_LABEL:-}
+      WORKER_LOCATION: ${WORKER_LOCATION:-}
       WORKER_SHARDS: ${WORKER_SHARDS:-}
       WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-2}
       WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-90}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
       QUEUE_SHARDS: ${QUEUE_SHARDS:-16}
+      TRAEFIK_ENABLED: ${TRAEFIK_ENABLED:-false}
       TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-proxy}
       APP_DATA_DIR: /app/data
       APP_CLONE_DIR: /app/clones
@@ -59,6 +64,8 @@ services:
 
   traefik:
     image: traefik:v3.3
+    profiles:
+      - traefik
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false

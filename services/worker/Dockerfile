@@ -2,14 +2,21 @@ FROM python:3.12-slim
 
 ARG DOCKER_CLI_VERSION=27.3.1
 ARG COMPOSE_VERSION=2.29.7
+ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
+    && case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) docker_arch="x86_64"; compose_arch="x86_64" ;; \
+      arm64|aarch64) docker_arch="aarch64"; compose_arch="aarch64" ;; \
+      arm|armv7l) docker_arch="armhf"; compose_arch="armv7" ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
     && tar xzf /tmp/docker.tgz -C /tmp \
     && mv /tmp/docker/docker /usr/local/bin/docker \
     && mkdir -p /usr/local/lib/docker/cli-plugins \
-    && curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" -o /usr/local/lib/docker/cli-plugins/docker-compose \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
     && rm -rf /tmp/docker /tmp/docker.tgz
 
