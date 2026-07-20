@@ -68,7 +68,7 @@ function GithubMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" }) {
+function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 1.9 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -85,6 +85,9 @@ function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" 
       {name === "container" ? <path {...common} d="M6 6.5h12M6 12h12M6 17.5h12M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5Z" /> : null}
       {name === "repo" ? <path {...common} d="M6 5h12v14H6zM9 8h6M9 12h6M9 16h3" /> : null}
       {name === "close" ? <path {...common} d="M7 7l10 10M17 7 7 17" /> : null}
+      {name === "branch" ? <path {...common} d="M7 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 0v5a3 3 0 0 0 3 3h4M17 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0-10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 0v2a3 3 0 0 1-3 3h-2" /> : null}
+      {name === "download" ? <path {...common} d="M12 4v10M8 10l4 4 4-4M5 20h14" /> : null}
+      {name === "help" ? <path {...common} d="M9.5 9a2.5 2.5 0 1 1 4 2c-.9.6-1.5 1.1-1.5 2.2M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /> : null}
     </svg>
   );
 }
@@ -270,13 +273,13 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
         <div className="toolbar-actions">
-          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
+          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)} primary={showAddRepository}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
           <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
           <form action={enqueueAllRepositories}><IconButton title="Sync all"><Icon name="sync" /></IconButton></form>
         </div>
       </div>
 
-      {showAddRepository ? <AddRepositoryPanel credentials={credentials} onClose={() => setShowAddRepository(false)} /> : null}
+      {showAddRepository ? <AddRepositoryPanel credentials={credentials} /> : null}
       {showCredentials ? <CredentialsPanel credentials={credentials} /> : null}
 
       <section className="panel resource-panel">
@@ -306,28 +309,36 @@ function RepositoriesView({ repositories, credentials, deployments, agents, acti
   );
 }
 
-function AddRepositoryPanel({ credentials, onClose }: { credentials: CredentialSummary[]; onClose: () => void }) {
+function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] }) {
   return (
-    <section className="panel editor-panel">
-      <div className="editor-panel-header">
-        <h2>Register repository</h2>
-        <IconButton title="Close repository form" onClick={onClose}><Icon name="close" /></IconButton>
-      </div>
-      <form action={saveRepository} className="form-grid">
-        <label>Alias<input name="alias" required placeholder="api-production" /></label>
-        <label className="wide">Repository URL<input name="url" required placeholder="https://github.com/org/repository.git" /></label>
-        <label>Branch<input name="branch" defaultValue="main" /></label>
-        <label>Credential<select name="credentialId" defaultValue=""><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
-        <label>Mode<select name="mode"><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
-        <label>Compose file<input name="composeFile" defaultValue="docker-compose.yml" /></label>
-        <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
-        <label>Worker pool<input name="poolId" defaultValue="default" /></label>
-        <label>Domain<input name="domain" placeholder="api.example.com" /></label>
-        <label>Compose service<input name="service" defaultValue="web" /></label>
-        <label>Internal port<input name="internalPort" type="number" defaultValue="3000" /></label>
-        <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
-        <label className="full">Environment JSON<textarea name="environmentJson" defaultValue="{}" rows={4} spellCheck={false} /></label>
-        <div className="full form-actions"><button className="primary">Clone and register</button></div>
+    <section className="panel add-repository-panel">
+      <form action={saveRepository} className="add-repository-form">
+        <input type="hidden" name="composeFile" value="docker-compose.yml" />
+        <input type="hidden" name="poolId" value="default" />
+        <input type="hidden" name="domain" value="" />
+        <input type="hidden" name="service" value="web" />
+        <input type="hidden" name="internalPort" value="3000" />
+
+        <div className="add-repository-top">
+          <fieldset className="mode-control">
+            <legend>Deployment mode <Icon name="help" /></legend>
+            <div className="segmented-radio">
+              <label><input type="radio" name="mode" value="dockerfile" defaultChecked /><span>Single Dockerfile</span></label>
+              <label><input type="radio" name="mode" value="compose" /><span>Docker Compose</span></label>
+            </div>
+          </fieldset>
+          <label className="credential-select">GitHub credential<select name="credentialId" defaultValue=""><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+        </div>
+
+        <div className="repository-input-card">
+          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches"><Icon name="branch" /></button></div></label>
+          <label>Display name<input name="alias" required placeholder="my-service" /></label>
+          <label>Branch<input name="branch" placeholder="Default" /></label>
+          <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
+          <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
+          <label className="environment-field">Environment variables <Icon name="help" /><textarea name="environmentJson" defaultValue={"PORT=8080\nDEBUG=true"} rows={4} spellCheck={false} /></label>
+          <div className="register-action"><button className="primary" type="submit"><Icon name="download" />Clone and register</button></div>
+        </div>
       </form>
     </section>
   );

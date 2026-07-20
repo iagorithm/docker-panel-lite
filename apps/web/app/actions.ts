@@ -40,7 +40,22 @@ function formObject(formData: FormData) {
 }
 
 function parseEnvironment(value: string): Record<string, string> {
-  const parsed = JSON.parse(value || "{}");
+  const raw = value.trim();
+  if (!raw) return {};
+  if (!raw.startsWith("{")) {
+    return Object.fromEntries(
+      raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .map((line) => {
+          const separator = line.indexOf("=");
+          if (separator < 1) throw new Error(`Environment line must be KEY=value: ${line}`);
+          return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
+        }),
+    );
+  }
+  const parsed = JSON.parse(raw);
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
     throw new Error("Environment JSON must be an object");
   }
