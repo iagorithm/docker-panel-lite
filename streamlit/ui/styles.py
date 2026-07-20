@@ -862,15 +862,6 @@ div[class*="st-key-env_json_inline_"] textarea {
     tab-size: 2;
 }
 
-div[class*="st-key-cancel_env_"] button,
-div[class*="st-key-save_env_"] button {
-    min-height: 2rem !important;
-    height: 2rem;
-    padding: 0.3rem 0.65rem !important;
-    border-radius: 0.5rem !important;
-    font-size: 0.78rem !important;
-}
-
 /* Inputs and selectors. */
 [data-baseweb="input"],
 [data-baseweb="base-input"],
@@ -1087,6 +1078,10 @@ div[class*="st-key-env_json_preview_"] {
     width: min(100%, 28rem);
 }
 
+div[class*="st-key-env_table_inline_"] [data-testid="stDataFrame"] {
+    font-size: 0.7rem;
+}
+
 div[class*="st-key-credential_json_input"] textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.72rem;
@@ -1095,10 +1090,16 @@ div[class*="st-key-credential_json_input"] textarea {
 
 div[class*="st-key-credential_inline_"] {
     max-width: 24rem;
+    margin-top: calc(0.55rem + 2px);
 }
 
 div[class*="st-key-branch_inline_"] {
     max-width: 24rem;
+    margin-top: calc(0.55rem + 2px);
+}
+
+div[class*="st-key-compose_file_inline_"] {
+    margin-top: calc(0.55rem + 2px);
 }
 
 div[class*="st-key-new_repo_branch_loader"] button {

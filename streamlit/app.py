@@ -1208,13 +1208,6 @@ def _render_repository_card(alias: str, info: dict) -> None:
 
         if st.session_state.get("editing_repo") == alias:
             compose_file_value = info.get("compose_file", "docker-compose.yml") if is_compose else ""
-            if is_compose:
-                compose_file_value = st.text_input(
-                    "Compose file path",
-                    value=compose_file_value,
-                    key=f"compose_file_inline_{alias}",
-                    help="Path relative to the repository root, for example deploy/compose.yml",
-                )
             current_branch = info.get("branch") or ""
             try:
                 available_branches = git.list_branches(Path(info.get("path", "")))
@@ -1225,45 +1218,70 @@ def _render_repository_card(alias: str, info: dict) -> None:
             branch_options = [""] + available_branches
             if current_branch and current_branch not in branch_options:
                 branch_options.append(current_branch)
-            selected_branch = st.selectbox(
-                "Deployment branch",
-                branch_options,
-                index=branch_options.index(current_branch),
-                format_func=lambda value: value or "Repository default branch",
-                key=f"branch_inline_{alias}",
-                help="This branch is synchronized before each build or deployment.",
-            )
-            if branch_read_error:
-                st.caption(f"Could not read local branches: {branch_read_error}")
             credential_options = [""] + list(st.session_state.credentials.keys())
             current_credential = info.get("credential") or ""
             if current_credential and current_credential not in credential_options:
                 credential_options.append(current_credential)
-            selected_credential = st.selectbox(
-                "GitHub credential",
-                credential_options,
-                index=credential_options.index(current_credential),
-                format_func=lambda value: (
-                    "Public (no credential)"
-                    if not value
-                    else (
-                        value
-                        if value in st.session_state.credentials
-                        else f"{value} (missing)"
+
+            settings_columns = st.columns(3 if is_compose else 2, gap="small")
+            branch_column_index = 1 if is_compose else 0
+            credential_column_index = 2 if is_compose else 1
+            if is_compose:
+                with settings_columns[0]:
+                    compose_file_value = st.text_input(
+                        "Compose file",
+                        value=compose_file_value,
+                        key=f"compose_file_inline_{alias}",
+                        help="Path relative to the repository root, for example deploy/compose.yml",
                     )
-                ),
-                key=f"credential_inline_{alias}",
-                help="Credential used to clone or pull this repository.",
-            )
-            environment_mode = st.radio(
-                "Environment variables",
-                ("Key / value", "JSON"),
-                horizontal=True,
-                key=f"env_mode_inline_{alias}",
-                label_visibility="collapsed",
-            )
+            with settings_columns[branch_column_index]:
+                selected_branch = st.selectbox(
+                    "Branch",
+                    branch_options,
+                    index=branch_options.index(current_branch),
+                    format_func=lambda value: value or "Repository default",
+                    key=f"branch_inline_{alias}",
+                    help="Synchronized before each build or deployment.",
+                )
+                if branch_read_error:
+                    st.caption(f"Could not read branches: {branch_read_error}")
+            with settings_columns[credential_column_index]:
+                selected_credential = st.selectbox(
+                    "Credential",
+                    credential_options,
+                    index=credential_options.index(current_credential),
+                    format_func=lambda value: (
+                        "Public"
+                        if not value
+                        else (
+                            value
+                            if value in st.session_state.credentials
+                            else f"{value} (missing)"
+                        )
+                    ),
+                    key=f"credential_inline_{alias}",
+                    help="Credential used to clone or pull this repository.",
+                )
+
+            environment_controls = st.columns([3, 1], gap="small")
+            with environment_controls[0]:
+                environment_mode = st.radio(
+                    "Environment variables",
+                    ("Key / value", "JSON"),
+                    horizontal=True,
+                    key=f"env_mode_inline_{alias}",
+                    label_visibility="collapsed",
+                )
             edited_environment_rows = None
             environment_json = ""
+            edit_environment_json = False
+            if environment_mode == "JSON":
+                with environment_controls[1]:
+                    edit_environment_json = st.toggle(
+                        "Edit",
+                        key=f"edit_env_json_inline_{alias}",
+                        help="Switch between syntax-highlighted preview and source editing.",
+                    )
             if environment_mode == "Key / value":
                 edited_environment_rows = st.data_editor(
                     _environment_rows(info.get("env_vars", "")),
@@ -1274,7 +1292,7 @@ def _render_repository_card(alias: str, info: dict) -> None:
                     },
                     hide_index=True,
                     num_rows="dynamic",
-                    height=150,
+                    height=112,
                     width="stretch",
                 )
             else:
@@ -1286,16 +1304,11 @@ def _render_repository_card(alias: str, info: dict) -> None:
                 json_line_count = max(1, len(formatted_environment_json.splitlines()))
                 json_widget_key = f"env_json_inline_{alias}"
                 environment_json = st.session_state.get(json_widget_key, formatted_environment_json)
-                edit_environment_json = st.toggle(
-                    "Edit JSON",
-                    key=f"edit_env_json_inline_{alias}",
-                    help="Switch between syntax-highlighted preview and source editing.",
-                )
                 if edit_environment_json:
                     environment_json = st.text_area(
                         "Environment JSON",
                         value=formatted_environment_json,
-                        height=min(180, max(78, 30 + json_line_count * 14)),
+                        height=min(140, max(72, 28 + json_line_count * 13)),
                         key=json_widget_key,
                         label_visibility="collapsed",
                         placeholder='{"KEY": "value"}',
@@ -1307,17 +1320,25 @@ def _render_repository_card(alias: str, info: dict) -> None:
                             language="json",
                             line_numbers=True,
                             wrap_lines=True,
-                            height=min(180, max(72, 28 + json_line_count * 14)),
+                            height=min(140, max(68, 24 + json_line_count * 13)),
                         )
             with st.container(horizontal=True, horizontal_alignment="right", gap="xsmall"):
-                if st.button("Cancel", key=f"cancel_env_{alias}"):
+                if components.icon_button(
+                    f"Cancel settings for {alias}",
+                    key=f"icon_action_cancel_settings_{alias}",
+                    icon="close",
+                    help="Cancel",
+                ):
                     st.session_state.editing_repo = None
                     st.rerun()
-                if st.button(
-                    "Save settings",
-                    key=f"save_env_{alias}",
-                    type="primary",
-                ):
+                save_settings = components.icon_button(
+                    f"Save settings for {alias}",
+                    key=f"icon_action_save_settings_{alias}",
+                    icon="check",
+                    help="Save settings",
+                    primary=True,
+                )
+                if save_settings:
                     if is_compose and not utils.validate_relative_file_path(compose_file_value):
                         st.error("Compose file must be a path relative to the repository root")
                     elif not utils.validate_branch_name(selected_branch):
