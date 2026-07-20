@@ -4,18 +4,32 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-fi
+env_value() {
+  local key="$1"
+  local value="${!key:-}"
+  if [[ -n "$value" || ! -f "$ENV_FILE" ]]; then
+    printf '%s' "$value"
+    return
+  fi
+  value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+  value="${value%$'\r'}"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "$value"
+}
 
-IMAGE="${WORKER_IMAGE:-iagorithm/docker-panel-lite-worker}"
-TAG="${WORKER_IMAGE_TAG:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
-PLATFORMS="${WORKER_IMAGE_PLATFORMS:-linux/amd64,linux/arm64}"
+IMAGE="$(env_value WORKER_IMAGE)"
+IMAGE="${IMAGE:-iagorithm/docker-panel-lite-worker}"
+TAG="$(env_value WORKER_IMAGE_TAG)"
+TAG="${TAG:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
+PLATFORMS="$(env_value WORKER_IMAGE_PLATFORMS)"
+PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
+PUSH="$(env_value PUSH)"
 PUSH="${PUSH:-true}"
-PROGRESS="${BUILDKIT_PROGRESS:-plain}"
+PROGRESS="$(env_value BUILDKIT_PROGRESS)"
+PROGRESS="${PROGRESS:-plain}"
 
 if [[ "$IMAGE" == *:* ]]; then
   BASE_IMAGE="${IMAGE%:*}"
@@ -35,7 +49,9 @@ if ! docker buildx version >/dev/null 2>&1; then
 fi
 
 ensure_builder() {
-  local builder="${WORKER_BUILDX_BUILDER:-docker-panel-lite-builder}"
+  local builder
+  builder="$(env_value WORKER_BUILDX_BUILDER)"
+  builder="${builder:-docker-panel-lite-builder}"
   if [[ "$PUSH" == "false" || "$PUSH" == "0" || "$PLATFORMS" != *,* ]]; then
     return
   fi
@@ -65,6 +81,7 @@ echo "  image: $BASE_IMAGE"
 echo "  tag: $TAG"
 echo "  platforms: $PLATFORMS"
 echo "  push: $PUSH"
+echo "  builder: $(docker buildx inspect 2>/dev/null | awk -F': +' '/^Name:/ {print $2; exit}')"
 
 docker buildx build \
   --progress "$PROGRESS" \

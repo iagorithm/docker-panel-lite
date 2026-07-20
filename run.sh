@@ -20,6 +20,7 @@ Commands:
   logs [services...]  Follow logs, optionally for selected services
   build               Build the worker image locally
   publish-worker      Build and push the worker image to Docker Hub
+  verify-worker-image Inspect the worker image published on Docker Hub
   pull                Pull service images
   scale-worker N      Run N worker replicas
 
@@ -81,6 +82,36 @@ compose_build() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" "$@"
 }
 
+env_value() {
+  local key="$1"
+  local value="${!key:-}"
+  if [[ -n "$value" || ! -f "$ENV_FILE" ]]; then
+    printf '%s' "$value"
+    return
+  fi
+  value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+  value="${value%$'\r'}"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "$value"
+}
+
+worker_image_ref() {
+  local image tag
+  image="$(env_value WORKER_IMAGE)"
+  image="${image:-iagorithm/docker-panel-lite-worker:latest}"
+  tag="$(env_value WORKER_IMAGE_TAG)"
+  if [[ "$image" == *:* ]]; then
+    local base="${image%:*}"
+    local default_tag="${image##*:}"
+    printf '%s:%s' "$base" "${tag:-$default_tag}"
+  else
+    printf '%s:%s' "$image" "${tag:-latest}"
+  fi
+}
+
 prepare_runtime_dirs() {
   mkdir -p "$ROOT_DIR/data/letsencrypt" "$ROOT_DIR/repos"
 }
@@ -134,6 +165,13 @@ main() {
       require_env_file
       require_docker
       "$ROOT_DIR/scripts/publish-worker-image.sh" "$@"
+      ;;
+    verify-worker-image)
+      require_env_file
+      require_docker
+      image_ref="$(worker_image_ref)"
+      echo "Inspecting $image_ref"
+      docker buildx imagetools inspect "$image_ref"
       ;;
     pull)
       require_env_file
