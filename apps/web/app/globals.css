@@ -1082,6 +1082,29 @@ a:hover { text-decoration-color: var(--ui-text); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.repo-public-url {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 16rem;
+  min-height: 1.24rem;
+  align-items: center;
+  margin-top: 0.08rem;
+  padding: 0.15rem 0.42rem;
+  overflow: hidden;
+  color: #075985;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 680;
+  line-height: 1;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-open-public {
+  text-decoration: none;
+}
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.42rem; }
 .row-actions form { display: contents; }
 .row-actions .container-command-form {
@@ -1627,6 +1650,22 @@ details[open] > summary { border-bottom: 1px solid var(--ui-border); }
 .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; padding: 1rem; }
 .form-grid.one-column { grid-template-columns: 1fr; }
 .form-grid label { display: flex; min-width: 0; flex-direction: column; gap: 0.35rem; color: var(--ui-text-secondary); font-size: 0.78rem; font-weight: 590; }
+.form-grid label.checkbox-field,
+.repository-input-card label.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  color: var(--ui-text);
+}
+.checkbox-field input[type="checkbox"] {
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+  min-height: 1rem;
+  padding: 0;
+  accent-color: var(--ui-text);
+}
 .form-grid .wide { grid-column: span 2; }
 .form-grid .full { grid-column: 1 / -1; }
 input, select, textarea { width: 100%; min-height: 2.5rem; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); padding: 0.5rem 0.7rem; outline: none; }

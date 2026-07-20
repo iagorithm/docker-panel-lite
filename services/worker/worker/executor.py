@@ -13,7 +13,7 @@ import yaml
 from docker.errors import NotFound
 
 from worker.config import Settings
-from worker.core import docker_ops, git, utils
+from worker.core import docker_ops, git, ngrok, utils
 from worker.firebase_runtime import reference
 from worker.secrets import decrypt_secret
 
@@ -246,6 +246,125 @@ def _compose_service_names(compose_file: Path) -> list[str]:
     return [str(name) for name in services.keys() if str(name).strip()]
 
 
+def _repository_public_tunnel_enabled(repository: dict) -> bool:
+    return bool(
+        repository.get("publicTunnelEnabled")
+        or repository.get("exposePublic")
+        or repository.get("ngrokEnabled")
+    )
+
+
+def _repository_public_tunnel_domain(repository: dict) -> str:
+    return str(
+        repository.get("publicTunnelDomain")
+        or repository.get("publicDomain")
+        or repository.get("ngrokDomain")
+        or ""
+    ).strip()
+
+
+def _container_ip(container) -> str:
+    networks = (container.attrs.get("NetworkSettings", {}) or {}).get("Networks", {}) or {}
+    for network in networks.values():
+        ip_address = str((network or {}).get("IPAddress") or "").strip()
+        if ip_address:
+            return ip_address
+    return ""
+
+
+def _host_port_target(container, internal_port: int) -> str:
+    ports = (container.attrs.get("NetworkSettings", {}) or {}).get("Ports", {}) or {}
+    preferred = ports.get(f"{internal_port}/tcp") or ports.get(f"{internal_port}/udp") or []
+    mappings = preferred or next((items for items in ports.values() if items), [])
+    if not mappings:
+        return ""
+    host_port = str((mappings[0] or {}).get("HostPort") or "").strip()
+    if not host_port:
+        return ""
+    return f"http://host.docker.internal:{host_port}"
+
+
+def _public_tunnel_target(repository: dict, settings: Settings) -> str:
+    client = docker_ops.connect()
+    project = _safe_name(repository["alias"])
+    service = str(repository.get("service") or "").strip()
+    internal_port = int(repository.get("internalPort") or 3000)
+    candidates = []
+    if repository.get("mode") == "compose":
+        containers = client.containers.list(
+            all=False,
+            filters={"label": f"com.docker.compose.project={project}"},
+        )
+        if service:
+            candidates.extend([item for item in containers if item.labels.get("com.docker.compose.service") == service])
+        candidates.extend([item for item in containers if item not in candidates])
+    else:
+        try:
+            candidates = [client.containers.get(project)]
+        except NotFound:
+            candidates = []
+    candidates = [item for item in candidates if item.status == "running"]
+    for container in candidates:
+        ip_address = _container_ip(container)
+        if ip_address:
+            return f"http://{ip_address}:{internal_port}"
+        target = _host_port_target(container, internal_port)
+        if target:
+            return target
+    raise RuntimeError(f"No running container found for public tunnel '{project}'")
+
+
+def _repository_ngrok_authtoken(repository: dict, workspace_id: str, settings: Settings) -> str:
+    repository_id = repository.get("id") or repository.get("alias")
+    if repository_id:
+        encrypted = reference(f"secrets/ngrok/{workspace_id}/{repository_id}").get()
+        if encrypted:
+            return decrypt_secret(encrypted, settings.encryption_key)
+    return str(
+        repository.get("ngrokAuthtoken")
+        or repository.get("ngrokToken")
+        or repository.get("ngrokApiKey")
+        or ""
+    ).strip()
+
+
+def _ngrok_service(settings: Settings, authtoken: str = "") -> ngrok.NgrokService:
+    token = authtoken.strip() or settings.ngrok_authtoken
+    return ngrok.NgrokService(
+        settings.data_dir,
+        enabled=settings.ngrok_enabled or bool(token),
+        authtoken=token,
+        binary=settings.ngrok_bin,
+        region=settings.ngrok_region,
+    )
+
+
+def _start_public_tunnel(repository: dict, workspace_id: str, settings: Settings) -> dict:
+    project = _safe_name(repository["alias"])
+    target = _public_tunnel_target(repository, settings)
+    authtoken = _repository_ngrok_authtoken(repository, workspace_id, settings)
+    tunnel = _ngrok_service(settings, authtoken).start(project, target, domain=_repository_public_tunnel_domain(repository))
+    return {
+        "publicUrl": tunnel.url,
+        "publicTunnelStatus": "online",
+        "publicTunnelTarget": tunnel.target,
+        "publicTunnelWorkerId": settings.worker_id,
+        "publicTunnelWorkerLabel": settings.worker_label,
+        "publicTunnelUpdatedAt": _now(),
+    }
+
+
+def _stop_public_tunnel(repository: dict, settings: Settings) -> dict:
+    _ngrok_service(settings).stop(_safe_name(repository["alias"]))
+    return {
+        "publicUrl": "",
+        "publicTunnelStatus": "stopped",
+        "publicTunnelTarget": "",
+        "publicTunnelWorkerId": "",
+        "publicTunnelUpdatedAt": _now(),
+    }
+
+
 def _repository_file(
     path: Path,
     raw_value: str,
@@ -385,10 +504,16 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     if action == "stop":
         path = _repo_path(settings, repository)
         if mode == "compose":
-            return _run_compose(repository, path, settings, environment, down=True), {}
+            message = _run_compose(repository, path, settings, environment, down=True)
+            return message, _stop_public_tunnel(repository, settings)
         client = docker_ops.connect()
         client.containers.get(_safe_name(repository["alias"])).remove(force=True)
-        return "Container stopped", {}
+        return "Container stopped", _stop_public_tunnel(repository, settings)
+    if action == "tunnel_stop":
+        return "Public URL closed", _stop_public_tunnel(repository, settings)
+    if action == "tunnel_start":
+        updates = _start_public_tunnel(repository, workspace_id, settings)
+        return f"Public URL ready: {updates['publicUrl']}", updates
     path = _sync(repository, workspace_id, settings)
     if action in {"sync", "read_compose"}:
         updates = {}
@@ -407,8 +532,13 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     if action not in {"deploy", "build"}:
         raise ValueError(f"Unknown repository action: {action}")
     if mode == "compose":
-        return _run_compose(repository, path, settings, environment), {}
-    return _run_dockerfile(repository, path, settings, environment), {}
+        message = _run_compose(repository, path, settings, environment)
+    else:
+        message = _run_dockerfile(repository, path, settings, environment)
+    updates = _start_public_tunnel(repository, workspace_id, settings) if _repository_public_tunnel_enabled(repository) else {}
+    if updates.get("publicUrl"):
+        message = f"{message}. Public URL: {updates['publicUrl']}"
+    return message, updates
 
 
 def execute_worker_command(job: dict, repository: dict | None, settings: Settings) -> tuple[str, str, int]:

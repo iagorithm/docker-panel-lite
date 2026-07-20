@@ -39,7 +39,7 @@ type Props = {
 };
 
 type View = "containers" | "repositories";
-type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "compose.yml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
@@ -107,7 +107,7 @@ function GithubMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" }) {
+function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -139,6 +139,8 @@ function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" 
       {name === "worker" ? <path {...common} d="M6.5 4.75h11A1.25 1.25 0 0 1 18.75 6v7A1.25 1.25 0 0 1 17.5 14.25h-11A1.25 1.25 0 0 1 5.25 13V6A1.25 1.25 0 0 1 6.5 4.75ZM8 18.75h8M12 14.25v4.5M8.25 8.25h.01M11 8.25h4.75M8.25 11h.01M11 11h4.75" /> : null}
       {name === "expand" ? <path {...common} d="M8.25 4.75h-3.5v3.5M4.75 4.75l5 5M15.75 4.75h3.5v3.5M19.25 4.75l-5 5M8.25 19.25h-3.5v-3.5M4.75 19.25l5-5M15.75 19.25h3.5v-3.5M19.25 19.25l-5-5" /> : null}
       {name === "collapse" ? <path {...common} d="M9.75 4.75v5h-5M9.75 9.75l-5-5M14.25 4.75v5h5M14.25 9.75l5-5M9.75 19.25v-5h-5M9.75 14.25l-5 5M14.25 19.25v-5h5M14.25 14.25l5 5" /> : null}
+      {name === "link" ? <path {...common} d="M9.45 14.55 14.55 9.45M10.75 6.75l1.55-1.55a4 4 0 0 1 5.65 5.65L16.4 12.4M7.6 11.6l-1.55 1.55a4 4 0 0 0 5.65 5.65l1.55-1.55" /> : null}
+      {name === "external" ? <path {...common} d="M8 6.25H5.75A1.25 1.25 0 0 0 4.5 7.5v10.75a1.25 1.25 0 0 0 1.25 1.25H16.5a1.25 1.25 0 0 0 1.25-1.25V16M13.25 4.5h6.25v6.25M19.25 4.75 11.5 12.5" /> : null}
     </svg>
   );
 }
@@ -925,6 +927,8 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       repository.service,
       repository.composeFile,
       repository.dockerfile,
+      repository.publicUrl,
+      repository.publicTunnelDomain,
       ...(workersByRepository.get(repository.id)?.map((worker) => worker.name) || []),
     ], query),
   );
@@ -957,6 +961,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               <div className="resource-metadata">
                 <span title={repository.url}>{repository.url}</span>
                 <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small>
+                {repository.publicUrl ? <a className="repo-public-url" href={repository.publicUrl} target="_blank" rel="noreferrer" title={repository.publicUrl}>{repository.publicUrl.replace(/^https?:\/\//, "")}</a> : null}
                 {deployedWorkers.length ? (
                   <div className="repo-worker-flags" aria-label="Deployed workers">
                     {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
@@ -990,6 +995,9 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                   )
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
+                <QueueButton repositoryId={repository.id} action="tunnel_start" title={repository.publicUrl ? "Refresh public URL" : "Open public URL"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
+                {repository.publicUrl ? <a className="icon-button repo-open-public" href={repository.publicUrl} target="_blank" rel="noreferrer" title="Open public URL" aria-label="Open public URL" data-tooltip="Open public URL"><Icon name="external" /></a> : null}
+                {repository.publicUrl ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URL" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
                 <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton>
               </div>
@@ -1076,6 +1084,9 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
               <div className="compose-port-note"><span>Ports are read from the Compose file.</span></div>
             </>
           )}
+          <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" /><span>Public ngrok URL</span></label>
+          <label>Ngrok domain<input name="publicTunnelDomain" placeholder="optional-domain.ngrok.app" /></label>
+          <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder="Optional per repository token" /></label>
           <EnvironmentEditor initialEnvText="" />
           <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
         </div>
@@ -1155,6 +1166,9 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
         <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
         <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
+        <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
+        <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
+        <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
         <EnvironmentEditor className="full" environment={repository.environment || {}} />
         <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button></div>
       </form>
@@ -1314,6 +1328,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <span><strong>Docker</strong><small>{docker?.available ? `${docker.containersRunning || 0}/${docker.containers || 0} running · ${docker.images || 0} images · ${docker.serverVersion || "Docker"}` : docker?.error || "Unavailable"}</small></span>
               <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>
               <span><strong>Traefik</strong><small>{agent.traefikEnabled ? agent.traefikNetwork || "proxy" : "disabled"}</small></span>
+              <span><strong>Ngrok</strong><small>{agent.ngrokEnabled ? agent.ngrokRegion || "enabled" : "disabled"}</small></span>
               {canDelete ? (
                 <form action={deleteWorker} className="worker-delete-form">
                   <input type="hidden" name="workerId" value={agent.id} />

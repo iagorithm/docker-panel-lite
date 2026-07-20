@@ -15,7 +15,7 @@ const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "compose.yml";
 const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60_000;
-type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
 type JobAction = RepositoryAction | ContainerJobAction;
 
@@ -34,6 +34,9 @@ const repositorySchema = z.object({
   service: z.string().trim().default("web"),
   internalPort: z.coerce.number().int().min(1).max(65535).default(3000),
   ports: z.string().trim().default(""),
+  publicTunnelEnabled: z.preprocess((value) => value === "on" || value === "true" || value === true, z.boolean()).default(false),
+  publicTunnelDomain: z.string().trim().default(""),
+  ngrokAuthtoken: z.string().trim().default(""),
   poolId: z.string().trim().regex(aliasPattern).default("default"),
 });
 
@@ -70,6 +73,18 @@ const repositoryImportSchema = z.object({
   internalPort: z.coerce.number().int().min(1).max(65535).optional(),
   internal_port: z.coerce.number().int().min(1).max(65535).optional(),
   ports: z.string().trim().optional().default(""),
+  publicTunnelEnabled: z.boolean().optional(),
+  public_tunnel_enabled: z.boolean().optional(),
+  exposePublic: z.boolean().optional(),
+  expose_public: z.boolean().optional(),
+  publicTunnelDomain: z.string().trim().optional(),
+  public_tunnel_domain: z.string().trim().optional(),
+  publicDomain: z.string().trim().optional(),
+  ngrokDomain: z.string().trim().optional(),
+  ngrokAuthtoken: z.string().trim().optional(),
+  ngrok_authtoken: z.string().trim().optional(),
+  ngrokApiKey: z.string().trim().optional(),
+  ngrok_api_key: z.string().trim().optional(),
   poolId: z.string().trim().optional(),
   pool_id: z.string().trim().optional(),
   added_at: z.string().trim().optional(),
@@ -95,6 +110,10 @@ function aliasFromUrl(url: string) {
 
 function aliasFromName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "command";
+}
+
+function secretMask(value: string) {
+  return value.length > 10 ? `${value.slice(0, 5)}••••••••${value.slice(-4)}` : "••••••••";
 }
 
 function normalizeEnvKey(key: string) {
@@ -284,7 +303,7 @@ export async function saveRepository(formData: FormData) {
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
   const current = (await currentRef.get()).val();
   const environment = parseEnvironment(input.environmentJson, input.environmentFormat, current?.environment ?? {});
-  await currentRef.set({
+  const repositoryPayload = {
     id: repositoryId,
     alias: input.alias,
     url: input.url,
@@ -298,11 +317,32 @@ export async function saveRepository(formData: FormData) {
     service: input.service || "web",
     internalPort: input.internalPort,
     ports: input.ports,
+    publicTunnelEnabled: input.publicTunnelEnabled,
+    publicTunnelDomain: input.publicTunnelDomain,
+    publicUrl: current?.publicUrl ?? "",
+    publicTunnelStatus: current?.publicTunnelStatus ?? "stopped",
+    publicTunnelTarget: current?.publicTunnelTarget ?? "",
+    publicTunnelWorkerId: current?.publicTunnelWorkerId ?? "",
+    publicTunnelWorkerLabel: current?.publicTunnelWorkerLabel ?? "",
+    publicTunnelUpdatedAt: current?.publicTunnelUpdatedAt ?? 0,
+    ngrokTokenSecret: current?.ngrokTokenSecret || Boolean(input.ngrokAuthtoken),
+    ngrokTokenMask: input.ngrokAuthtoken ? secretMask(input.ngrokAuthtoken) : current?.ngrokTokenMask ?? "",
     poolId: input.poolId,
     createdAt: current?.createdAt ?? now,
     updatedAt: now,
     updatedBy: user.uid,
-  });
+  };
+  const updates: Record<string, unknown> = {
+    [`workspaces/${user.workspaceId}/repositories/${repositoryId}`]: repositoryPayload,
+  };
+  if (input.ngrokAuthtoken) {
+    updates[`secrets/ngrok/${user.workspaceId}/${repositoryId}`] = {
+      ...encryptSecret(input.ngrokAuthtoken),
+      updatedAt: now,
+      updatedBy: user.uid,
+    };
+  }
+  await adminDatabase.ref().update(updates);
   revalidatePath("/dashboard");
 }
 
@@ -329,6 +369,7 @@ export async function importRepositoriesJson(formData: FormData) {
       ...normalizeEnvironment(input.env_vars),
       ...normalizeEnvironment(input.environment),
     };
+    const ngrokAuthtoken = input.ngrokAuthtoken || input.ngrok_authtoken || input.ngrokApiKey || input.ngrok_api_key || "";
     const createdAt = input.createdAt || (input.added_at ? Date.parse(input.added_at) : NaN);
     updates[`workspaces/${user.workspaceId}/repositories/${repositoryId}`] = {
       id: repositoryId,
@@ -345,11 +386,28 @@ export async function importRepositoriesJson(formData: FormData) {
       service: input.service || "web",
       internalPort: input.internalPort || input.internal_port || 3000,
       ports: input.ports || "",
+      publicTunnelEnabled: Boolean(input.publicTunnelEnabled ?? input.public_tunnel_enabled ?? input.exposePublic ?? input.expose_public),
+      publicTunnelDomain: input.publicTunnelDomain || input.public_tunnel_domain || input.publicDomain || input.ngrokDomain || "",
+      publicUrl: "",
+      publicTunnelStatus: "stopped",
+      publicTunnelTarget: "",
+      publicTunnelWorkerId: "",
+      publicTunnelWorkerLabel: "",
+      publicTunnelUpdatedAt: 0,
+      ngrokTokenSecret: Boolean(ngrokAuthtoken),
+      ngrokTokenMask: ngrokAuthtoken ? secretMask(ngrokAuthtoken) : "",
       poolId: input.poolId || input.pool_id || "default",
       createdAt: Number.isFinite(createdAt) ? createdAt : now,
       updatedAt: now,
       updatedBy: user.uid,
     };
+    if (ngrokAuthtoken) {
+      updates[`secrets/ngrok/${user.workspaceId}/${repositoryId}`] = {
+        ...encryptSecret(ngrokAuthtoken),
+        updatedAt: now,
+        updatedBy: user.uid,
+      };
+    }
   }
 
   if (!Object.keys(updates).length) throw new Error("No repositories to import");
@@ -427,7 +485,7 @@ export async function deleteCommandPreset(formData: FormData) {
 export async function enqueueDeployment(formData: FormData) {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
-  const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose"]).parse(formData.get("action"));
+  const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose", "tunnel_start", "tunnel_stop"]).parse(formData.get("action"));
   const targetWorkerId = z.string().trim().default("").parse(formData.get("targetWorkerId") || "");
   const repository = (
     await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).get()
@@ -728,7 +786,10 @@ export async function deleteRepository(formData: FormData) {
   const repository = snapshot.val() as Record<string, unknown>;
   const expected = String(repository.alias || repositoryId);
   if (confirmation !== expected) return;
-  await ref.remove();
+  await adminDatabase.ref().update({
+    [`workspaces/${user.workspaceId}/repositories/${repositoryId}`]: null,
+    [`secrets/ngrok/${user.workspaceId}/${repositoryId}`]: null,
+  });
   revalidatePath("/dashboard");
 }
 

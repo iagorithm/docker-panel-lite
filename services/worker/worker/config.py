@@ -155,6 +155,10 @@ class Settings:
     encryption_key: str
     traefik_enabled: bool
     traefik_network: str
+    ngrok_enabled: bool
+    ngrok_authtoken: str
+    ngrok_bin: str
+    ngrok_region: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -165,6 +169,7 @@ class Settings:
         data_dir = Path(os.getenv("APP_DATA_DIR", "/app/data")).resolve()
         pool_id = os.getenv("WORKER_POOL", "default")
         worker_id, worker_identity_source = _worker_id(hostname, data_dir, pool_id)
+        ngrok_authtoken = os.getenv("NGROK_AUTHTOKEN", "").strip()
         return cls(
             firebase_database_url=_firebase_database_url(service_account_json),
             service_account_json=service_account_json,
@@ -184,4 +189,8 @@ class Settings:
             encryption_key=os.environ["CREDENTIAL_ENCRYPTION_KEY"],
             traefik_enabled=_boolean("TRAEFIK_ENABLED", False),
             traefik_network=os.getenv("TRAEFIK_NETWORK", "proxy"),
+            ngrok_enabled=_boolean("NGROK_ENABLED", bool(ngrok_authtoken)),
+            ngrok_authtoken=ngrok_authtoken,
+            ngrok_bin=os.getenv("NGROK_BIN", "ngrok"),
+            ngrok_region=os.getenv("NGROK_REGION", "").strip(),
         )

@@ -62,6 +62,8 @@ def job_action_label(action: str) -> str:
         "container_logs": "load container logs",
         "container_exec": "run container command",
         "worker_command": "run worker command",
+        "tunnel_start": "open public URL",
+        "tunnel_stop": "close public URL",
     }.get(action, action)
 
 
@@ -133,6 +135,8 @@ class Worker:
             "dataDir": str(self.settings.data_dir),
             "traefikEnabled": self.settings.traefik_enabled,
             "traefikNetwork": self.settings.traefik_network,
+            "ngrokEnabled": self.settings.ngrok_enabled,
+            "ngrokRegion": self.settings.ngrok_region,
             "leaseSeconds": self.settings.lease_seconds,
             "pollSeconds": self.settings.poll_seconds,
             "docker": self._docker_summary(),

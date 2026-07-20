@@ -58,6 +58,9 @@ services:
       QUEUE_SHARDS: ${QUEUE_SHARDS:-16}
       TRAEFIK_ENABLED: ${TRAEFIK_ENABLED:-false}
       TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-proxy}
+      NGROK_ENABLED: ${NGROK_ENABLED:-false}
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_REGION: ${NGROK_REGION:-}
       APP_DATA_DIR: /app/data
       APP_CLONE_DIR: /app/clones
     restart: unless-stopped

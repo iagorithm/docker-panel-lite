@@ -12,6 +12,16 @@ export type Repository = {
   service: string;
   internalPort: number;
   ports?: string;
+  publicTunnelEnabled?: boolean;
+  publicTunnelDomain?: string;
+  publicUrl?: string;
+  publicTunnelStatus?: string;
+  publicTunnelTarget?: string;
+  publicTunnelWorkerId?: string;
+  publicTunnelWorkerLabel?: string;
+  publicTunnelUpdatedAt?: number;
+  ngrokTokenSecret?: boolean;
+  ngrokTokenMask?: string;
   poolId: string;
   availableBranches?: string[];
   composeContent?: string;
@@ -81,6 +91,8 @@ export type Agent = {
   dataDir?: string;
   traefikEnabled?: boolean;
   traefikNetwork?: string;
+  ngrokEnabled?: boolean;
+  ngrokRegion?: string;
   leaseSeconds?: number;
   pollSeconds?: number;
   docker?: {
