@@ -342,8 +342,17 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
   const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
-  const runningContainers = containers.filter((container) => container.status === "running");
-  const sortedContainers = [...runningContainers].sort((a, b) => a.name.localeCompare(b.name));
+  const onlineWorkerIds = useMemo(
+    () => new Set(agents.filter((agent) => isWorkerOnline(agent, now, 120_000)).map((agent) => agent.id)),
+    [agents, now],
+  );
+  const visibleContainerRecords = containers.filter((container) => {
+    const status = (container.status || "").toLowerCase();
+    const isStopped = ["stopped", "exited", "dead", "missing"].includes(status);
+    if (!isStopped) return true;
+    return Boolean(container.workerId && onlineWorkerIds.has(container.workerId));
+  });
+  const sortedContainers = [...visibleContainerRecords].sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || a.name.localeCompare(b.name));
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, container.status, container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...(container.ports || [])], query),
   );
@@ -535,7 +544,7 @@ function ContainersView({ containers, commandPresets, deployments, agents, activ
                 </div>
               );
             }) : filteredContainers.map((container, index) => renderContainerRow(container, index > 0))
-          ) : <EmptyState title={runningContainers.length ? "No matching running containers" : "No running containers"} copy={runningContainers.length ? "Clear the search field to show every running container." : "Start a container or deploy a repository to see it here."} />}
+          ) : <EmptyState title={visibleContainerRecords.length ? "No matching containers" : "No containers available"} copy={visibleContainerRecords.length ? "Clear the search field to show every available container." : "Start a container or bring its worker online to see stopped containers here."} />}
         </section>
       )}
     </div>
