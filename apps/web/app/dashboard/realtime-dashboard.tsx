@@ -72,25 +72,25 @@ function GithubMark() {
 }
 
 function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" }) {
-  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.15 };
+  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      {name === "add" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
-      {name === "key" ? <path {...common} d="M8.25 13.25a3.15 3.15 0 1 1 2.25-5.35 3.15 3.15 0 0 1-2.25 5.35Zm3.15-3.15H20m-4.35 0v2.35m2.55-2.35v1.55M6.95 10.1h.01" /> : null}
-      {name === "sync" ? <path {...common} d="M16.8 6.2a6.8 6.8 0 0 0-10.65 2.1M16.8 6.2V3.4m0 2.8h-2.85M7.2 17.8a6.8 6.8 0 0 0 10.65-2.1M7.2 17.8v2.8m0-2.8h2.85" /> : null}
-      {name === "sliders" ? <path {...common} d="M4.5 7.25h7.15m4.1 0h3.75M13.7 7.25a2.05 2.05 0 1 0 4.1 0 2.05 2.05 0 0 0-4.1 0ZM4.5 16.75h3.75m4.1 0h7.15M8.25 16.75a2.05 2.05 0 1 0 4.1 0 2.05 2.05 0 0 0-4.1 0Z" /> : null}
-      {name === "document" ? <path {...common} d="M7 3.5h6l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1ZM13 3.5V8h4M9 12h6M9 16h6" /> : null}
-      {name === "play" ? <path {...common} d="M9 7.5v9l7-4.5-7-4.5Z" /> : null}
-      {name === "stop" ? <rect x="8.25" y="8.25" width="7.5" height="7.5" rx="1.15" fill="currentColor" /> : null}
-      {name === "terminal" ? <path {...common} d="M4.5 6.5h15v11h-15zM8 10l2 2-2 2M12 14h4" /> : null}
-      {name === "trash" ? <path {...common} d="M5 7h14M10 11v6M14 11v6M8 7l1-3h6l1 3M7 7l1 13h8l1-13" /> : null}
-      {name === "logout" ? <path {...common} d="M10 6H6v12h4M14 8l4 4-4 4M8 12h10" /> : null}
-      {name === "container" ? <path {...common} d="M6 6.5h12M6 12h12M6 17.5h12M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5Z" /> : null}
-      {name === "repo" ? <path {...common} d="M6 5h12v14H6zM9 8h6M9 12h6M9 16h3" /> : null}
-      {name === "close" ? <path {...common} d="M7 7l10 10M17 7 7 17" /> : null}
-      {name === "branch" ? <path {...common} d="M7 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 0v5a3 3 0 0 0 3 3h4M17 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0-10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 0v2a3 3 0 0 1-3 3h-2" /> : null}
-      {name === "download" ? <path {...common} d="M12 4v10M8 10l4 4 4-4M5 20h14" /> : null}
-      {name === "help" ? <path {...common} d="M9.5 9a2.5 2.5 0 1 1 4 2c-.9.6-1.5 1.1-1.5 2.2M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /> : null}
+      {name === "add" ? <path {...common} d="M12 4.75v14.5M4.75 12h14.5" /> : null}
+      {name === "key" ? <path {...common} d="M7.75 14.25a4.25 4.25 0 1 1 3.7-6.34 4.25 4.25 0 0 1-3.7 6.34Zm4.05-4.25h8.2m-2.7 0v2.2m-2.55-2.2v1.55M6.55 10h.01" /> : null}
+      {name === "sync" ? <path {...common} d="M17.6 6.2A7.25 7.25 0 0 0 5.35 9.05M17.6 6.2V3.45m0 2.75h-2.75M6.4 17.8a7.25 7.25 0 0 0 12.25-2.85M6.4 17.8v2.75m0-2.75h2.75" /> : null}
+      {name === "sliders" ? <path {...common} d="M4.25 7.1h6.9m4.45 0h4.15M13.3 7.1a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0ZM4.25 16.9h4.15m4.45 0h6.9M8.4 16.9a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Z" /> : null}
+      {name === "document" ? <path {...common} d="M7 3.75h6.2l3.8 3.8V20a1.25 1.25 0 0 1-1.25 1.25H7A1.25 1.25 0 0 1 5.75 20V5A1.25 1.25 0 0 1 7 3.75Zm6 0v4h4M8.9 12.15h6.2M8.9 16.1h6.2" /> : null}
+      {name === "play" ? <path d="M8.75 6.45v11.1a1 1 0 0 0 1.55.84l8.15-5.55a1 1 0 0 0 0-1.68L10.3 5.61a1 1 0 0 0-1.55.84Z" fill="currentColor" /> : null}
+      {name === "stop" ? <rect x="7.75" y="7.75" width="8.5" height="8.5" rx="1.45" fill="currentColor" /> : null}
+      {name === "terminal" ? <path {...common} d="M4.5 6.25h15v11.5h-15zM8.2 10l2.15 2-2.15 2M12.35 14h4.2" /> : null}
+      {name === "trash" ? <path {...common} d="M4.75 7h14.5M9.75 11v5.75M14.25 11v5.75M8 7l1.1-3h5.8L16 7M6.75 7l.9 13.25h8.7L17.25 7" /> : null}
+      {name === "logout" ? <path {...common} d="M10.25 5.75h-4.5v12.5h4.5M14.25 8.25 18 12l-3.75 3.75M8.25 12H18" /> : null}
+      {name === "container" ? <path {...common} d="M5.25 4h13.5A1.25 1.25 0 0 1 20 5.25v13.5A1.25 1.25 0 0 1 18.75 20H5.25A1.25 1.25 0 0 1 4 18.75V5.25A1.25 1.25 0 0 1 5.25 4ZM6.75 8h10.5M6.75 12h10.5M6.75 16h10.5" /> : null}
+      {name === "repo" ? <path {...common} d="M6.25 4.75h11.5v14.5H6.25zM9.1 8.5h5.8M9.1 12h5.8M9.1 15.5h3.2" /> : null}
+      {name === "close" ? <path {...common} d="M6.75 6.75l10.5 10.5M17.25 6.75 6.75 17.25" /> : null}
+      {name === "branch" ? <path {...common} d="M7 6.9a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0 0v5.25a3.35 3.35 0 0 0 3.35 3.35h3.3M17 17.4a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0-10.5a2.15 2.15 0 1 0 0-4.3 2.15 2.15 0 0 0 0 4.3Zm0 0v1.85a3.35 3.35 0 0 1-3.35 3.35h-2" /> : null}
+      {name === "download" ? <path {...common} d="M12 4.25v10.1M8.35 10.7 12 14.35l3.65-3.65M5.25 19.75h13.5" /> : null}
+      {name === "help" ? <path {...common} d="M9.45 9a2.65 2.65 0 1 1 4.2 2.15c-.95.66-1.65 1.15-1.65 2.45M12 17.4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /> : null}
     </svg>
   );
 }
