@@ -22,5 +22,5 @@ def connect() -> docker.DockerClient:
 
 
 def write_env_file(repo_path: str, env_lines: list[str]) -> None:
-    if env_lines:
-        Path(repo_path, ".env").write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+    content = "\n".join(env_lines)
+    Path(repo_path, ".env").write_text((content + "\n") if content else "", encoding="utf-8")

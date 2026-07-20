@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -13,6 +14,7 @@ from worker.firebase_runtime import reference
 from worker.secrets import decrypt_secret
 
 DEFAULT_COMPOSE_FILE = "compose.yml"
+ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _safe_name(value: str) -> str:
@@ -45,8 +47,77 @@ def _sync(repository: dict, workspace_id: str, settings: Settings) -> Path:
     return path
 
 
-def _environment(repository: dict) -> list[str]:
-    return [f"{key}={value}" for key, value in repository.get("environment", {}).items()]
+def _parse_environment_text(value: str) -> dict[str, str]:
+    raw = value.strip()
+    if not raw:
+        return {}
+    if raw.startswith("{"):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise ValueError("Environment JSON from Firebase is invalid") from error
+        return _normalize_environment(parsed)
+    result: dict[str, str] = {}
+    for line in raw.splitlines():
+        item = line.strip()
+        if not item or item.startswith("#"):
+            continue
+        if "=" not in item:
+            continue
+        key, env_value = item.split("=", 1)
+        result[key.strip()] = env_value.strip()
+    return result
+
+
+def _normalize_environment(value: object) -> dict[str, str]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        return _parse_environment_text(value)
+    if isinstance(value, list):
+        result: dict[str, str] = {}
+        for item in value:
+            if isinstance(item, str):
+                result.update(_parse_environment_text(item))
+            elif isinstance(item, dict):
+                key = str(item.get("key") or item.get("name") or "").strip()
+                if key:
+                    result[key] = "" if item.get("value") is None else str(item.get("value"))
+        return result
+    if isinstance(value, dict):
+        result: dict[str, str] = {}
+        for key, item in value.items():
+            key_text = str(key).strip()
+            if isinstance(item, dict) and ("value" in item or "Value" in item):
+                item = item.get("value", item.get("Value"))
+            result[key_text] = "" if item is None else str(item)
+        return result
+    return {}
+
+
+def _validate_environment(environment: dict[str, str]) -> dict[str, str]:
+    invalid = [key for key in environment if not ENV_KEY_PATTERN.match(key)]
+    if invalid:
+        raise ValueError(f"Invalid environment variable name from Firebase: {invalid[0]}")
+    return environment
+
+
+def _load_environment(repository: dict, workspace_id: str) -> dict[str, str]:
+    repository_id = repository.get("id") or repository.get("alias")
+    environment = _normalize_environment(repository.get("environment"))
+
+    if repository_id:
+        firebase_environment = reference(f"workspaces/{workspace_id}/repositories/{repository_id}/environment").get()
+        environment.update(_normalize_environment(firebase_environment))
+
+    # Legacy/imported records may still use env_vars or env in Firebase.
+    environment.update(_normalize_environment(repository.get("env_vars")))
+    environment.update(_normalize_environment(repository.get("env")))
+    return _validate_environment(environment)
+
+
+def _environment_lines(environment: dict[str, str]) -> list[str]:
+    return [f"{key}={value}" for key, value in environment.items()]
 
 
 def _repository_file(
@@ -96,7 +167,7 @@ def _compose_override(repository: dict, settings: Settings) -> Path | None:
     return override
 
 
-def _run_compose(repository: dict, path: Path, settings: Settings, down: bool = False) -> str:
+def _run_compose(repository: dict, path: Path, settings: Settings, environment: dict[str, str], down: bool = False) -> str:
     project = _safe_name(repository["alias"])
     compose_file = _repository_file(
         path,
@@ -105,7 +176,7 @@ def _run_compose(repository: dict, path: Path, settings: Settings, down: bool = 
         "Compose file",
         must_exist=True,
     )
-    docker_ops.write_env_file(str(path), _environment(repository))
+    docker_ops.write_env_file(str(path), _environment_lines(environment))
     command = ["docker", "compose", "-p", project, "-f", str(compose_file)]
     override = _compose_override(repository, settings)
     if override:
@@ -117,14 +188,14 @@ def _run_compose(repository: dict, path: Path, settings: Settings, down: bool = 
         capture_output=True,
         text=True,
         timeout=900,
-        env=os.environ | repository.get("environment", {}),
+        env=os.environ | environment,
     )
     if process.returncode:
         raise RuntimeError(process.stderr.strip() or "docker compose failed")
     return process.stdout.strip() or ("Stack stopped" if down else "Stack deployed")
 
 
-def _run_dockerfile(repository: dict, path: Path, settings: Settings) -> str:
+def _run_dockerfile(repository: dict, path: Path, settings: Settings, environment: dict[str, str]) -> str:
     client = docker_ops.connect()
     project = _safe_name(repository["alias"])
     dockerfile = _repository_file(
@@ -161,7 +232,7 @@ def _run_dockerfile(repository: dict, path: Path, settings: Settings) -> str:
     container = client.containers.run(
         image.id,
         name=project,
-        environment=repository.get("environment") or None,
+        environment=environment or None,
         labels=labels,
         network=network,
         ports=ports or None,
@@ -174,6 +245,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     action = job["action"]
     workspace_id = job["workspaceId"]
     mode = repository.get("mode")
+    environment = _load_environment(repository, workspace_id)
     if action == "discover_branches":
         token = _credential(workspace_id, repository.get("credentialId", ""), settings)
         branches = git.list_remote_branches(repository["url"], token=token)
@@ -181,7 +253,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     if action == "stop":
         path = _repo_path(settings, repository)
         if mode == "compose":
-            return _run_compose(repository, path, settings, down=True), {}
+            return _run_compose(repository, path, settings, environment, down=True), {}
         client = docker_ops.connect()
         client.containers.get(_safe_name(repository["alias"])).remove(force=True)
         return "Container stopped", {}
@@ -203,8 +275,8 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
     if action not in {"deploy", "build"}:
         raise ValueError(f"Unknown repository action: {action}")
     if mode == "compose":
-        return _run_compose(repository, path, settings), {}
-    return _run_dockerfile(repository, path, settings), {}
+        return _run_compose(repository, path, settings, environment), {}
+    return _run_dockerfile(repository, path, settings, environment), {}
 
 
 def _now() -> int:
