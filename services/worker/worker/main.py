@@ -4,6 +4,7 @@ import concurrent.futures
 import logging
 import os
 import platform
+import re
 import signal
 import sys
 import threading
