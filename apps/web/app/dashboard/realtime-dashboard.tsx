@@ -146,10 +146,10 @@ function PendingIconButton({ title, children, onClick, primary = false, busy = f
   return <IconButton type="submit" title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={disabled || isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
-function PendingSubmitButton({ children, className = "primary", formAction, tooltip }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string }) {
+function PendingSubmitButton({ children, className = "primary", formAction, tooltip, disabled = false }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   const visiblePending = useVisiblePending(pending);
-  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
+  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={disabled || visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
 }
 
 function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, disabled = false, targetWorkerId = "" }: {
@@ -832,6 +832,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
+  const [deletingRepositoryId, setDeletingRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const [showCommandPresets, setShowCommandPresets] = useState(false);
@@ -919,10 +920,11 @@ function RepositoriesView({ repositories, commandPresets, credentials, deploymen
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
-                <form action={deleteRepository}><input type="hidden" name="repositoryId" value={repository.id} /><PendingIconButton title="Remove repository"><Icon name="trash" /></PendingIconButton></form>
+                <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton>
               </div>
               <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
               <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
+              <RepositoryDeleteConfirm repository={repository} open={deletingRepositoryId === repository.id} onClose={() => setDeletingRepositoryId(null)} />
             </article>
           );
         }) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
@@ -991,7 +993,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
         <div className="repository-input-card">
           <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
           <label>Display name<input name="alias" required placeholder="my-service" /></label>
-          <label>Branch<input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list="new-repository-branches" /><datalist id="new-repository-branches">{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
+          <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branches.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
           {deployMode === "dockerfile" ? (
             <>
               <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
@@ -1024,6 +1026,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     setRepositoryUrl(repository.url);
@@ -1032,6 +1035,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
     setBranches(repository.availableBranches || []);
     setBranchMessage("");
     setLoadingBranches(false);
+    setShowDeleteConfirm(false);
   }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches]);
 
   async function discoverBranches() {
@@ -1062,6 +1066,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   }
 
   if (!open) return null;
+  const branchOptions = [...new Set([branch, ...branches].filter(Boolean))];
   return (
     <details className="inline-editor" open={open}>
       <summary><span>Edit settings</span><span>⌄</span></summary>
@@ -1069,7 +1074,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <input type="hidden" name="repositoryId" value={repository.id} />
         <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
         <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
-        <label>Branch<div className="input-with-action"><input name="branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="Default" list={`branches-${repository.id}`} /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div><datalist id={`branches-${repository.id}`}>{branches.map((item) => <option key={item} value={item} />)}</datalist>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
+        <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
         <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
         <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
         <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
@@ -1080,9 +1085,31 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
         <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
         <EnvironmentEditor className="full" environment={repository.environment || {}} />
-        <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><PendingSubmitButton className="secondary" formAction={deleteRepository} tooltip="Remove this repository registration">Remove registration</PendingSubmitButton></div>
+        <div className="full form-actions"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton><button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button></div>
       </form>
+      <RepositoryDeleteConfirm repository={repository} open={showDeleteConfirm} compact onClose={() => setShowDeleteConfirm(false)} />
     </details>
+  );
+}
+
+function RepositoryDeleteConfirm({ repository, open, compact = false, onClose }: { repository: Repository; open: boolean; compact?: boolean; onClose: () => void }) {
+  const [confirmation, setConfirmation] = useState("");
+  useEffect(() => {
+    if (!open) setConfirmation("");
+  }, [open]);
+  if (!open) return null;
+  const expected = repository.alias || repository.id;
+  const confirmed = confirmation.trim() === expected;
+  return (
+    <form action={deleteRepository} className={`repository-delete-confirm ${compact ? "is-compact" : "full-row"}`}>
+      <input type="hidden" name="repositoryId" value={repository.id} />
+      <input type="hidden" name="expectedRepositoryName" value={expected} />
+      <label>Type <code>{expected}</code> to remove<input name="repositoryNameConfirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} /></label>
+      <div className="delete-confirm-actions">
+        <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+        <PendingSubmitButton className="danger" tooltip="Remove repository" disabled={!confirmed}>Remove</PendingSubmitButton>
+      </div>
+    </form>
   );
 }
 

@@ -721,7 +721,15 @@ export async function deleteWorker(formData: FormData) {
 export async function deleteRepository(formData: FormData) {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
-  await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).remove();
+  const confirmation = z.string().trim().parse(formData.get("repositoryNameConfirmation") || "");
+  const ref = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
+  const snapshot = await ref.get();
+  if (!snapshot.exists()) return;
+  const repository = snapshot.val() as Record<string, unknown>;
+  const expected = String(repository.alias || repositoryId);
+  if (confirmation !== expected) return;
+  await ref.remove();
+  revalidatePath("/dashboard");
 }
 
 export async function deleteCredential(formData: FormData) {

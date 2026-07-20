@@ -792,8 +792,25 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .container-group .resource-row {
   min-height: 6.85rem;
+  margin-left: 1.35rem;
   padding-top: 0.86rem;
+  padding-left: 1rem;
   padding-bottom: 0.86rem;
+}
+.container-group-body {
+  position: relative;
+}
+.container-group-body::before {
+  position: absolute;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  left: 1.05rem;
+  width: 1px;
+  content: "";
+  background: var(--ui-border);
+}
+.worker-stack-section .container-group-body::before {
+  left: 1.15rem;
 }
 .repo-resource-row { grid-template-columns: minmax(18rem, 0.34fr) minmax(20rem, 1fr) auto; }
 .resource-divider { position: absolute; top: 0; right: 0; left: 0; height: 1px; background: var(--ui-border); }
@@ -896,6 +913,8 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .primary { color: #fff; background: var(--ui-text); border-color: var(--ui-text); }
 .primary:hover:not(:disabled) { color: #fff; background: #303030; border-color: #303030; }
+.danger { color: #fff; background: #7f1d1d; border-color: #7f1d1d; }
+.danger:hover:not(:disabled) { color: #fff; background: #991b1b; border-color: #991b1b; }
 .secondary:hover:not(:disabled), .icon-button:hover:not(:disabled), .auth-card button:hover:not(:disabled) { background: var(--ui-surface-hover); border-color: var(--ui-text-tertiary); }
 button[data-tooltip] {
   position: relative;
@@ -1327,6 +1346,50 @@ details[open] > summary { border-bottom: 1px solid var(--ui-border); }
 .repo-resource-row .inline-editor .form-actions {
   gap: 0.38rem;
 }
+.repository-delete-confirm {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem;
+  margin-left: 2.75rem;
+  padding: 0.6rem;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+}
+.repository-delete-confirm.is-compact {
+  margin: 0 0.65rem 0.65rem;
+}
+.repository-delete-confirm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  color: var(--ui-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 590;
+}
+.repository-delete-confirm code {
+  color: var(--ui-text);
+  font-size: 0.7rem;
+}
+.repository-delete-confirm input {
+  min-height: 2.05rem;
+  padding: 0.36rem 0.5rem;
+  font-size: 0.74rem;
+}
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.38rem;
+  justify-content: flex-end;
+}
+.repository-delete-confirm .secondary,
+.repository-delete-confirm .danger {
+  min-height: 2.05rem;
+  padding: 0.36rem 0.62rem;
+  font-size: 0.74rem;
+}
 .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; padding: 1rem; }
 .form-grid.one-column { grid-template-columns: 1fr; }
 .form-grid label { display: flex; min-width: 0; flex-direction: column; gap: 0.35rem; color: var(--ui-text-secondary); font-size: 0.78rem; font-weight: 590; }
@@ -1642,6 +1705,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .main-shell { padding: 1rem; }
   .metrics { grid-template-columns: 1fr; }
   .resource-row, .repo-resource-row { grid-template-columns: 1fr; }
+  .container-group .resource-row { margin-left: 0.7rem; padding-left: 0.75rem; }
+  .container-group-body::before { left: 0.45rem; }
+  .worker-stack-section .container-group-body::before { left: 0.45rem; }
   .row-actions { justify-content: flex-start; margin-left: 2.75rem; }
   .inline-editor, .compose-viewer { margin-left: 0; }
   .form-grid { grid-template-columns: 1fr; }
