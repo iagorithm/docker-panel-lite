@@ -32,9 +32,7 @@ services:
   #   restart: unless-stopped
 
   worker:
-    build:
-      context: .
-      dockerfile: services/worker/Dockerfile
+    image: ${WORKER_IMAGE:-iagorithm/docker-panel-lite-worker:latest}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./repos:/app/clones

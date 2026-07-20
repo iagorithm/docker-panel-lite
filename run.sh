@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yaml"
+COMPOSE_BUILD_FILE="$ROOT_DIR/docker-compose.build.yaml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker-panel-lite}"
 
 usage() {
@@ -12,13 +13,14 @@ Usage:
   ./run.sh [command]
 
 Commands:
-  up                  Build and start web and worker
+  up                  Pull and start the worker
   down                Stop and remove the stack containers
   restart             Restart the stack
   ps                  Show service status
   logs [services...]  Follow logs, optionally for selected services
-  build               Build service images
-  pull                Pull third-party images
+  build               Build the worker image locally
+  publish-worker      Build and push the worker image to Docker Hub
+  pull                Pull service images
   scale-worker N      Run N worker replicas
 
 Environment:
@@ -75,6 +77,10 @@ compose() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+compose_build() {
+  docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" "$@"
+}
+
 prepare_runtime_dirs() {
   mkdir -p "$ROOT_DIR/data/letsencrypt" "$ROOT_DIR/repos"
 }
@@ -92,7 +98,7 @@ main() {
       require_docker
       warn_missing_values
       prepare_runtime_dirs
-      compose up -d --build "$@"
+      compose up -d "$@"
       compose ps
       ;;
     down)
@@ -105,7 +111,7 @@ main() {
       require_docker
       warn_missing_values
       prepare_runtime_dirs
-      compose up -d --build --force-recreate "$@"
+      compose up -d --force-recreate "$@"
       compose ps
       ;;
     ps)
@@ -122,7 +128,12 @@ main() {
       require_env_file
       require_docker
       warn_missing_values
-      compose build "$@"
+      compose_build build "$@"
+      ;;
+    publish-worker)
+      require_env_file
+      require_docker
+      "$ROOT_DIR/scripts/publish-worker-image.sh" "$@"
       ;;
     pull)
       require_env_file
@@ -139,7 +150,7 @@ main() {
         echo "Usage: ./run.sh scale-worker N"
         exit 1
       fi
-      compose up -d --build --scale "worker=$count" worker web
+      compose up -d --scale "worker=$count" worker
       compose ps
       ;;
     *)
