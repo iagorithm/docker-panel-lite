@@ -71,13 +71,13 @@ function GithubMark() {
 }
 
 function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" }) {
-  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 1.9 };
+  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.15 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       {name === "add" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
-      {name === "key" ? <path {...common} d="M14.5 10.5a4 4 0 1 0-3 3l2-2h2v-2h2l1.5-1.5M7.5 12.5h.01" /> : null}
-      {name === "sync" ? <path {...common} d="M17 2.5v5h-5M7 21.5v-5h5M18.6 9A7 7 0 0 0 6.2 6.2L4 8.4M5.4 15a7 7 0 0 0 12.4 2.8l2.2-2.2" /> : null}
-      {name === "sliders" ? <path {...common} d="M4 7h8M16 7h4M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM4 17h4M12 17h8M8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z" /> : null}
+      {name === "key" ? <path {...common} d="M8.25 13.25a3.15 3.15 0 1 1 2.25-5.35 3.15 3.15 0 0 1-2.25 5.35Zm3.15-3.15H20m-4.35 0v2.35m2.55-2.35v1.55M6.95 10.1h.01" /> : null}
+      {name === "sync" ? <path {...common} d="M16.8 6.2a6.8 6.8 0 0 0-10.65 2.1M16.8 6.2V3.4m0 2.8h-2.85M7.2 17.8a6.8 6.8 0 0 0 10.65-2.1M7.2 17.8v2.8m0-2.8h2.85" /> : null}
+      {name === "sliders" ? <path {...common} d="M4.5 7.25h7.15m4.1 0h3.75M13.7 7.25a2.05 2.05 0 1 0 4.1 0 2.05 2.05 0 0 0-4.1 0ZM4.5 16.75h3.75m4.1 0h7.15M8.25 16.75a2.05 2.05 0 1 0 4.1 0 2.05 2.05 0 0 0-4.1 0Z" /> : null}
       {name === "document" ? <path {...common} d="M7 3.5h6l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1ZM13 3.5V8h4M9 12h6M9 16h6" /> : null}
       {name === "play" ? <path {...common} d="M9 7.5v9l7-4.5-7-4.5Z" /> : null}
       {name === "stop" ? <rect x="8.25" y="8.25" width="7.5" height="7.5" rx="1.15" fill="currentColor" /> : null}
