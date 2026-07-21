@@ -33,7 +33,7 @@ import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
 import { canManageRepository, repositorySharingMode, type RepositoryAccessRecord } from "@/lib/repository-access";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
-import { canManageWorker, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
+import { canManageWorker, workerSharedEmails, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
 type Props = {
   workspaceId: string;
@@ -1573,16 +1573,25 @@ function CommandPresetsPanel({ commandPresets }: { commandPresets: CommandPreset
 }
 
 function WorkerSharingForm({ agent }: { agent: Agent }) {
+  const router = useRouter();
   const currentSharing = workerSharing(agent);
-  const currentSharedEmails = (agent.sharedEmails || []).join(", ");
+  const currentSharedEmails = workerSharedEmails(agent as WorkerAccessRecord).join(", ");
   const [sharing, setSharing] = useState(currentSharing);
   const [sharedEmails, setSharedEmails] = useState(currentSharedEmails);
+  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   useEffect(() => {
     setSharing(currentSharing);
     setSharedEmails(currentSharedEmails);
+    setFeedback(null);
   }, [agent.id, currentSharing, currentSharedEmails]);
+  const submitSharing = async (formData: FormData) => {
+    setFeedback(null);
+    const result = await saveWorkerSharing(formData);
+    setFeedback(result);
+    if (result.ok) router.refresh();
+  };
   return (
-    <form action={saveWorkerSharing} className={`worker-sharing-form ${sharing === "shared" ? "has-shared-emails" : ""}`}>
+    <form action={submitSharing} className={`worker-sharing-form ${sharing === "shared" ? "has-shared-emails" : ""}`}>
       <input type="hidden" name="workerId" value={agent.id} />
       <label>
         Access
@@ -1607,6 +1616,11 @@ function WorkerSharingForm({ agent }: { agent: Agent }) {
         </label>
       ) : <input type="hidden" name="sharedEmails" value="" />}
       <PendingIconButton title="Save worker access"><Icon name="check" /></PendingIconButton>
+      {feedback ? (
+        <small className={feedback.ok ? "form-feedback is-success" : "form-feedback is-error"} role={feedback.ok ? "status" : "alert"}>
+          {feedback.message}
+        </small>
+      ) : null}
     </form>
   );
 }

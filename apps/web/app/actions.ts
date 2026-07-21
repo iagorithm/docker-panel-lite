@@ -1088,28 +1088,37 @@ export async function deleteWorker(formData: FormData) {
 }
 
 export async function saveWorkerSharing(formData: FormData) {
-  const user = await requireSession("operator");
-  const parsed = workerSharingSchema.safeParse(formObject(formData));
-  if (!parsed.success) return;
-  const input = parsed.data;
-  const workspaceRoot = `workspaces/${user.workspaceId}`;
-  const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${input.workerId}`);
-  const snapshot = await agentRef.get();
-  if (!snapshot.exists()) return;
-  const agent = snapshot.val() as WorkerAccessRecord;
-  if (!canManageWorker(agent, user)) return;
-  const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
-  if (!sharedEmails) return;
-  const now = Date.now();
-  await agentRef.update({
-    sharing: input.sharing,
-    shared: input.sharing === "shared" || input.sharing === "public",
-    public: input.sharing === "public",
-    sharedEmails,
-    sharingUpdatedAt: now,
-    sharingUpdatedBy: user.uid,
-  });
-  revalidatePath("/dashboard");
+  try {
+    const user = await requireSession("operator");
+    const parsed = workerSharingSchema.safeParse(formObject(formData));
+    if (!parsed.success) return { ok: false, message: "Invalid worker sharing settings." };
+    const input = parsed.data;
+    const workspaceRoot = `workspaces/${user.workspaceId}`;
+    const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${input.workerId}`);
+    const snapshot = await agentRef.get();
+    if (!snapshot.exists()) return { ok: false, message: "Worker no longer exists." };
+    const agent = snapshot.val() as WorkerAccessRecord;
+    if (!canManageWorker(agent, user)) return { ok: false, message: "Only the worker owner can change access." };
+    const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
+    if (!sharedEmails) return { ok: false, message: "Enter valid email addresses separated by commas." };
+    if (input.sharing === "shared" && sharedEmails.length === 0) {
+      return { ok: false, message: "Enter at least one email address to share this worker." };
+    }
+    const now = Date.now();
+    await agentRef.update({
+      sharing: input.sharing,
+      shared: input.sharing === "shared" || input.sharing === "public",
+      public: input.sharing === "public",
+      sharedEmails,
+      sharingUpdatedAt: now,
+      sharingUpdatedBy: user.uid,
+    });
+    revalidatePath("/dashboard");
+    return { ok: true, message: "Worker access updated." };
+  } catch (error) {
+    console.error("saveWorkerSharing failed", error);
+    return { ok: false, message: "Worker access could not be updated. Try again." };
+  }
 }
 
 export async function saveCredentialSharing(formData: FormData) {

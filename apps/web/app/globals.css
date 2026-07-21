@@ -2268,6 +2268,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   width: 0.86rem;
   height: 0.86rem;
 }
+
+.worker-sharing-form .form-feedback {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.worker-sharing-form .form-feedback.is-success {
+  color: var(--success, #15803d);
+}
+
+.worker-sharing-form .form-feedback.is-error {
+  color: var(--danger, #b91c1c);
+}
 .worker-details strong,
 .worker-details small {
   display: block;
