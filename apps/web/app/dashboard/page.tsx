@@ -1,4 +1,5 @@
 import { adminDatabase } from "@/lib/firebase-admin";
+import { canAccessCredential, sanitizeCredentialForClient, type CredentialAccessRecord } from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
 import { canAccessWorker, sanitizeWorkerForClient, type WorkerAccessRecord } from "@/lib/worker-access";
@@ -20,6 +21,15 @@ export default async function DashboardPage() {
     root.child("commandPresets").get(),
   ]);
   const visibleAgents = values<Agent>(agents.val()).filter((agent) => canAccessWorker(agent as WorkerAccessRecord, user));
+  const visibleCredentials = values<CredentialSummary>(credentials.val())
+    .filter((credential) => canAccessCredential(credential as CredentialAccessRecord, user))
+    .map((credential) => sanitizeCredentialForClient(credential as CredentialAccessRecord, user) as CredentialSummary);
+  const visibleCredentialIds = new Set(visibleCredentials.map((credential) => credential.id));
+  const visibleRepositories = values<Repository>(repositories.val()).map((repository) => (
+    repository.credentialId && !visibleCredentialIds.has(repository.credentialId)
+      ? { ...repository, credentialId: "" }
+      : repository
+  ));
   const visibleWorkerIds = new Set(visibleAgents.map((agent) => agent.id));
   const visibleContainers = values<ManagedContainer>(containers.val()).filter((container) => Boolean(container.workerId && visibleWorkerIds.has(container.workerId)));
   const visibleDeployments = values<Deployment>(deployments.val()).filter((deployment) => !deployment.targetWorkerId || visibleWorkerIds.has(deployment.targetWorkerId));
@@ -28,10 +38,10 @@ export default async function DashboardPage() {
     <RealtimeDashboard
       workspaceId={user.workspaceId}
       user={{ uid: user.uid, email: user.email ?? "", role: user.role }}
-      initialRepositories={values<Repository>(repositories.val())}
+      initialRepositories={visibleRepositories}
       initialDeployments={visibleDeployments}
       initialAgents={visibleAgents.map((agent) => sanitizeWorkerForClient(agent as WorkerAccessRecord, user) as Agent)}
-      initialCredentials={values<CredentialSummary>(credentials.val())}
+      initialCredentials={visibleCredentials}
       initialContainers={visibleContainers}
       initialCommandPresets={values<CommandPreset>(commandPresets.val())}
     />

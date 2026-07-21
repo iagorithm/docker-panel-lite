@@ -44,7 +44,15 @@ export type CredentialSummary = {
   tokenMask: string;
   updatedAt: number;
   scope?: "workspace";
+  sharing?: "private" | "shared" | "public";
   shared?: boolean;
+  public?: boolean;
+  sharingUpdatedAt?: number;
+  sharingUpdatedBy?: string;
+  ownerUid?: string;
+  ownerEmail?: string;
+  sharedEmails?: string[];
+  createdAt?: number;
   createdBy?: string;
   updatedBy?: string;
 };

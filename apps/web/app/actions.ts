@@ -5,6 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { adminDatabase } from "@/lib/firebase-admin";
+import {
+  canAccessCredential,
+  canManageCredential,
+  credentialOwnerUid,
+  credentialSharingMode,
+  normalizeCredentialEmail,
+  type CredentialAccessRecord,
+} from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
 import { encryptSecret } from "@/lib/secrets";
 import { canAccessWorker, canManageWorker, normalizeWorkerEmail, type WorkerAccessRecord } from "@/lib/worker-access";
@@ -64,6 +72,12 @@ const workerSharingSchema = z.object({
 
 const workerClaimSchema = z.object({
   workerToken: z.string().trim().min(8),
+});
+
+const credentialSharingSchema = z.object({
+  credentialId: z.string().min(1),
+  sharing: z.enum(["private", "shared", "public"]),
+  sharedEmails: z.string().trim().max(4000).default(""),
 });
 
 const repositoryImportSchema = z.object({
@@ -259,6 +273,12 @@ function parseSharedEmails(value: string) {
   return emails;
 }
 
+async function userCanAccessCredential(workspaceId: string, credentialId: string, user: { uid: string; email?: string }) {
+  if (!credentialId) return true;
+  const credential = (await adminDatabase.ref(`workspaces/${workspaceId}/credentials/${credentialId}`).get()).val();
+  return Boolean(credential && canAccessCredential(credential as CredentialAccessRecord, user));
+}
+
 function isWorkerContainerRecord(container: Record<string, unknown>) {
   const name = String(container.name || "").toLowerCase();
   const composeService = String(container.composeService || "").toLowerCase();
@@ -363,6 +383,7 @@ export async function saveRepository(formData: FormData) {
   const user = await requireSession("operator");
   const input = repositorySchema.parse(formObject(formData));
   const repositoryId = input.repositoryId || input.alias;
+  if (!(await userCanAccessCredential(user.workspaceId, input.credentialId, user))) throw new Error("Credential is not available to this user");
   const now = Date.now();
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
   const current = (await currentRef.get()).val();
@@ -438,6 +459,8 @@ export async function importRepositoriesJson(formData: FormData) {
     if (!aliasPattern.test(repositoryId)) throw new Error(`Invalid repository alias '${repositoryId}'`);
     const branch = input.branch || "";
     if (branch && !branchPattern.test(branch)) throw new Error(`Invalid branch for '${repositoryId}'`);
+    const credentialId = input.credentialId || input.credential || "";
+    if (!(await userCanAccessCredential(user.workspaceId, credentialId, user))) throw new Error(`Credential is not available for '${repositoryId}'`);
     const environment = {
       ...normalizeEnvironment(input.env_vars),
       ...normalizeEnvironment(input.environment),
@@ -452,7 +475,7 @@ export async function importRepositoriesJson(formData: FormData) {
       mode: input.mode,
       composeFile: input.composeFile || input.compose_file || defaultComposeFile,
       dockerfile: input.dockerfile || "Dockerfile",
-      credentialId: input.credentialId || input.credential || "",
+      credentialId,
       environment,
       env: typeof input.env === "string" ? input.env : "",
       domain: input.domain || "",
@@ -504,13 +527,19 @@ export async function importRepositoriesJson(formData: FormData) {
 export async function saveCredential(formData: FormData) {
   const user = await requireSession("admin");
   const input = credentialSchema.parse(formObject(formData));
+  const credentialRef = adminDatabase.ref(`workspaces/${user.workspaceId}/credentials/${input.alias}`);
+  const current = (await credentialRef.get()).val() as CredentialAccessRecord | null;
+  if (current && !canManageCredential(current, user)) throw new Error("Credential alias is already owned by another user");
   const encrypted = encryptSecret(input.token);
   const now = Date.now();
+  const sharing = current ? credentialSharingMode(current) : "private";
+  const ownerUid = current ? credentialOwnerUid(current) : user.uid;
   const updates: Record<string, unknown> = {
     [`secrets/credentials/${user.workspaceId}/${input.alias}`]: {
       ...encrypted,
       username: input.username,
       updatedAt: now,
+      updatedBy: user.uid,
     },
     [`workspaces/${user.workspaceId}/credentials/${input.alias}`]: {
       id: input.alias,
@@ -518,8 +547,14 @@ export async function saveCredential(formData: FormData) {
       username: input.username,
       tokenMask: input.token.length > 8 ? `${input.token.slice(0, 4)}••••••••${input.token.slice(-4)}` : "••••••••",
       scope: "workspace",
-      shared: true,
-      createdBy: user.uid,
+      sharing,
+      shared: sharing === "shared" || sharing === "public",
+      public: sharing === "public",
+      sharedEmails: current && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+      ownerUid,
+      ownerEmail: current?.ownerEmail || normalizeCredentialEmail(user.email),
+      createdAt: current?.createdAt || now,
+      createdBy: current?.createdBy || ownerUid,
       updatedAt: now,
       updatedBy: user.uid,
     },
@@ -535,15 +570,38 @@ export async function saveCredentialsJson(formData: FormData) {
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Credential JSON must be an object keyed by alias");
   const updates: Record<string, unknown> = {};
   const now = Date.now();
+  const existingSnapshot = await adminDatabase.ref(`workspaces/${user.workspaceId}/credentials`).get();
+  const existingCredentials = (existingSnapshot.val() ?? {}) as Record<string, CredentialAccessRecord>;
   for (const [alias, value] of Object.entries(parsed)) {
     if (!aliasPattern.test(alias) || !value || Array.isArray(value) || typeof value !== "object") throw new Error(`Invalid credential '${alias}'`);
     const item = value as Record<string, unknown>;
     const token = z.string().min(1).parse(item.token);
     const username = z.string().max(200).default("").parse(item.username);
-    updates[`secrets/credentials/${user.workspaceId}/${alias}`] = { ...encryptSecret(token), username, updatedAt: now };
-    updates[`workspaces/${user.workspaceId}/credentials/${alias}`] = { id: alias, alias, username, tokenMask: token.length > 8 ? `${token.slice(0, 4)}••••••••${token.slice(-4)}` : "••••••••", scope: "workspace", shared: true, createdBy: user.uid, updatedAt: now, updatedBy: user.uid };
+    const current = existingCredentials[alias];
+    if (current && !canManageCredential(current, user)) throw new Error(`Credential '${alias}' is owned by another user`);
+    const sharing = current ? credentialSharingMode(current) : "private";
+    const ownerUid = current ? credentialOwnerUid(current) : user.uid;
+    updates[`secrets/credentials/${user.workspaceId}/${alias}`] = { ...encryptSecret(token), username, updatedAt: now, updatedBy: user.uid };
+    updates[`workspaces/${user.workspaceId}/credentials/${alias}`] = {
+      id: alias,
+      alias,
+      username,
+      tokenMask: token.length > 8 ? `${token.slice(0, 4)}••••••••${token.slice(-4)}` : "••••••••",
+      scope: "workspace",
+      sharing,
+      shared: sharing === "shared" || sharing === "public",
+      public: sharing === "public",
+      sharedEmails: current && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+      ownerUid,
+      ownerEmail: current?.ownerEmail || normalizeCredentialEmail(user.email),
+      createdAt: current?.createdAt || now,
+      createdBy: current?.createdBy || ownerUid,
+      updatedAt: now,
+      updatedBy: user.uid,
+    };
   }
   await adminDatabase.ref().update(updates);
+  revalidatePath("/dashboard");
 }
 
 export async function saveCommandPreset(formData: FormData) {
@@ -582,6 +640,10 @@ export async function enqueueDeployment(formData: FormData) {
   ).val();
   if (!repository) throw new Error("Repository not found");
   const createdAt = Date.now();
+  if (!(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Repository credential is not available to this user" });
+    return;
+  }
   if (!targetWorkerId) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Select a worker before running this action" });
     return;
@@ -630,12 +692,14 @@ export async function enqueueDeployment(formData: FormData) {
 export async function enqueueAllRepositories() {
   const user = await requireSession("operator");
   const workspaceRoot = `workspaces/${user.workspaceId}`;
-  const [repositoriesSnapshot, agentsSnapshot] = await Promise.all([
+  const [repositoriesSnapshot, agentsSnapshot, credentialsSnapshot] = await Promise.all([
     adminDatabase.ref(`${workspaceRoot}/repositories`).get(),
     adminDatabase.ref(`${workspaceRoot}/agents`).get(),
+    adminDatabase.ref(`${workspaceRoot}/credentials`).get(),
   ]);
   const repositories = repositoriesSnapshot.val() ?? {};
   const agents = (agentsSnapshot.val() ?? {}) as Record<string, WorkerAccessRecord>;
+  const credentials = (credentialsSnapshot.val() ?? {}) as Record<string, CredentialAccessRecord>;
   const updates: Record<string, unknown> = {};
   const createdAt = Date.now();
   const targets = Object.entries(agents)
@@ -643,7 +707,9 @@ export async function enqueueAllRepositories() {
     .map(([workerId, agent]) => ({ workerId, poolId: String(agent.poolId || "default") }));
   if (!targets.length) return;
   let targetIndex = 0;
-  for (const [repositoryId] of Object.entries(repositories) as [string, Record<string, string>][]) {
+  for (const [repositoryId, repository] of Object.entries(repositories) as [string, Record<string, string>][]) {
+    const credentialId = repository.credentialId || "";
+    if (credentialId && (!credentials[credentialId] || !canAccessCredential(credentials[credentialId], user))) continue;
     const target = targets[targetIndex % targets.length];
     targetIndex += 1;
     const jobRef = adminDatabase.ref("jobs").push();
@@ -972,6 +1038,30 @@ export async function saveWorkerSharing(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function saveCredentialSharing(formData: FormData) {
+  const user = await requireSession("admin");
+  const parsed = credentialSharingSchema.safeParse(formObject(formData));
+  if (!parsed.success) return;
+  const input = parsed.data;
+  const credentialRef = adminDatabase.ref(`workspaces/${user.workspaceId}/credentials/${input.credentialId}`);
+  const snapshot = await credentialRef.get();
+  if (!snapshot.exists()) return;
+  const credential = snapshot.val() as CredentialAccessRecord;
+  if (!canManageCredential(credential, user)) return;
+  const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
+  if (!sharedEmails) return;
+  const now = Date.now();
+  await credentialRef.update({
+    sharing: input.sharing,
+    shared: input.sharing === "shared" || input.sharing === "public",
+    public: input.sharing === "public",
+    sharedEmails,
+    sharingUpdatedAt: now,
+    sharingUpdatedBy: user.uid,
+  });
+  revalidatePath("/dashboard");
+}
+
 export async function claimWorker(formData: FormData) {
   const user = await requireSession("operator");
   const parsed = workerClaimSchema.safeParse(formObject(formData));
@@ -1064,7 +1154,11 @@ export async function deleteRepository(formData: FormData) {
 export async function deleteCredential(formData: FormData) {
   const user = await requireSession("admin");
   const credentialId = z.string().min(1).parse(formData.get("credentialId"));
+  const credentialRef = adminDatabase.ref(`workspaces/${user.workspaceId}/credentials/${credentialId}`);
+  const credential = (await credentialRef.get()).val() as CredentialAccessRecord | null;
+  if (!credential || !canManageCredential(credential, user)) return;
   await adminDatabase.ref().update({ [`workspaces/${user.workspaceId}/credentials/${credentialId}`]: null, [`secrets/credentials/${user.workspaceId}/${credentialId}`]: null });
+  revalidatePath("/dashboard");
 }
 
 export async function cancelDeployment(formData: FormData) {

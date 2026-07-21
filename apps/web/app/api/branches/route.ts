@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { adminDatabase } from "@/lib/firebase-admin";
+import { canAccessCredential, type CredentialAccessRecord } from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
 import { decryptSecret } from "@/lib/secrets";
 
@@ -23,11 +24,13 @@ function parseGitHubRepository(rawUrl: string) {
   return null;
 }
 
-async function credentialToken(workspaceId: string, credentialId: string) {
+async function credentialToken(workspaceId: string, credentialId: string, user: { uid: string; email?: string }) {
   if (!credentialId) return "";
+  const summary = (await adminDatabase.ref(`workspaces/${workspaceId}/credentials/${credentialId}`).get()).val();
+  if (!summary || !canAccessCredential(summary as CredentialAccessRecord, user)) return null;
   const snapshot = await adminDatabase.ref(`secrets/credentials/${workspaceId}/${credentialId}`).get();
   const encrypted = snapshot.val();
-  if (!encrypted) throw new Error("Credential not found");
+  if (!encrypted) return null;
   return decryptSecret(encrypted);
 }
 
@@ -39,7 +42,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Branch discovery currently supports GitHub repositories." }, { status: 400 });
   }
 
-  const token = await credentialToken(user.workspaceId, input.credentialId);
+  const token = await credentialToken(user.workspaceId, input.credentialId, user);
+  if (token === null) return NextResponse.json({ error: "Credential is not available to this user." }, { status: 403 });
   const headers: HeadersInit = {
     accept: "application/vnd.github+json",
     "user-agent": "docker-panel-lite",
