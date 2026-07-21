@@ -1753,7 +1753,6 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
               <span><strong>Paths</strong><small>{agent.cloneDir || "/app/clones"} · {agent.dataDir || "/app/data"}</small></span>
               <span><strong>Docker</strong><small>{docker?.available ? `${docker.containersRunning || 0}/${docker.containers || 0} running · ${docker.images || 0} images · ${docker.serverVersion || "Docker"}` : docker?.error || "Unavailable"}</small></span>
               <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>
-              <span><strong>Traefik</strong><small>{agent.traefikEnabled ? agent.traefikNetwork || "proxy" : "disabled"}</small></span>
               <span><strong>Ngrok</strong><small>{agent.ngrokEnabled ? agent.ngrokRegion || "enabled" : "disabled"}</small></span>
               {canDelete && isOwner ? (
                 <form action={deleteWorker} className="worker-delete-form">

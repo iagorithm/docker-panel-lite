@@ -113,7 +113,7 @@ worker_image_ref() {
 }
 
 prepare_runtime_dirs() {
-  mkdir -p "$ROOT_DIR/data/letsencrypt" "$ROOT_DIR/repos"
+  mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/repos"
 }
 
 main() {

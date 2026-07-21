@@ -24,7 +24,7 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data" "$ROOT_DIR/data/letsencrypt"
+mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data"
 
 # Override a Docker Hub image configured in .env with an explicitly local tag.
 export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"

@@ -61,8 +61,6 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 		"executable":       executable(),
 		"cloneDir":         a.settings.CloneDir,
 		"dataDir":          a.settings.DataDir,
-		"traefikEnabled":   a.settings.TraefikEnabled,
-		"traefikNetwork":   a.settings.TraefikNetwork,
 		"ngrokEnabled":     a.settings.NgrokEnabled,
 		"ngrokRegion":      a.settings.NgrokRegion,
 		"leaseSeconds":     a.settings.LeaseSeconds,

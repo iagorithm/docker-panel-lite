@@ -166,8 +166,6 @@ class Worker:
             "executable": sys.executable,
             "cloneDir": str(self.settings.clone_dir),
             "dataDir": str(self.settings.data_dir),
-            "traefikEnabled": self.settings.traefik_enabled,
-            "traefikNetwork": self.settings.traefik_network,
             "ngrokEnabled": self.settings.ngrok_enabled,
             "ngrokRegion": self.settings.ngrok_region,
             "leaseSeconds": self.settings.lease_seconds,

@@ -34,8 +34,6 @@ type Settings struct {
 	CloneDir             string
 	DataDir              string
 	EncryptionKey        string
-	TraefikEnabled       bool
-	TraefikNetwork       string
 	NgrokEnabled         bool
 	NgrokAuthtoken       string
 	NgrokBin             string
@@ -80,8 +78,6 @@ func FromEnvironment() (Settings, error) {
 		CloneDir:             cloneDir,
 		DataDir:              dataDir,
 		EncryptionKey:        os.Getenv("CREDENTIAL_ENCRYPTION_KEY"),
-		TraefikEnabled:       boolean("TRAEFIK_ENABLED", false),
-		TraefikNetwork:       envDefault("TRAEFIK_NETWORK", "proxy"),
 		NgrokEnabled:         boolean("NGROK_ENABLED", ngrokToken != ""),
 		NgrokAuthtoken:       ngrokToken,
 		NgrokBin:             envDefault("NGROK_BIN", "ngrok"),

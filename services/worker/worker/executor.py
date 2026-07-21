@@ -519,33 +519,18 @@ def _repository_file(
 
 
 def _compose_override(repository: dict, settings: Settings, environment: dict[str, str], compose_file: Path) -> Path | None:
-    domain = repository.get("domain", "").strip() if settings.traefik_enabled else ""
-    if not domain and not environment:
+    if not environment:
         return None
     project = _safe_name(repository["alias"])
     configured_service = repository.get("service", "web")
     service_names = _compose_service_names(compose_file) or [configured_service]
-    traefik_service = configured_service if configured_service in service_names else service_names[0]
     override_dir = settings.data_dir / "overrides"
     override_dir.mkdir(parents=True, exist_ok=True)
-    override = override_dir / f"{project}.traefik.yml"
+    override = override_dir / f"{project}.environment.yml"
     service_payloads: dict[str, dict[str, object]] = {}
     for service in service_names:
-        service_payloads[service] = {"environment": environment} if environment else {}
-    if domain:
-        service_payloads.setdefault(traefik_service, {}).update({
-            "labels": [
-                "traefik.enable=true",
-                f"traefik.http.routers.{project}.rule=Host(`{domain}`)",
-                f"traefik.http.routers.{project}.entrypoints=websecure",
-                f"traefik.http.routers.{project}.tls.certresolver=letsencrypt",
-                f"traefik.http.services.{project}.loadbalancer.server.port={int(repository.get('internalPort', 3000))}",
-            ],
-            "networks": [settings.traefik_network],
-        })
+        service_payloads[service] = {"environment": environment}
     payload: dict[str, object] = {"services": service_payloads}
-    if domain:
-        payload["networks"] = {settings.traefik_network: {"external": True}}
     override.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return override
 
@@ -588,18 +573,6 @@ def _run_dockerfile(repository: dict, path: Path, settings: Settings, environmen
         "Dockerfile",
         must_exist=True,
     )
-    labels: dict[str, str] = {}
-    network = None
-    domain = repository.get("domain", "").strip() if settings.traefik_enabled else ""
-    if domain:
-        network = settings.traefik_network
-        labels = {
-            "traefik.enable": "true",
-            f"traefik.http.routers.{project}.rule": f"Host(`{domain}`)",
-            f"traefik.http.routers.{project}.entrypoints": "websecure",
-            f"traefik.http.routers.{project}.tls.certresolver": "letsencrypt",
-            f"traefik.http.services.{project}.loadbalancer.server.port": str(repository.get("internalPort", 3000)),
-        }
     image, _ = client.images.build(
         path=str(path),
         dockerfile=str(dockerfile.relative_to(path)),
@@ -616,8 +589,6 @@ def _run_dockerfile(repository: dict, path: Path, settings: Settings, environmen
         image.id,
         name=project,
         environment=environment or None,
-        labels=labels,
-        network=network,
         ports=ports or None,
         detach=True,
     )

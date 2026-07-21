@@ -187,8 +187,6 @@ class Settings:
     clone_dir: Path
     data_dir: Path
     encryption_key: str
-    traefik_enabled: bool
-    traefik_network: str
     ngrok_enabled: bool
     ngrok_authtoken: str
     ngrok_bin: str
@@ -222,8 +220,6 @@ class Settings:
             clone_dir=Path(os.getenv("APP_CLONE_DIR", "/app/clones")).resolve(),
             data_dir=data_dir,
             encryption_key=os.environ["CREDENTIAL_ENCRYPTION_KEY"],
-            traefik_enabled=_boolean("TRAEFIK_ENABLED", False),
-            traefik_network=os.getenv("TRAEFIK_NETWORK", "proxy"),
             ngrok_enabled=_boolean("NGROK_ENABLED", bool(ngrok_authtoken)),
             ngrok_authtoken=ngrok_authtoken,
             ngrok_bin=os.getenv("NGROK_BIN", "ngrok"),

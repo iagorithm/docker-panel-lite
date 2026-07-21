@@ -134,8 +134,6 @@ export type Agent = {
   executable?: string;
   cloneDir?: string;
   dataDir?: string;
-  traefikEnabled?: boolean;
-  traefikNetwork?: string;
   ngrokEnabled?: boolean;
   ngrokRegion?: string;
   leaseSeconds?: number;
