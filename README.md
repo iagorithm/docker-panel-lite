@@ -10,10 +10,10 @@ Run these commands from the repository root.
 | --- | --- |
 | `./run.sh` | Shows the command menu. |
 | `./run.sh setup` | Creates `.env` from `.env.example` when `.env` does not exist yet. |
-| `./run.sh run` | Builds local source and starts `web`, the independent `logs` app, the Python `worker`, and `worker-go` together. Uses local images and persistent folders under `volume/`. |
+| `./run.sh run` | Builds local source and starts only `web`, the Python `worker`, and the independent `logs` app. Uses local images and persistent folders under `volume/`. |
 | `./run.sh run local` | Same as `./run.sh run`. |
 | `./run.sh run published` | Pulls and starts the stack using the images configured in `.env`. Use this for the deployed worker image flow. |
-| `./run.sh run go` | Builds and starts `web`, the Python `worker`, and `worker-go` with the Go worker profile enabled. |
+| `./run.sh run go` | Explicitly starts `web`, Python `worker`, `logs`, and `worker-go` with the Go profile enabled. |
 | `./run.sh down` | Stops and removes the Compose stack containers. It does not delete local data under `volume/`. |
 | `./run.sh restart` | Recreates and starts the published-image stack. |
 | `./run.sh ps` | Shows Compose service status. |
@@ -56,7 +56,8 @@ docker login
 
 ## Run Locally
 
-Run the web app, Python worker, and Go worker from local source:
+Run the web app, Python worker, and logs app from local source. The Go worker is
+not started by this command:
 
 ```bash
 ./run.sh run

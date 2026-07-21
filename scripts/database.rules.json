@@ -25,6 +25,11 @@
         },
         "commandPresets": {
           ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)"
+        },
+        "app_logs": {
+          ".read": false,
+          ".write": false,
+          ".indexOn": ["createdAt", "actorType", "actorId"]
         }
       }
     },

@@ -61,6 +61,16 @@ const pendingButtonMaxAge = 15 * 1000;
 const initialRepositorySaveState: RepositorySaveState = { status: "idle", message: "" };
 const initialDeploymentQueueState: DeploymentQueueState = { status: "idle", message: "" };
 
+async function parseResponseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) throw new Error(`Request returned an empty response (HTTP ${response.status})`);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Request returned invalid JSON (HTTP ${response.status})`);
+  }
+}
+
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
   useEffect(
@@ -85,7 +95,7 @@ function useSharedWorkspaceResources(initialRepositories: Repository[], initialC
       try {
         const response = await fetch("/api/shared-resources", { cache: "no-store" });
         if (!response.ok) return;
-        const payload = await response.json() as { repositories?: Repository[]; credentials?: CredentialSummary[] };
+        const payload = await parseResponseJson<{ repositories?: Repository[]; credentials?: CredentialSummary[] }>(response);
         if (active) {
           setResources({
             repositories: Array.isArray(payload.repositories) ? payload.repositories : [],
@@ -125,7 +135,7 @@ function useWorkers(initial: Agent[]) {
       try {
         const response = await fetch("/api/workers", { cache: "no-store" });
         if (response.ok) {
-          const payload = await response.json() as { workers?: Agent[] };
+          const payload = await parseResponseJson<{ workers?: Agent[] }>(response);
           if (active) setWorkers(Array.isArray(payload.workers) ? payload.workers : []);
         }
       } catch {
@@ -1284,7 +1294,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: repositoryUrl, credentialId }),
       });
-      const payload = await response.json() as { branches?: string[]; defaultBranch?: string; error?: string };
+      const payload = await parseResponseJson<{ branches?: string[]; defaultBranch?: string; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Could not load branches");
       const nextBranches = payload.branches || [];
       setBranches(nextBranches);
@@ -1390,7 +1400,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: repositoryUrl, credentialId }),
       });
-      const payload = await response.json() as { branches?: string[]; defaultBranch?: string; error?: string };
+      const payload = await parseResponseJson<{ branches?: string[]; defaultBranch?: string; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Could not load branches");
       const nextBranches = payload.branches || [];
       setBranches(nextBranches);

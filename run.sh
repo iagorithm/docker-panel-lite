@@ -21,10 +21,10 @@ Setup:
   firebase-rules        Deploy Firebase Realtime Database rules
 
 Run:
-  run                   Build and run local web + Python worker + Go worker
+  run                   Build and run local web + Python worker + logs app
   run local             Same as run
   run published         Pull/run stack using images configured in .env
-  run go                Build/run web + Python worker + Go worker with Go profile
+  run go                Build/run web + Python worker + logs app + Go worker
   down                  Stop and remove stack containers
   restart               Recreate and start the published-image stack
 
@@ -164,12 +164,11 @@ cmd_run() {
   case "$mode" in
     local)
       export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
-      export WORKER_GO_IMAGE="$LOCAL_WORKER_GO_IMAGE"
       echo "Building and starting local source stack..."
       echo "  python worker image: $LOCAL_WORKER_IMAGE"
-      echo "  go worker image: $LOCAL_WORKER_GO_IMAGE"
-      compose_local up -d --build --pull never web worker worker-go "$@"
-      compose_local ps
+      echo "  services: web worker logs"
+      compose_build up -d --build --pull never web worker logs "$@"
+      compose_build ps web worker logs
       ;;
     published|image)
       echo "Starting stack from configured images..."
@@ -178,8 +177,10 @@ cmd_run() {
       compose ps
       ;;
     go)
+      export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
+      export WORKER_GO_IMAGE="$LOCAL_WORKER_GO_IMAGE"
       echo "Building and starting stack with Go worker profile..."
-      compose_go up -d --build web worker worker-go "$@"
+      compose_local up -d --build --pull never web worker logs worker-go "$@"
       compose_go ps
       ;;
     *)
