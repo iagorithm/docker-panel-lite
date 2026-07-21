@@ -1855,6 +1855,27 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   justify-content: flex-end;
   gap: 0.28rem;
 }
+.worker-claim-control {
+  display: flex;
+  min-width: min(17rem, 52%);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.18rem;
+}
+.worker-claim-control .worker-claim-form {
+  width: 100%;
+  min-width: 0;
+}
+.worker-claim-feedback {
+  max-width: 17rem;
+  color: var(--ui-text-secondary);
+  font-size: 0.61rem;
+  font-weight: 620;
+  line-height: 1.25;
+  text-align: right;
+}
+.worker-claim-feedback.is-success { color: #16764d; }
+.worker-claim-feedback.is-error { color: #a33b35; }
 .worker-claim-form input {
   width: min(10.5rem, 100%);
   min-height: 1.85rem;

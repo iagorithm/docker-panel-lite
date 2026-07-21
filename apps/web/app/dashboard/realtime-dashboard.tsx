@@ -3,7 +3,7 @@
 import { signOut } from "firebase/auth";
 import { onValue, ref } from "firebase/database";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -1513,6 +1513,34 @@ function WorkerSharingForm({ agent }: { agent: Agent }) {
   );
 }
 
+function WorkerClaimForm() {
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const submitClaim = async (formData: FormData) => {
+    setFeedback(null);
+    const result = await claimWorker(formData);
+    setFeedback(result);
+    if (result.ok) {
+      formRef.current?.reset();
+      router.refresh();
+    }
+  };
+  return (
+    <div className="worker-claim-control">
+      <form ref={formRef} action={submitClaim} className="worker-claim-form">
+        <input name="workerToken" placeholder="Worker token" aria-label="Worker claim token" autoComplete="off" required />
+        <PendingIconButton title="Claim worker"><Icon name="add" /></PendingIconButton>
+      </form>
+      {feedback ? (
+        <span className={`worker-claim-feedback ${feedback.ok ? "is-success" : "is-error"}`} role={feedback.ok ? "status" : "alert"}>
+          {feedback.message}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[]; containers: ManagedContainer[]; now: number; currentUser: Props["user"] }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
@@ -1526,10 +1554,7 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
           <strong>Workers</strong>
           <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
         </div>
-        <form action={claimWorker} className="worker-claim-form">
-          <input name="workerToken" placeholder="Worker token" autoComplete="off" />
-          <PendingIconButton title="Claim worker"><Icon name="add" /></PendingIconButton>
-        </form>
+        <WorkerClaimForm />
       </div>
       <div className="workers-grid">{sortedAgents.map((agent) => {
         const online = isWorkerOnline(agent, now);

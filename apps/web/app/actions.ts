@@ -975,42 +975,62 @@ export async function saveWorkerSharing(formData: FormData) {
 export async function claimWorker(formData: FormData) {
   const user = await requireSession("operator");
   const parsed = workerClaimSchema.safeParse(formObject(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false, message: "Enter a valid worker token." };
   const input = parsed.data;
   const workspaceRoot = `workspaces/${user.workspaceId}`;
   const tokenHash = createHash("sha256").update(input.workerToken, "utf8").digest("hex");
-  const agentsSnapshot = await adminDatabase.ref(`${workspaceRoot}/agents`).get();
-  const agents = (agentsSnapshot.val() ?? {}) as Record<string, Record<string, unknown>>;
-  const match = Object.entries(agents).find(([, agent]) => {
-    if (!agent || typeof agent !== "object") return false;
-    return agent.workerTokenHash === tokenHash || agent.claimTokenHash === tokenHash;
-  });
-  if (!match) return;
-  const [workerId] = match;
-  const now = Date.now();
-  const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`);
-  await agentRef.transaction((current) => {
-    if (!current || typeof current !== "object") return current;
-    if (current.workerTokenHash !== tokenHash && current.claimTokenHash !== tokenHash) return current;
-    const currentOwner = String(current.ownerUid || "").trim();
-    if (currentOwner && currentOwner !== user.uid) return current;
-    const isExistingOwner = currentOwner === user.uid;
-    const sharing = isExistingOwner && ["private", "shared", "public"].includes(String(current.sharing))
-      ? current.sharing
-      : "private";
+  try {
+    const agentsSnapshot = await adminDatabase.ref(`${workspaceRoot}/agents`).get();
+    const agents = (agentsSnapshot.val() ?? {}) as Record<string, Record<string, unknown>>;
+    const match = Object.entries(agents).find(([, agent]) => {
+      if (!agent || typeof agent !== "object") return false;
+      return agent.workerTokenHash === tokenHash || agent.claimTokenHash === tokenHash;
+    });
+    if (!match) return { ok: false, message: "Worker token was not found in this workspace." };
+    const [workerId, matchedWorker] = match;
+    const workerLabel = String(matchedWorker.label || matchedWorker.hostname || workerId);
+    const now = Date.now();
+    const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`);
+    const transaction = await agentRef.transaction((current) => {
+      if (!current || typeof current !== "object") return;
+      if (current.workerTokenHash !== tokenHash && current.claimTokenHash !== tokenHash) return;
+      const currentOwner = String(current.ownerUid || "").trim();
+      if (currentOwner && currentOwner !== user.uid) return;
+      const isExistingOwner = currentOwner === user.uid;
+      const sharing = isExistingOwner && ["private", "shared", "public"].includes(String(current.sharing))
+        ? current.sharing
+        : "private";
+      return {
+        ...current,
+        claimedAt: isExistingOwner ? current.claimedAt || now : now,
+        claimedBy: user.uid,
+        ownerUid: user.uid,
+        ownerEmail: normalizeWorkerEmail(user.email),
+        sharing,
+        shared: sharing === "shared" || sharing === "public",
+        public: sharing === "public",
+        sharedEmails: isExistingOwner && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+      };
+    });
+    if (!transaction.committed) {
+      const current = transaction.snapshot.val() as WorkerAccessRecord | null;
+      const currentOwner = String(current?.ownerUid || "").trim();
+      if (currentOwner && currentOwner !== user.uid) {
+        return { ok: false, message: "This worker has already been claimed by another user." };
+      }
+      return { ok: false, message: "This worker is no longer available. Restart it and use its current claim token." };
+    }
+    const wasAlreadyOwned = String(matchedWorker.ownerUid || "").trim() === user.uid;
+    revalidatePath("/dashboard");
     return {
-      ...current,
-      claimedAt: isExistingOwner ? current.claimedAt || now : now,
-      claimedBy: user.uid,
-      ownerUid: user.uid,
-      ownerEmail: normalizeWorkerEmail(user.email),
-      sharing,
-      shared: sharing === "shared" || sharing === "public",
-      public: sharing === "public",
-      sharedEmails: isExistingOwner && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+      ok: true,
+      message: wasAlreadyOwned ? `${workerLabel} is already assigned to your account.` : `${workerLabel} was claimed successfully.`,
+      workerId,
     };
-  });
-  revalidatePath("/dashboard");
+  } catch (error) {
+    console.error("claimWorker failed", error);
+    return { ok: false, message: "The worker could not be claimed. Please try again." };
+  }
 }
 
 export async function deleteRepository(formData: FormData) {
