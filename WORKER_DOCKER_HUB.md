@@ -86,3 +86,4 @@ Use the build override when you want to test local code instead of Docker Hub:
 ./run.sh build worker
 docker compose --env-file .env -f docker-compose.yaml -f docker-compose.build.yaml up -d worker
 ```
+https://app.docker.com/settings
