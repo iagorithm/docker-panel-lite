@@ -14,7 +14,7 @@ Usage:
 
 Commands:
   up                  Pull and start the worker
-  up-go               Build and start the web app with the local Go worker
+  up-go               Build and start the web app with Python and Go workers
   down                Stop and remove the stack containers
   restart             Restart the stack
   ps                  Show service status
@@ -85,6 +85,10 @@ compose_build() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" "$@"
 }
 
+compose_go() {
+  docker compose --profile go-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
 env_value() {
   local key="$1"
   local value="${!key:-}"
@@ -116,7 +120,7 @@ worker_image_ref() {
 }
 
 prepare_runtime_dirs() {
-  mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/repos"
+  mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/repos" "$ROOT_DIR/data-go" "$ROOT_DIR/repos-go"
 }
 
 main() {
@@ -140,8 +144,8 @@ main() {
       require_docker
       warn_missing_values
       prepare_runtime_dirs
-      compose up -d --build web worker-go "$@"
-      compose ps
+      compose_go up -d --build web worker worker-go "$@"
+      compose_go ps
       ;;
     down)
       require_env_file
@@ -169,7 +173,7 @@ main() {
     logs-go)
       require_env_file
       require_docker
-      compose logs -f worker-go "$@"
+      compose_go logs -f worker-go "$@"
       ;;
     build)
       require_env_file
@@ -181,7 +185,7 @@ main() {
       require_env_file
       require_docker
       warn_missing_values
-      compose build worker-go "$@"
+      compose_go build worker-go "$@"
       ;;
     publish-worker)
       require_env_file

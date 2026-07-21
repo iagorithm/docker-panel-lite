@@ -5,8 +5,11 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"docker-panel-lite-worker-go/worker/config"
 	"docker-panel-lite-worker-go/worker/firebase_runtime"
@@ -14,6 +17,19 @@ import (
 	"docker-panel-lite-worker-go/worker/identity"
 	"docker-panel-lite-worker-go/worker/queue"
 )
+
+var workerNames = []string{
+	"Mexica", "London", "Paris", "Africa", "Kyoto", "Cairo", "Lima", "Nairobi", "Oslo", "Berlin",
+	"Tokyo", "Seoul", "Lisbon", "Madrid", "Roma", "Athens", "Vienna", "Prague", "Dublin", "Zurich",
+	"Havana", "Bogota", "Quito", "Andes", "Amazonas", "Patagonia", "Sahara", "Kalahari", "Atlas", "Nile",
+	"Ganges", "Yukon", "Tundra", "Aurora", "Boreal", "Maya", "Inca", "Aztec", "Olmec", "Zapotec",
+	"Tenochtitlan", "Uxmal", "Teotihuacan", "Chichen", "Palenque", "Oaxaca", "Sonora", "Yucatan", "Tulum", "Merida",
+	"Barcelona", "Valencia", "Monaco", "Venice", "Florence", "Milan", "Napoli", "Sicilia", "Corsica", "Malta",
+	"Casablanca", "Marrakesh", "Tunis", "Accra", "Lagos", "Kigali", "Zanzibar", "Serengeti", "Kilimanjaro", "Mombasa",
+	"Mumbai", "Delhi", "Goa", "Jaipur", "Bali", "Java", "Sumatra", "Manila", "Saigon", "Hanoi",
+	"Sydney", "Melbourne", "Auckland", "Tahiti", "Samoa", "Fiji", "Honolulu", "Alaska", "Vancouver", "Montreal",
+	"Brooklyn", "Chicago", "Austin", "Denver", "Phoenix", "Seattle", "Portland", "Boston", "Miami", "Orleans",
+}
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
@@ -37,6 +53,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	settings.WorkerLabel = resolveWorkerLabel(ctx, client, settings)
 	agent := heartbeat.New(client, settings, workerTokenHash)
 	runner := queue.New(client, settings, agent)
 	log.Printf("Worker claim token for %s (%s): %s", settings.WorkerID, settings.WorkerLabelOrDefault(), workerToken)
@@ -72,4 +89,60 @@ func main() {
 			}
 		}
 	}
+}
+
+func resolveWorkerLabel(ctx context.Context, client *firebase_runtime.Client, settings config.Settings) string {
+	agents := map[string]map[string]interface{}{}
+	if err := client.Get(ctx, "workspaces/"+settings.WorkspaceID+"/agents", &agents); err != nil {
+		log.Printf("could not read worker labels: %v", err)
+		if strings.TrimSpace(settings.WorkerLabel) != "" {
+			return strings.TrimSpace(settings.WorkerLabel)
+		}
+		return workerNames[0]
+	}
+	if current, ok := agents[settings.WorkerID]; ok {
+		if previous := strings.TrimSpace(stringValue(current["label"])); previous != "" {
+			return previous
+		}
+	}
+	if configured := strings.TrimSpace(settings.WorkerLabel); configured != "" {
+		return configured
+	}
+	used := map[string]bool{}
+	for agentID, agent := range agents {
+		if agentID == settings.WorkerID {
+			continue
+		}
+		if label := strings.TrimSpace(stringValue(agent["label"])); label != "" {
+			used[normalizedName(label)] = true
+		}
+	}
+	for suffix := 1; ; suffix++ {
+		for _, name := range workerNames {
+			candidate := name
+			if suffix > 1 {
+				candidate = name + strconv.Itoa(suffix)
+			}
+			if !used[normalizedName(candidate)] {
+				return candidate
+			}
+		}
+	}
+}
+
+func normalizedName(value string) string {
+	var builder strings.Builder
+	for _, character := range value {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			builder.WriteRune(unicode.ToLower(character))
+		}
+	}
+	return builder.String()
+}
+
+func stringValue(value interface{}) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
 }

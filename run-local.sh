@@ -25,7 +25,7 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data"
+mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data" "$ROOT_DIR/repos-go" "$ROOT_DIR/data-go"
 
 # Override Docker Hub images configured in .env with explicitly local tags.
 export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
@@ -33,6 +33,7 @@ export WORKER_GO_IMAGE="$LOCAL_WORKER_GO_IMAGE"
 
 compose=(
   docker compose
+  --profile go-worker
   --project-name "$PROJECT_NAME"
   --env-file "$ENV_FILE"
   -f "$COMPOSE_FILE"
@@ -43,14 +44,9 @@ echo "Building and starting the local Docker Panel stack..."
 echo "  environment: $ENV_FILE"
 echo "  project: $PROJECT_NAME"
 echo "  source: local web and worker builds"
-echo "  worker runtime: ${WORKER_RUNTIME:-python}"
-if [[ "${WORKER_RUNTIME:-python}" == "go" ]]; then
-  echo "  worker image: $LOCAL_WORKER_GO_IMAGE"
-  "${compose[@]}" up -d --build --pull never web worker-go "$@"
-else
-  echo "  worker image: $LOCAL_WORKER_IMAGE"
-  "${compose[@]}" up -d --build --pull never "$@"
-fi
+echo "  python worker image: $LOCAL_WORKER_IMAGE"
+echo "  go worker image: $LOCAL_WORKER_GO_IMAGE"
+"${compose[@]}" up -d --build --pull never web worker worker-go "$@"
 
 
 echo
