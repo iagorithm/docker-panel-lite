@@ -10,7 +10,8 @@ The new machine needs:
 - Docker Engine or Docker Desktop.
 - Access to the private Docker image repository.
 - Network access to Firebase.
-- A user account in the Docker Panel Lite web UI.
+- A user account in the Docker Panel Lite web UI at
+  <https://v0-dpanel-c.vercel.app/>.
 
 The published worker image must include its configuration. Confirm that it was
 published with:
@@ -104,7 +105,7 @@ Press `Ctrl+C` to stop following the logs. This does not stop the worker.
 
 ## 5. Claim the Worker
 
-1. Open Docker Panel Lite in the browser.
+1. Open <https://v0-dpanel-c.vercel.app/> in the browser.
 2. Sign in with an operator or administrator account.
 3. Open **Containers** and select the **Workers** view.
 4. Find the compact **Worker token** field.

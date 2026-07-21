@@ -1,6 +1,7 @@
 # Worker Docker Hub Image
 
 The worker can run from a prebuilt Docker Hub image on any machine that has Docker.
+Workers are claimed and managed at <https://v0-dpanel-c.vercel.app/>.
 
 For the complete new-machine setup and claim procedure, see
 [`NEW_WORKER_GUIDE.md`](./NEW_WORKER_GUIDE.md).
