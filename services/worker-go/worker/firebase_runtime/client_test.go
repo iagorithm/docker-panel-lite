@@ -2,9 +2,9 @@ package firebase_runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,15 +14,13 @@ import (
 func TestRequestUsesAuthorizationHeaderWithoutTokenInURL(t *testing.T) {
 	var receivedURL string
 	var authorization string
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		receivedURL = request.URL.String()
 		authorization = request.Header.Get("Authorization")
-		response.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(response, `{"ok":true}`)
-	}))
-	defer server.Close()
+		return response(http.StatusOK, `{"ok":true}`), nil
+	})}
 
-	client := testClient(server.URL, server.Client())
+	client := testClient("https://example.firebaseio.com", httpClient)
 	var result map[string]bool
 	if err := client.Get(context.Background(), "workers/example", &result); err != nil {
 		t.Fatalf("Get failed: %v", err)
@@ -40,17 +38,14 @@ func TestRequestUsesAuthorizationHeaderWithoutTokenInURL(t *testing.T) {
 
 func TestRequestRetriesTransientStatus(t *testing.T) {
 	var attempts int32
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if atomic.AddInt32(&attempts, 1) < 3 {
-			http.Error(response, "temporarily unavailable", http.StatusServiceUnavailable)
-			return
+			return response(http.StatusServiceUnavailable, "temporarily unavailable"), nil
 		}
-		response.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(response, `{"ok":true}`)
-	}))
-	defer server.Close()
+		return response(http.StatusOK, `{"ok":true}`), nil
+	})}
 
-	client := testClient(server.URL, server.Client())
+	client := testClient("https://example.firebaseio.com", httpClient)
 	var result map[string]bool
 	if err := client.Get(context.Background(), "workers/example", &result); err != nil {
 		t.Fatalf("Get failed after retry: %v", err)
@@ -61,13 +56,31 @@ func TestRequestRetriesTransientStatus(t *testing.T) {
 }
 
 func TestRequestErrorDoesNotExposeAccessToken(t *testing.T) {
-	client := testClient("http://127.0.0.1:1", &http.Client{Timeout: 50 * time.Millisecond})
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, errors.New("temporary network failure")
+	})}
+	client := testClient("https://example.firebaseio.com", httpClient)
 	err := client.Patch(context.Background(), "", map[string]string{"status": "online"})
 	if err == nil {
 		t.Fatal("expected request error")
 	}
 	if strings.Contains(err.Error(), "test-access-token") || strings.Contains(err.Error(), "access_token") {
 		t.Fatalf("request error leaked access token: %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func response(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
 
