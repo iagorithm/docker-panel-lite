@@ -70,7 +70,7 @@ When the worker starts, it prints a claim token in its logs:
 Worker claim token for worker-default-... (Mexica): ...
 ```
 
-Paste that token in the Workers tab to claim the worker. New workers are public by default. If you need to pin the token yourself, set `WORKER_TOKEN` in `.env`; otherwise it is generated once and stored in `./data/worker-token`.
+Paste that token in the Workers tab to claim the worker. Unclaimed workers are hidden, and a newly claimed worker is private to its owner by default. The owner can later make it public or share it with specific email addresses. If you need to pin the token yourself, set `WORKER_TOKEN` in `.env`; otherwise it is generated once and stored in `./data/worker-token`.
 
 The compose file mounts Docker and local worker state:
 
@@ -84,7 +84,18 @@ Keep `./data` on the machine if you want the worker identity to remain stable.
 
 ## Local Development Build
 
-Use the build override when you want to test local code instead of Docker Hub:
+Start the complete web and worker stack from local source without pulling the
+published worker image:
+
+```bash
+./run-local.sh
+```
+
+The script combines `docker-compose.yaml` with `docker-compose.build.yaml`, tags
+the worker as `docker-panel-lite-worker:local`, builds both services, and starts
+them in the background with the configured persistent mounts.
+
+To build manually with the same Compose override:
 
 ```bash
 ./run.sh build worker

@@ -1922,6 +1922,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   border: 1px solid var(--ui-border);
   border-radius: 0.5rem;
 }
+.worker-sharing-form.has-shared-emails {
+  grid-template-columns: minmax(7rem, 0.55fr) minmax(10rem, 1fr) auto;
+}
 .worker-sharing-form label {
   display: flex;
   min-width: 0;
@@ -1933,12 +1936,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.worker-sharing-form select {
+.worker-sharing-form select,
+.worker-sharing-form input {
   min-height: 2rem;
   padding: 0.32rem 0.48rem;
   font-size: 0.7rem;
   letter-spacing: 0;
   text-transform: none;
+}
+.worker-sharing-form input {
+  width: 100%;
 }
 .worker-sharing-form .secondary {
   min-height: 2rem;
@@ -2150,5 +2157,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .logs-filters select { width: 100%; }
   .logs-monitor-console { min-height: 24rem; }
   .worker-details { grid-template-columns: 1fr; }
+  .worker-sharing-form,
+  .worker-sharing-form.has-shared-emails { grid-template-columns: 1fr; align-items: stretch; }
+  .worker-sharing-form .secondary { justify-self: end; }
   .repository-import-form { grid-template-columns: 1fr; }
 }

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { adminDatabase } from "@/lib/firebase-admin";
 import { requireSession } from "@/lib/session";
 import { encryptSecret } from "@/lib/secrets";
+import { canAccessWorker, canManageWorker, normalizeWorkerEmail, type WorkerAccessRecord } from "@/lib/worker-access";
 
 const aliasPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*[\\]+$/;
@@ -58,6 +59,7 @@ const commandPresetSchema = z.object({
 const workerSharingSchema = z.object({
   workerId: z.string().min(1),
   sharing: z.enum(["private", "shared", "public"]),
+  sharedEmails: z.string().trim().max(4000).default(""),
 });
 
 const workerClaimSchema = z.object({
@@ -249,6 +251,14 @@ function agentIsOnline(agent: Record<string, unknown>, now: number, freshness = 
   return agent.status === "online" && now - Number(agent.lastHeartbeat || 0) < freshness;
 }
 
+function parseSharedEmails(value: string) {
+  const values = value.split(/[\s,;]+/).map(normalizeWorkerEmail).filter(Boolean);
+  const emails = [...new Set(values)];
+  const invalid = emails.find((email) => !z.string().email().safeParse(email).success);
+  if (invalid) return null;
+  return emails;
+}
+
 function isWorkerContainerRecord(container: Record<string, unknown>) {
   const name = String(container.name || "").toLowerCase();
   const composeService = String(container.composeService || "").toLowerCase();
@@ -303,6 +313,7 @@ async function resolveContainerTarget(input: {
   createdAt: number;
   action: JobAction;
   requestedBy: string;
+  requestedByEmail: string;
 }) {
   const workspaceRoot = `workspaces/${input.workspaceId}`;
   const existing = await adminDatabase.ref(`${workspaceRoot}/containers/${input.containerId}`).get();
@@ -315,6 +326,10 @@ async function resolveContainerTarget(input: {
     return null;
   }
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
+  if (!targetWorker || !canAccessWorker(targetWorker as WorkerAccessRecord, { uid: input.requestedBy, email: input.requestedByEmail })) {
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker is not available to this user" });
+    return null;
+  }
   if (!targetWorker || !agentIsOnline(targetWorker, input.createdAt)) {
     await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container worker is not available" });
     return null;
@@ -568,6 +583,10 @@ export async function enqueueDeployment(formData: FormData) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
     return;
   }
+  if (targetWorkerId && !canAccessWorker(targetWorker as WorkerAccessRecord, user)) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available to this user" });
+    return;
+  }
   if (targetWorkerId && !agentIsOnline(targetWorker, createdAt)) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
     return;
@@ -600,17 +619,29 @@ export async function enqueueDeployment(formData: FormData) {
 
 export async function enqueueAllRepositories() {
   const user = await requireSession("operator");
-  const repositories = (await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories`).get()).val() ?? {};
+  const workspaceRoot = `workspaces/${user.workspaceId}`;
+  const [repositoriesSnapshot, agentsSnapshot] = await Promise.all([
+    adminDatabase.ref(`${workspaceRoot}/repositories`).get(),
+    adminDatabase.ref(`${workspaceRoot}/agents`).get(),
+  ]);
+  const repositories = repositoriesSnapshot.val() ?? {};
+  const agents = (agentsSnapshot.val() ?? {}) as Record<string, WorkerAccessRecord>;
   const updates: Record<string, unknown> = {};
   const createdAt = Date.now();
-  for (const [repositoryId, repository] of Object.entries(repositories) as [string, Record<string, string>][]) {
+  const targets = Object.entries(agents)
+    .filter(([, agent]) => canAccessWorker(agent, user) && agentIsOnline(agent, createdAt))
+    .map(([workerId, agent]) => ({ workerId, poolId: String(agent.poolId || "default") }));
+  if (!targets.length) return;
+  let targetIndex = 0;
+  for (const [repositoryId] of Object.entries(repositories) as [string, Record<string, string>][]) {
+    const target = targets[targetIndex % targets.length];
+    targetIndex += 1;
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(repositoryId);
-    const poolId = repository.poolId || "default";
-    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId, action: "sync", poolId, shardId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId, action: "sync", poolId: target.poolId, shardId, targetWorkerId: target.workerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
     updates[`jobs/${jobId}`] = job;
-    updates[`queues/${poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100 };
+    updates[`queues/${target.poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId: target.workerId };
     updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
   }
   await adminDatabase.ref().update(updates);
@@ -622,7 +653,7 @@ export async function enqueueContainerAction(formData: FormData) {
   const submittedContainerRef = z.string().optional().parse(formData.get("containerRef") || undefined);
   const action = z.enum(["container_start", "container_stop", "container_restart", "container_delete", "container_logs"]).parse(formData.get("action"));
   const createdAt = Date.now();
-  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action, requestedBy: user.uid });
+  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action, requestedBy: user.uid, requestedByEmail: user.email });
   if (!target) return;
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;
@@ -645,6 +676,10 @@ export async function enqueueWorkerCommand(formData: FormData) {
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
   if (!targetWorker) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
+    return;
+  }
+  if (!canAccessWorker(targetWorker as WorkerAccessRecord, user)) {
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker is not available to this user" });
     return;
   }
   if (!agentIsOnline(targetWorker, createdAt)) {
@@ -690,7 +725,7 @@ export async function enqueueContainerCommand(formData: FormData) {
   const command = z.string().trim().min(1).max(4000).parse(formData.get("command"));
   const timeoutSeconds = z.coerce.number().int().min(5).max(1800).default(600).parse(formData.get("timeoutSeconds") || 600);
   const createdAt = Date.now();
-  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action: "container_exec", requestedBy: user.uid });
+  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action: "container_exec", requestedBy: user.uid, requestedByEmail: user.email });
   if (!target) return;
 
   const jobRef = adminDatabase.ref("jobs").push();
@@ -729,7 +764,7 @@ export async function enqueueContainerTunnelRefresh(formData: FormData) {
   const containerId = z.string().min(1).parse(formData.get("containerId"));
   const submittedContainerRef = z.string().optional().parse(formData.get("containerRef") || undefined);
   const createdAt = Date.now();
-  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action: "tunnel_start", requestedBy: user.uid });
+  const target = await resolveContainerTarget({ workspaceId: user.workspaceId, containerId, submittedContainerRef, createdAt, action: "tunnel_start", requestedBy: user.uid, requestedByEmail: user.email });
   if (!target) return;
 
   const container = target.container as Record<string, unknown>;
@@ -796,7 +831,7 @@ export async function enqueueAllContainerLogs() {
     const targetWorkerId = container.workerId || "";
     const containerRef = container.dockerId || container.name || containerId;
     const targetWorker = targetWorkerId ? (agents as Record<string, Record<string, unknown>>)[targetWorkerId] : null;
-    if (!targetWorker || !agentIsOnline(targetWorker, createdAt)) continue;
+    if (!targetWorker || !canAccessWorker(targetWorker as WorkerAccessRecord, user) || !agentIsOnline(targetWorker, createdAt)) continue;
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(containerId);
@@ -832,11 +867,11 @@ export async function enqueueInventoryRefresh() {
     .map(([agentId, agent]) => ({ agentId, poolId: agent.poolId || "default" }))
     .filter((agent) => {
       const record = (agents as Record<string, Record<string, string | number>>)[agent.agentId] || {};
-      return agent.agentId && agentIsOnline(record, createdAt);
+      return agent.agentId && canAccessWorker(record as WorkerAccessRecord, user) && agentIsOnline(record, createdAt);
     });
-  const fallbackTargets = targets.length ? targets : [{ agentId: "", poolId: "default" }];
+  if (!targets.length) return;
   const updates: Record<string, unknown> = {};
-  for (const target of fallbackTargets) {
+  for (const target of targets) {
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(`inventory:${user.workspaceId}:${target.agentId || "default"}`);
@@ -870,6 +905,7 @@ export async function deleteWorker(formData: FormData) {
     const agentSnapshot = await adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`).get();
     if (!agentSnapshot.exists()) return;
     const agent = agentSnapshot.val() as Record<string, unknown>;
+    if (!canManageWorker(agent as WorkerAccessRecord, user)) return;
     const now = Date.now();
     const lastHeartbeat = Number(agent.lastHeartbeat || 0);
     if (agent.status === "online" || agent.status === "stopping" || now - lastHeartbeat < orphanWorkerDeleteAge) return;
@@ -903,16 +939,23 @@ export async function deleteWorker(formData: FormData) {
 
 export async function saveWorkerSharing(formData: FormData) {
   const user = await requireSession("operator");
-  const input = workerSharingSchema.parse(formObject(formData));
+  const parsed = workerSharingSchema.safeParse(formObject(formData));
+  if (!parsed.success) return;
+  const input = parsed.data;
   const workspaceRoot = `workspaces/${user.workspaceId}`;
   const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${input.workerId}`);
   const snapshot = await agentRef.get();
-  if (!snapshot.exists()) throw new Error("Worker not found");
+  if (!snapshot.exists()) return;
+  const agent = snapshot.val() as WorkerAccessRecord;
+  if (!canManageWorker(agent, user)) return;
+  const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
+  if (!sharedEmails) return;
   const now = Date.now();
   await agentRef.update({
     sharing: input.sharing,
     shared: input.sharing === "shared" || input.sharing === "public",
     public: input.sharing === "public",
+    sharedEmails,
     sharingUpdatedAt: now,
     sharingUpdatedBy: user.uid,
   });
@@ -933,16 +976,29 @@ export async function claimWorker(formData: FormData) {
     return agent.workerTokenHash === tokenHash || agent.claimTokenHash === tokenHash;
   });
   if (!match) return;
-  const [workerId, agent] = match;
-  const sharing = agent.sharing === "private" || agent.sharing === "shared" || agent.sharing === "public" ? agent.sharing : "public";
+  const [workerId] = match;
   const now = Date.now();
-  await adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`).update({
-    claimedAt: now,
-    claimedBy: user.uid,
-    ownerUid: user.uid,
-    sharing,
-    shared: sharing === "shared" || sharing === "public",
-    public: sharing === "public",
+  const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`);
+  await agentRef.transaction((current) => {
+    if (!current || typeof current !== "object") return current;
+    if (current.workerTokenHash !== tokenHash && current.claimTokenHash !== tokenHash) return current;
+    const currentOwner = String(current.ownerUid || "").trim();
+    if (currentOwner && currentOwner !== user.uid) return current;
+    const isExistingOwner = currentOwner === user.uid;
+    const sharing = isExistingOwner && ["private", "shared", "public"].includes(String(current.sharing))
+      ? current.sharing
+      : "private";
+    return {
+      ...current,
+      claimedAt: isExistingOwner ? current.claimedAt || now : now,
+      claimedBy: user.uid,
+      ownerUid: user.uid,
+      ownerEmail: normalizeWorkerEmail(user.email),
+      sharing,
+      shared: sharing === "shared" || sharing === "public",
+      public: sharing === "public",
+      sharedEmails: isExistingOwner && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+    };
   });
   revalidatePath("/dashboard");
 }
@@ -975,5 +1031,11 @@ export async function cancelDeployment(formData: FormData) {
   const jobId = z.string().min(1).parse(formData.get("jobId"));
   const workspaceJob = await adminDatabase.ref(`workspaces/${user.workspaceId}/deployments/${jobId}`).get();
   if (!workspaceJob.exists()) throw new Error("Deployment not found");
+  const deployment = workspaceJob.val() as Record<string, unknown>;
+  const targetWorkerId = String(deployment.targetWorkerId || deployment.workerId || "");
+  if (targetWorkerId) {
+    const worker = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${targetWorkerId}`).get()).val();
+    if (!worker || !canAccessWorker(worker as WorkerAccessRecord, user)) throw new Error("Worker not available");
+  }
   await adminDatabase.ref(`jobs/${jobId}/cancellationRequested`).set(true);
 }

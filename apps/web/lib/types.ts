@@ -90,6 +90,8 @@ export type Agent = {
   claimedAt?: number;
   claimedBy?: string;
   ownerUid?: string;
+  ownerEmail?: string;
+  sharedEmails?: string[];
   activeJobs: number;
   maxConcurrency: number;
   shards?: string[];

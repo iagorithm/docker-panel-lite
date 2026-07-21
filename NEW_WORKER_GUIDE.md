@@ -120,8 +120,18 @@ The worker should show:
 - The Docker host summary.
 - Its current sharing mode.
 
-New workers are public by default. Change the sharing selector to `Private` or
-`Shared` when required and save the change.
+Unclaimed workers are hidden from every user and can only be discovered by the
+server through their claim token. A worker becomes visible to its owner after it
+is claimed and starts as `Private`.
+
+The owner can change access to:
+
+- `Private`: only the owner can see and operate the worker.
+- `Shared`: the owner and the email addresses entered in **Shared with** can see
+  and operate it. Those users must sign in with the listed email address and
+  belong to the same workspace.
+- `Public`: every authenticated user in the same workspace can see and operate
+  it.
 
 ## 6. Verify the Worker
 

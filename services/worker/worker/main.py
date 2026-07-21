@@ -144,7 +144,7 @@ class Worker:
             existing = {}
         sharing = existing.get("sharing") if isinstance(existing, dict) else None
         if sharing not in {"private", "shared", "public"}:
-            sharing = "public"
+            sharing = "private"
         return {
             "id": self.settings.worker_id,
             "identitySource": self.settings.worker_identity_source,
@@ -182,6 +182,8 @@ class Worker:
             "claimedAt": existing.get("claimedAt") if isinstance(existing, dict) else None,
             "claimedBy": existing.get("claimedBy") if isinstance(existing, dict) else "",
             "ownerUid": existing.get("ownerUid") if isinstance(existing, dict) else "",
+            "ownerEmail": existing.get("ownerEmail") if isinstance(existing, dict) else "",
+            "sharedEmails": existing.get("sharedEmails") if isinstance(existing, dict) else [],
         }
 
     def _resolve_worker_label(self) -> str:

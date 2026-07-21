@@ -29,10 +29,11 @@ import {
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
+import { canManageWorker, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
 type Props = {
   workspaceId: string;
-  user: { email: string; role: string };
+  user: { uid: string; email: string; role: string };
   initialRepositories: Repository[];
   initialDeployments: Deployment[];
   initialAgents: Agent[];
@@ -61,6 +62,42 @@ function useCollection<T>(path: string, initial: T[]) {
     [path],
   );
   return items;
+}
+
+function useWorkers(initial: Agent[]) {
+  const [workers, setWorkers] = useState(initial);
+  useEffect(() => setWorkers(initial), [initial]);
+  useEffect(() => {
+    let active = true;
+    let loading = false;
+    const refresh = async () => {
+      if (loading || !active) return;
+      loading = true;
+      try {
+        const response = await fetch("/api/workers", { cache: "no-store" });
+        if (response.ok) {
+          const payload = await response.json() as { workers?: Agent[] };
+          if (active) setWorkers(Array.isArray(payload.workers) ? payload.workers : []);
+        }
+      } catch {
+        // Keep the latest successful snapshot during short network interruptions.
+      } finally {
+        loading = false;
+      }
+    };
+    const interval = window.setInterval(refresh, 5_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void refresh();
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  return workers;
 }
 
 function elapsed(timestamp?: number) {
@@ -297,10 +334,7 @@ function workerStatusLabel(agent: Agent, now: number) {
 }
 
 function workerSharing(agent: Agent): "private" | "shared" | "public" {
-  if (agent.sharing === "private") return "private";
-  if (agent.sharing === "public" || agent.public) return "public";
-  if (agent.sharing === "shared" || agent.shared) return "shared";
-  return "public";
+  return workerSharingMode(agent as WorkerAccessRecord);
 }
 
 function workerSharingLabel(agent: Agent) {
@@ -383,10 +417,10 @@ export function RealtimeDashboard(props: Props) {
   const router = useRouter();
   const base = `workspaces/${props.workspaceId}`;
   const repositories = useCollection<Repository>(`${base}/repositories`, props.initialRepositories);
-  const deployments = useCollection<Deployment>(`${base}/deployments`, props.initialDeployments);
-  const agents = useCollection<Agent>(`${base}/agents`, props.initialAgents);
+  const allDeployments = useCollection<Deployment>(`${base}/deployments`, props.initialDeployments);
+  const agents = useWorkers(props.initialAgents);
   const credentials = useCollection<CredentialSummary>(`${base}/credentials`, props.initialCredentials);
-  const containers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
+  const allContainers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
   const commandPresets = useCollection<CommandPreset>(`${base}/commandPresets`, props.initialCommandPresets);
   const [view, setView] = useState<View>("containers");
   const [now, setNow] = useState(Date.now());
@@ -396,6 +430,9 @@ export function RealtimeDashboard(props: Props) {
     return () => clearInterval(timer);
   }, []);
 
+  const visibleWorkerIds = useMemo(() => new Set(agents.map((agent) => agent.id)), [agents]);
+  const containers = useMemo(() => allContainers.filter((container) => Boolean(container.workerId && visibleWorkerIds.has(container.workerId))), [allContainers, visibleWorkerIds]);
+  const deployments = useMemo(() => allDeployments.filter((deployment) => !deployment.targetWorkerId || visibleWorkerIds.has(deployment.targetWorkerId)), [allDeployments, visibleWorkerIds]);
   const onlineAgents = useMemo(() => agents.filter((agent) => isWorkerOnline(agent, now)), [agents, now]);
   const active = deployments.filter((item) => isActiveJob(item, now));
   const sortedDeployments = [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
@@ -430,7 +467,7 @@ export function RealtimeDashboard(props: Props) {
 
       <main className="main-shell">
         {view === "containers" ? (
-          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : (
           <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         )}
@@ -439,7 +476,7 @@ export function RealtimeDashboard(props: Props) {
   );
 }
 
-function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now }: {
+function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now, currentUser }: {
   repositories: Repository[];
   containers: ManagedContainer[];
   commandPresets: CommandPreset[];
@@ -447,6 +484,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   agents: Agent[];
   activeJobs: number;
   now: number;
+  currentUser: Props["user"];
 }) {
   const [query, setQuery] = useState("");
   const [showLogsMonitor, setShowLogsMonitor] = useState(false);
@@ -662,7 +700,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
         </div>
       </div>
 
-      {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} /> : null}
+      {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
 
       {showLogsMonitor ? (
         <LogsView containers={containers} deployments={deployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
@@ -1382,7 +1420,45 @@ function CommandPresetsPanel({ commandPresets }: { commandPresets: CommandPreset
   );
 }
 
-function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers: ManagedContainer[]; now: number }) {
+function WorkerSharingForm({ agent }: { agent: Agent }) {
+  const currentSharing = workerSharing(agent);
+  const currentSharedEmails = (agent.sharedEmails || []).join(", ");
+  const [sharing, setSharing] = useState(currentSharing);
+  const [sharedEmails, setSharedEmails] = useState(currentSharedEmails);
+  useEffect(() => {
+    setSharing(currentSharing);
+    setSharedEmails(currentSharedEmails);
+  }, [agent.id, currentSharing, currentSharedEmails]);
+  return (
+    <form action={saveWorkerSharing} className={`worker-sharing-form ${sharing === "shared" ? "has-shared-emails" : ""}`}>
+      <input type="hidden" name="workerId" value={agent.id} />
+      <label>
+        Access
+        <select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as "private" | "shared" | "public")}>
+          <option value="private">Private</option>
+          <option value="shared">Shared</option>
+          <option value="public">Public</option>
+        </select>
+      </label>
+      {sharing === "shared" ? (
+        <label className="worker-shared-emails">
+          Shared with
+          <input
+            name="sharedEmails"
+            type="text"
+            value={sharedEmails}
+            onChange={(event) => setSharedEmails(event.target.value)}
+            placeholder="name@example.com"
+            autoComplete="off"
+          />
+        </label>
+      ) : <input type="hidden" name="sharedEmails" value="" />}
+      <PendingSubmitButton className="secondary" tooltip="Save worker access">Save</PendingSubmitButton>
+    </form>
+  );
+}
+
+function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[]; containers: ManagedContainer[]; now: number; currentUser: Props["user"] }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
     const bOnline = Number(isWorkerOnline(b, now));
@@ -1407,7 +1483,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
         const canDelete = !online && agent.status === "offline" && now - agent.lastHeartbeat >= orphanWorkerDeleteAge;
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
-        const sharing = workerSharing(agent);
+        const isOwner = canManageWorker(agent as WorkerAccessRecord, currentUser);
         const deleteTitle = ownedContainerCount
           ? `Remove stale worker record and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
           : "Remove stale worker record";
@@ -1422,13 +1498,9 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <span className="worker-card-chevron"><Icon name="chevron" /></span>
             </summary>
             <div className="worker-details">
-              <form action={saveWorkerSharing} className="worker-sharing-form">
-                <input type="hidden" name="workerId" value={agent.id} />
-                <label>Sharing<select name="sharing" defaultValue={sharing}><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select></label>
-                <PendingSubmitButton className="secondary" tooltip="Save worker sharing">Save</PendingSubmitButton>
-              </form>
+              {isOwner ? <WorkerSharingForm agent={agent} /> : null}
               <span><strong>ID</strong><small>{agent.id}</small></span>
-              <span><strong>Claim</strong><small>{agent.claimedAt ? `claimed ${elapsed(agent.claimedAt)}` : "unclaimed"}</small></span>
+              <span><strong>Access</strong><small>{isOwner ? `Owned by you · ${workerSharingLabel(agent)}` : workerSharingLabel(agent)}</small></span>
               <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
               <span><strong>Host</strong><small>{agent.hostname || "Unknown"}{agent.location ? ` · ${agent.location}` : ""}</small></span>
               <span><strong>Shards</strong><small>{agent.shards?.length ? agent.shards.join(", ") : "all/default"}</small></span>
@@ -1438,7 +1510,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>
               <span><strong>Traefik</strong><small>{agent.traefikEnabled ? agent.traefikNetwork || "proxy" : "disabled"}</small></span>
               <span><strong>Ngrok</strong><small>{agent.ngrokEnabled ? agent.ngrokRegion || "enabled" : "disabled"}</small></span>
-              {canDelete ? (
+              {canDelete && isOwner ? (
                 <form action={deleteWorker} className="worker-delete-form">
                   <input type="hidden" name="workerId" value={agent.id} />
                   <PendingIconButton title={deleteTitle}><Icon name="trash" /></PendingIconButton>

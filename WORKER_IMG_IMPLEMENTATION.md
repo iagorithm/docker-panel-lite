@@ -17,7 +17,7 @@ The implementation supports the following workflow:
 3. Pull and run that image on another Docker host without copying the project.
 4. Generate a stable worker identity and a persistent claim token.
 5. Register the worker and its Docker inventory in Firebase.
-6. Claim the worker from the UI using the token shown in its local logs.
+6. Claim the hidden worker from the UI using the token shown in its local logs.
 7. Select that worker when deploying repositories or operating containers.
 8. Preserve ownership, sharing settings, status, and container records across
    heartbeats and restarts.
@@ -332,9 +332,9 @@ and ownership information. A simplified record is:
   "activeJobs": 0,
   "lastHeartbeat": 1784592000000,
   "workerTokenHash": "<sha256>",
-  "sharing": "public",
-  "shared": true,
-  "public": true,
+  "sharing": "private",
+  "shared": false,
+  "public": false,
   "claimedAt": null,
   "claimedBy": "",
   "ownerUid": ""
@@ -356,7 +356,9 @@ ownerUid
 This prevents worker heartbeats from overwriting claim ownership or visibility
 changes made by an operator.
 
-New workers default to `public`. Compatibility booleans are also maintained:
+Unclaimed workers are hidden from users. A successful first claim sets the
+worker to `private`; the owner can later change it to `shared` or `public`.
+Compatibility booleans are also maintained:
 
 - `public` is true only for public workers.
 - `shared` is true for shared and public workers.
@@ -377,7 +379,9 @@ The claim flow is:
    compatibility.
 7. It updates `claimedAt`, `claimedBy`, and `ownerUid` with the authenticated
    user's ID.
-8. It preserves the worker's current sharing mode.
+8. A first claim assigns `private`; a repeat claim by the same owner preserves
+   the current sharing mode.
+9. A worker already owned by another user cannot be reclaimed with the token.
 
 An invalid token returns without exposing whether a specific worker exists. The
 plain token is not written to Firebase and is not returned to the browser after
@@ -397,9 +401,22 @@ sharingUpdatedAt
 sharingUpdatedBy
 ```
 
-The worker detail view displays whether it is claimed, its sharing mode,
+The worker detail view displays its sharing mode,
 identity source, host, pool, shards, runtime, Docker availability, timing,
 Traefik state, and ngrok state.
+
+The browser does not subscribe directly to the Firebase `agents` node. An
+authenticated `/api/workers` endpoint reads agents with the Admin SDK, applies
+the access policy, removes claim-token hashes, and returns only visible workers.
+The dashboard refreshes this filtered snapshot periodically.
+
+Realtime Database rules deny direct client reads of `agents`. Other workspace
+collections retain their authenticated workspace reads, while all agent
+visibility decisions are made by the server API. Deploy the updated rules with:
+
+```bash
+firebase deploy --only database
+```
 
 ## 11. Worker Sharing Modes
 
@@ -408,14 +425,16 @@ An operator can change a worker to one of three modes:
 | Mode | Stored values |
 | --- | --- |
 | Public | `sharing=public`, `public=true`, `shared=true` |
-| Shared | `sharing=shared`, `public=false`, `shared=true` |
+| Shared | `sharing=shared`, `public=false`, `shared=true`, plus `sharedEmails` |
 | Private | `sharing=private`, `public=false`, `shared=false` |
 
 The server records who changed sharing and when. The worker heartbeat preserves
 those fields instead of resetting them.
 
-Claiming and sharing are independent. Claiming assigns ownership but does not
-automatically make a public worker private.
+Only `ownerUid` can change sharing. Shared email addresses are normalized to
+lowercase and validated by the server. Claiming assigns ownership and makes a
+new worker private by default. Shared users must authenticate with one of the
+configured email addresses and belong to the same workspace as the worker.
 
 ## 12. Worker Lifecycle and Availability
 
@@ -599,7 +618,7 @@ The remote manifest can be checked with:
 4. The worker starts without external Firebase environment variables.
 5. Logs display one worker ID, stable label, and claim token.
 6. Firebase receives the agent in the expected workspace.
-7. The UI shows the worker online and public by default.
+7. The worker remains hidden until claimed, then appears private to its owner.
 8. Submitting the token associates `ownerUid`, `claimedBy`, and `claimedAt`.
 9. Sharing changes survive subsequent heartbeats.
 10. A selected worker can execute repository and container jobs on its own host.
@@ -608,3 +627,25 @@ The remote manifest can be checked with:
 13. Abrupt host loss becomes offline after the heartbeat timeout.
 14. Reconnection reconciles that worker's real Docker inventory without
     overwriting another worker's records.
+
+## 20. Deployment Requirements for Worker Access Control
+
+The access-control release has two independent deployment units:
+
+1. Deploy the updated Next.js application so `/api/workers`, filtered dashboard
+   state, atomic claiming, and server action authorization are active.
+2. Deploy `database.rules.json` so browsers can no longer read the raw `agents`
+   collection directly.
+
+The Firebase rules command is:
+
+```bash
+firebase deploy --only database
+```
+
+The worker image must also be rebuilt and published because the worker now
+preserves `ownerEmail` and `sharedEmails` during heartbeat updates:
+
+```bash
+./run.sh publish-worker
+```
