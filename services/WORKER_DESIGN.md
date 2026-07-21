@@ -4,6 +4,9 @@ Reference implementation: `services/worker/worker` (Python)
 Contract consumers: Python worker, Go worker, and future worker runtimes  
 Last implementation audit: 2026-07-21
 
+Runtime inventories: [`WORKER_DESIGN_PY.md`](WORKER_DESIGN_PY.md) ·
+[`WORKER_DESIGN_GO.md`](WORKER_DESIGN_GO.md)
+
 ## Purpose
 
 The worker is the execution agent for Docker Panel Lite. It runs on a Docker
