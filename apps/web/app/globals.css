@@ -2498,5 +2498,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .worker-sharing-form,
   .worker-sharing-form.has-shared-emails { grid-template-columns: 1fr; align-items: stretch; }
   .worker-sharing-form .icon-button { justify-self: end; }
+  .workers-panel-header { align-items: stretch; flex-direction: column; gap: 0.55rem; }
+  .worker-claim-control { width: 100%; min-width: 0; align-items: stretch; }
+  .worker-claim-form input { width: 100%; }
+  .worker-claim-feedback { max-width: none; text-align: left; }
   .repository-import-form { grid-template-columns: 1fr; }
 }

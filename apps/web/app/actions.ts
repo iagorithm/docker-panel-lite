@@ -996,7 +996,9 @@ export async function claimWorker(formData: FormData) {
     const now = Date.now();
     const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`);
     const transaction = await agentRef.transaction((current) => {
-      if (!current || typeof current !== "object") return;
+      // The Admin SDK invokes this once with a local null before loading the remote value.
+      if (current === null) return current;
+      if (typeof current !== "object") return;
       if (current.workerTokenHash !== tokenHash && current.claimTokenHash !== tokenHash) return;
       const currentOwner = String(current.ownerUid || "").trim();
       if (currentOwner && currentOwner !== user.uid) return;
@@ -1023,6 +1025,10 @@ export async function claimWorker(formData: FormData) {
       if (currentOwner && currentOwner !== user.uid) {
         return { ok: false, message: "This worker has already been claimed by another user." };
       }
+      return { ok: false, message: "This worker is no longer available. Restart it and use its current claim token." };
+    }
+    const claimedWorker = transaction.snapshot.val() as WorkerAccessRecord | null;
+    if (!claimedWorker || String(claimedWorker.ownerUid || "").trim() !== user.uid) {
       return { ok: false, message: "This worker is no longer available. Restart it and use its current claim token." };
     }
     const wasAlreadyOwned = String(matchedWorker.ownerUid || "").trim() === user.uid;
