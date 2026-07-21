@@ -11,6 +11,40 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _unquote_env_value(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    quote = value[0]
+    if quote in {'"', "'"} and value.endswith(quote):
+        inner = value[1:-1]
+        return inner.replace("\\n", "\n").replace('\\"', '"') if quote == '"' else inner
+    return value
+
+
+def _load_environment_file() -> None:
+    path = os.getenv("WORKER_CONFIG_FILE", "/app/config/worker.env").strip()
+    if not path:
+        return
+    config_path = Path(path)
+    if not config_path.is_file():
+        return
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+            continue
+        if not os.getenv(key):
+            os.environ[key] = _unquote_env_value(value)
+
+
 def _integer(name: str, default: int, minimum: int = 1) -> int:
     try:
         return max(minimum, int(os.getenv(name, str(default))))
@@ -162,6 +196,7 @@ class Settings:
 
     @classmethod
     def from_environment(cls) -> "Settings":
+        _load_environment_file()
         shard_count = _integer("QUEUE_SHARDS", 16)
         configured = tuple(filter(None, (item.strip() for item in os.getenv("WORKER_SHARDS", "").split(","))))
         service_account_json = _service_account_json()

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yaml"
+COMPOSE_BUILD_FILE="$ROOT_DIR/docker-compose.build.yaml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker-panel-lite}"
 
 usage() {
@@ -12,13 +13,15 @@ Usage:
   ./run.sh [command]
 
 Commands:
-  up                  Build and start web and worker
+  up                  Pull and start the worker
   down                Stop and remove the stack containers
   restart             Restart the stack
   ps                  Show service status
   logs [services...]  Follow logs, optionally for selected services
-  build               Build service images
-  pull                Pull third-party images
+  build               Build the worker image locally
+  publish-worker      Build and push the worker image to Docker Hub
+  verify-worker-image Inspect the worker image published on Docker Hub
+  pull                Pull service images
   scale-worker N      Run N worker replicas
 
 Environment:
@@ -75,6 +78,40 @@ compose() {
   docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+compose_build() {
+  docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" "$@"
+}
+
+env_value() {
+  local key="$1"
+  local value="${!key:-}"
+  if [[ -n "$value" || ! -f "$ENV_FILE" ]]; then
+    printf '%s' "$value"
+    return
+  fi
+  value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+  value="${value%$'\r'}"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "$value"
+}
+
+worker_image_ref() {
+  local image tag
+  image="$(env_value WORKER_IMAGE)"
+  image="${image:-cjarn/docker-panel-lite-worker:latest}"
+  tag="$(env_value WORKER_IMAGE_TAG)"
+  if [[ "$image" == *:* ]]; then
+    local base="${image%:*}"
+    local default_tag="${image##*:}"
+    printf '%s:%s' "$base" "${tag:-$default_tag}"
+  else
+    printf '%s:%s' "$image" "${tag:-latest}"
+  fi
+}
+
 prepare_runtime_dirs() {
   mkdir -p "$ROOT_DIR/data/letsencrypt" "$ROOT_DIR/repos"
 }
@@ -92,7 +129,7 @@ main() {
       require_docker
       warn_missing_values
       prepare_runtime_dirs
-      compose up -d --build "$@"
+      compose up -d "$@"
       compose ps
       ;;
     down)
@@ -105,7 +142,7 @@ main() {
       require_docker
       warn_missing_values
       prepare_runtime_dirs
-      compose up -d --build --force-recreate "$@"
+      compose up -d --force-recreate "$@"
       compose ps
       ;;
     ps)
@@ -122,7 +159,19 @@ main() {
       require_env_file
       require_docker
       warn_missing_values
-      compose build "$@"
+      compose_build build "$@"
+      ;;
+    publish-worker)
+      require_env_file
+      require_docker
+      "$ROOT_DIR/scripts/publish-worker-image.sh" "$@"
+      ;;
+    verify-worker-image)
+      require_env_file
+      require_docker
+      image_ref="$(worker_image_ref)"
+      echo "Inspecting $image_ref"
+      docker buildx imagetools inspect "$image_ref"
       ;;
     pull)
       require_env_file
@@ -139,7 +188,7 @@ main() {
         echo "Usage: ./run.sh scale-worker N"
         exit 1
       fi
-      compose up -d --build --scale "worker=$count" worker web
+      compose up -d --scale "worker=$count" worker
       compose ps
       ;;
     *)

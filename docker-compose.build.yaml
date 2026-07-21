@@ -1,0 +1,6 @@
+services:
+  worker:
+    image: ${WORKER_IMAGE:-cjarn/docker-panel-lite-worker:latest}
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile

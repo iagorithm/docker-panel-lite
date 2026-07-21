@@ -8,6 +8,7 @@ import { useFormStatus } from "react-dom";
 
 import {
   cancelDeployment,
+  claimWorker,
   deleteCommandPreset,
   deleteCredential,
   deleteRepository,
@@ -24,13 +25,15 @@ import {
   saveCredential,
   saveCredentialsJson,
   saveRepository,
+  saveWorkerSharing,
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
+import { canManageWorker, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
 type Props = {
   workspaceId: string;
-  user: { email: string; role: string };
+  user: { uid: string; email: string; role: string };
   initialRepositories: Repository[];
   initialDeployments: Deployment[];
   initialAgents: Agent[];
@@ -59,6 +62,42 @@ function useCollection<T>(path: string, initial: T[]) {
     [path],
   );
   return items;
+}
+
+function useWorkers(initial: Agent[]) {
+  const [workers, setWorkers] = useState(initial);
+  useEffect(() => setWorkers(initial), [initial]);
+  useEffect(() => {
+    let active = true;
+    let loading = false;
+    const refresh = async () => {
+      if (loading || !active) return;
+      loading = true;
+      try {
+        const response = await fetch("/api/workers", { cache: "no-store" });
+        if (response.ok) {
+          const payload = await response.json() as { workers?: Agent[] };
+          if (active) setWorkers(Array.isArray(payload.workers) ? payload.workers : []);
+        }
+      } catch {
+        // Keep the latest successful snapshot during short network interruptions.
+      } finally {
+        loading = false;
+      }
+    };
+    const interval = window.setInterval(refresh, 5_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void refresh();
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  return workers;
 }
 
 function elapsed(timestamp?: number) {
@@ -108,11 +147,24 @@ function GithubMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
+function SidebarContainerMark() {
+  return (
+    <span className="sidebar-container-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M12 3.6 19.2 7.75 12 11.9 4.8 7.75 12 3.6Z" />
+        <path d="M5.25 9.45 11.15 12.82v6.95L5.25 16.4V9.45Z" />
+        <path d="M18.75 9.45 12.85 12.82v6.95l5.9-3.37V9.45Z" />
+      </svg>
+    </span>
+  );
+}
+
+function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       {name === "add" ? <path {...common} d="M12 4.75v14.5M4.75 12h14.5" /> : null}
+      {name === "check" ? <path {...common} d="m5.25 12.35 4.15 4.15 9.35-9.35" /> : null}
       {name === "key" ? <path {...common} d="M7.75 14.25a4.25 4.25 0 1 1 3.7-6.34 4.25 4.25 0 0 1-3.7 6.34Zm4.05-4.25h8.2m-2.7 0v2.2m-2.55-2.2v1.55M6.55 10h.01" /> : null}
       {name === "sync" ? <path {...common} d="M17.6 6.2A7.25 7.25 0 0 0 5.35 9.05M17.6 6.2V3.45m0 2.75h-2.75M6.4 17.8a7.25 7.25 0 0 0 12.25-2.85M6.4 17.8v2.75m0-2.75h2.75" /> : null}
       {name === "sliders" ? <path {...common} d="M4.25 7.1h6.9m4.45 0h4.15M13.3 7.1a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0ZM4.25 16.9h4.15m4.45 0h6.9M8.4 16.9a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Z" /> : null}
@@ -155,8 +207,8 @@ function Spinner() {
   return <span className="button-spinner" aria-hidden="true" />;
 }
 
-function IconButton({ title, children, onClick, primary = false, disabled = false, type = "button" }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean; type?: "button" | "submit" }) {
-  return <button type={type} className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
+function IconButton({ title, children, onClick, primary = false, active = false, disabled = false, type = "button" }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; active?: boolean; disabled?: boolean; type?: "button" | "submit" }) {
+  return <button type={type} className={`icon-button ${primary ? "primary-icon" : ""} ${active ? "is-active" : ""}`} title={title} aria-label={title} aria-pressed={active || undefined} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
 function useVisiblePending(pending: boolean) {
@@ -294,6 +346,15 @@ function workerStatusLabel(agent: Agent, now: number) {
   return "offline";
 }
 
+function workerSharing(agent: Agent): "private" | "shared" | "public" {
+  return workerSharingMode(agent as WorkerAccessRecord);
+}
+
+function workerSharingLabel(agent: Agent) {
+  const sharing = workerSharing(agent);
+  return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
+}
+
 function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: number; onOpenWorkers: () => void }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
@@ -369,10 +430,10 @@ export function RealtimeDashboard(props: Props) {
   const router = useRouter();
   const base = `workspaces/${props.workspaceId}`;
   const repositories = useCollection<Repository>(`${base}/repositories`, props.initialRepositories);
-  const deployments = useCollection<Deployment>(`${base}/deployments`, props.initialDeployments);
-  const agents = useCollection<Agent>(`${base}/agents`, props.initialAgents);
+  const allDeployments = useCollection<Deployment>(`${base}/deployments`, props.initialDeployments);
+  const agents = useWorkers(props.initialAgents);
   const credentials = useCollection<CredentialSummary>(`${base}/credentials`, props.initialCredentials);
-  const containers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
+  const allContainers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
   const commandPresets = useCollection<CommandPreset>(`${base}/commandPresets`, props.initialCommandPresets);
   const [view, setView] = useState<View>("containers");
   const [now, setNow] = useState(Date.now());
@@ -382,6 +443,9 @@ export function RealtimeDashboard(props: Props) {
     return () => clearInterval(timer);
   }, []);
 
+  const visibleWorkerIds = useMemo(() => new Set(agents.map((agent) => agent.id)), [agents]);
+  const containers = useMemo(() => allContainers.filter((container) => Boolean(container.workerId && visibleWorkerIds.has(container.workerId))), [allContainers, visibleWorkerIds]);
+  const deployments = useMemo(() => allDeployments.filter((deployment) => !deployment.targetWorkerId || visibleWorkerIds.has(deployment.targetWorkerId)), [allDeployments, visibleWorkerIds]);
   const onlineAgents = useMemo(() => agents.filter((agent) => isWorkerOnline(agent, now)), [agents, now]);
   const active = deployments.filter((item) => isActiveJob(item, now));
   const sortedDeployments = [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
@@ -402,8 +466,8 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
-          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><SidebarContainerMark />Containers</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span className="sidebar-github-mark"><GithubMark /></span>Repositories</button>
         </nav>
 
         <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
@@ -416,7 +480,7 @@ export function RealtimeDashboard(props: Props) {
 
       <main className="main-shell">
         {view === "containers" ? (
-          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : (
           <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
         )}
@@ -425,7 +489,7 @@ export function RealtimeDashboard(props: Props) {
   );
 }
 
-function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now }: {
+function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now, currentUser }: {
   repositories: Repository[];
   containers: ManagedContainer[];
   commandPresets: CommandPreset[];
@@ -433,6 +497,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   agents: Agent[];
   activeJobs: number;
   now: number;
+  currentUser: Props["user"];
 }) {
   const [query, setQuery] = useState("");
   const [showLogsMonitor, setShowLogsMonitor] = useState(false);
@@ -635,20 +700,18 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
         <div className="toolbar-actions">
-          {!showLogsMonitor && !showCommandTerminal ? (
-            <div className="icon-toggle" aria-label="Container view mode">
-              <button type="button" className={containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={containerViewMode === "containers"} data-tooltip="View containers" onClick={() => setContainerViewMode("containers")}><Icon name="container" /></button>
-              <button type="button" className={containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={containerViewMode === "groups"} data-tooltip="View groups" onClick={() => setContainerViewMode("groups")}><Icon name="layers" /></button>
-              <button type="button" className={containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={containerViewMode === "workers"} data-tooltip="View workers" onClick={() => setContainerViewMode("workers")}><Icon name="worker" /></button>
-            </div>
-          ) : null}
-          <IconButton title={showLogsMonitor ? "Show containers" : "Monitor logs"} onClick={() => { setShowCommandTerminal(false); setShowLogsMonitor((current) => !current); }} primary={showLogsMonitor}><Icon name={showLogsMonitor ? "container" : "logs"} /></IconButton>
-          <IconButton title={showCommandTerminal ? "Show containers" : "Command terminal"} onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal((current) => !current); }} primary={showCommandTerminal}><Icon name={showCommandTerminal ? "container" : "terminal"} /></IconButton>
-          <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
+          <div className="icon-toggle container-toolbar-toggle" aria-label="Container tools">
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers"} data-tooltip="View containers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("containers"); }}><Icon name="container" /></button>
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups"} data-tooltip="View groups" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("groups"); }}><Icon name="layers" /></button>
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers"} data-tooltip="View workers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("workers"); }}><Icon name="worker" /></button>
+            <IconButton title="Monitor logs" active={showLogsMonitor} onClick={() => { setShowCommandTerminal(false); setShowLogsMonitor((current) => !current); }}><Icon name="logs" /></IconButton>
+            <IconButton title="Command terminal" active={showCommandTerminal} onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal((current) => !current); }}><Icon name="terminal" /></IconButton>
+            <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
+          </div>
         </div>
       </div>
 
-      {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} /> : null}
+      {!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
 
       {showLogsMonitor ? (
         <LogsView containers={containers} deployments={deployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setShowLogsMonitor(false)} />
@@ -984,10 +1047,12 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
         <div className="toolbar-actions">
-          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)} primary={showAddRepository}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
-          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
-          <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} onClick={() => setShowCommandPresets((current) => !current)} primary={showCommandPresets}><Icon name="terminal" /></IconButton>
-          <form action={enqueueAllRepositories}><PendingIconButton title="Sync all"><Icon name="sync" /></PendingIconButton></form>
+          <div className="icon-toggle repository-toolbar-toggle" aria-label="Repository tools">
+            <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} active={showAddRepository} onClick={() => setShowAddRepository((current) => !current)}><Icon name="add" /></IconButton>
+            <IconButton title={showCredentials ? "Close credentials" : "Credentials"} active={showCredentials} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
+            <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} active={showCommandPresets} onClick={() => setShowCommandPresets((current) => !current)}><Icon name="terminal" /></IconButton>
+            <form action={enqueueAllRepositories}><PendingIconButton title="Sync all repositories"><Icon name="sync" /></PendingIconButton></form>
+          </div>
         </div>
       </div>
 
@@ -1368,7 +1433,46 @@ function CommandPresetsPanel({ commandPresets }: { commandPresets: CommandPreset
   );
 }
 
-function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers: ManagedContainer[]; now: number }) {
+function WorkerSharingForm({ agent }: { agent: Agent }) {
+  const currentSharing = workerSharing(agent);
+  const currentSharedEmails = (agent.sharedEmails || []).join(", ");
+  const [sharing, setSharing] = useState(currentSharing);
+  const [sharedEmails, setSharedEmails] = useState(currentSharedEmails);
+  useEffect(() => {
+    setSharing(currentSharing);
+    setSharedEmails(currentSharedEmails);
+  }, [agent.id, currentSharing, currentSharedEmails]);
+  return (
+    <form action={saveWorkerSharing} className={`worker-sharing-form ${sharing === "shared" ? "has-shared-emails" : ""}`}>
+      <input type="hidden" name="workerId" value={agent.id} />
+      <label>
+        Access
+        <select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as "private" | "shared" | "public")}>
+          <option value="private">Private</option>
+          <option value="shared">Shared</option>
+          <option value="public">Public</option>
+        </select>
+      </label>
+      {sharing === "shared" ? (
+        <label className="worker-shared-emails">
+          Shared with
+          <input
+            name="sharedEmails"
+            type="text"
+            value={sharedEmails}
+            onChange={(event) => setSharedEmails(event.target.value)}
+            placeholder="ana@example.com, sam@example.com"
+            aria-label="Shared email addresses separated by commas"
+            autoComplete="off"
+          />
+        </label>
+      ) : <input type="hidden" name="sharedEmails" value="" />}
+      <PendingIconButton title="Save worker access"><Icon name="check" /></PendingIconButton>
+    </form>
+  );
+}
+
+function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[]; containers: ManagedContainer[]; now: number; currentUser: Props["user"] }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
     const bOnline = Number(isWorkerOnline(b, now));
@@ -1377,8 +1481,14 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
   return (
     <section className="workers-panel">
       <div className="workers-panel-header">
-        <strong>Workers</strong>
-        <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
+        <div>
+          <strong>Workers</strong>
+          <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
+        </div>
+        <form action={claimWorker} className="worker-claim-form">
+          <input name="workerToken" placeholder="Worker token" autoComplete="off" />
+          <PendingIconButton title="Claim worker"><Icon name="add" /></PendingIconButton>
+        </form>
       </div>
       <div className="workers-grid">{sortedAgents.map((agent) => {
         const online = isWorkerOnline(agent, now);
@@ -1387,6 +1497,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
         const canDelete = !online && agent.status === "offline" && now - agent.lastHeartbeat >= orphanWorkerDeleteAge;
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
+        const isOwner = canManageWorker(agent as WorkerAccessRecord, currentUser);
         const deleteTitle = ownedContainerCount
           ? `Remove stale worker record and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
           : "Remove stale worker record";
@@ -1396,12 +1507,23 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <StatusBadge label={statusLabel} running={online} />
               <div className="worker-card-title">
                 <strong>{displayName}</strong>
-                <small>{agent.poolId || "default"} · {agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {elapsed(agent.lastHeartbeat)}</small>
+                <small>{agent.poolId || "default"} · {agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {workerSharingLabel(agent)} · {elapsed(agent.lastHeartbeat)}</small>
               </div>
               <span className="worker-card-chevron"><Icon name="chevron" /></span>
             </summary>
             <div className="worker-details">
+              {isOwner ? (
+                <details className="worker-access-settings">
+                  <summary title="Manage worker access" data-tooltip="Manage worker access">
+                    <Icon name="key" />
+                    <span>{workerSharingLabel(agent)}</span>
+                    <span className="worker-access-chevron"><Icon name="chevron" /></span>
+                  </summary>
+                  <WorkerSharingForm agent={agent} />
+                </details>
+              ) : null}
               <span><strong>ID</strong><small>{agent.id}</small></span>
+              <span><strong>Access</strong><small>{isOwner ? `Owned by you · ${workerSharingLabel(agent)}` : workerSharingLabel(agent)}</small></span>
               <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
               <span><strong>Host</strong><small>{agent.hostname || "Unknown"}{agent.location ? ` · ${agent.location}` : ""}</small></span>
               <span><strong>Shards</strong><small>{agent.shards?.length ? agent.shards.join(", ") : "all/default"}</small></span>
@@ -1411,7 +1533,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>
               <span><strong>Traefik</strong><small>{agent.traefikEnabled ? agent.traefikNetwork || "proxy" : "disabled"}</small></span>
               <span><strong>Ngrok</strong><small>{agent.ngrokEnabled ? agent.ngrokRegion || "enabled" : "disabled"}</small></span>
-              {canDelete ? (
+              {canDelete && isOwner ? (
                 <form action={deleteWorker} className="worker-delete-form">
                   <input type="hidden" name="workerId" value={agent.id} />
                   <PendingIconButton title={deleteTitle}><Icon name="trash" /></PendingIconButton>

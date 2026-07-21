@@ -4,11 +4,28 @@
     ".write": false,
     "workspaces": {
       "$workspaceId": {
-        ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)",
         ".write": false,
-        "repositories": { ".indexOn": ["updatedAt", "alias"] },
-        "deployments": { ".indexOn": ["createdAt", "status", "repositoryId"] },
-        "agents": { ".indexOn": ["lastHeartbeat", "poolId"] }
+        "repositories": {
+          ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)",
+          ".indexOn": ["updatedAt", "alias"]
+        },
+        "deployments": {
+          ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)",
+          ".indexOn": ["createdAt", "status", "repositoryId"]
+        },
+        "agents": {
+          ".read": false,
+          ".indexOn": ["lastHeartbeat", "poolId", "ownerUid", "sharing"]
+        },
+        "credentials": {
+          ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)"
+        },
+        "containers": {
+          ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)"
+        },
+        "commandPresets": {
+          ".read": "auth != null && (auth.token.admin === true || auth.token.workspaceId === $workspaceId)"
+        }
       }
     },
     "jobs": { ".read": false, ".write": false, ".indexOn": ["status", "leaseExpiresAt", "workspaceId"] },
