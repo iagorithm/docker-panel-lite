@@ -1,4 +1,20 @@
 services:
+  logs:
+    build:
+      context: .
+      dockerfile: apps/logs/Dockerfile
+      args:
+        NEXT_PUBLIC_FIREBASE_DATABASE_URL: ${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}
+    ports:
+      - "${LOGS_PORT:-3001}:3001"
+    environment:
+      FIREBASE_DATABASE_URL: ${FIREBASE_DATABASE_URL:-${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}}
+      NEXT_PUBLIC_FIREBASE_DATABASE_URL: ${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-default}
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-admin}
+    restart: unless-stopped
+
   web:
     build:
       context: .

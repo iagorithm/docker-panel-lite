@@ -1,0 +1,32 @@
+@panelUrl = http://localhost:3000
+@logsUrl = http://localhost:3001
+@firebaseApiKey = AIzaSyA7OUzGy3vxo-iaCIA59bqwBOs1U1edhwY
+@email = test@test.com
+@password = 000000
+@limit = 500
+
+### Authenticate with Firebase
+# @name firebaseLogin
+POST https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebaseApiKey}}
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "returnSecureToken": true
+}
+
+### Create the application session; the HTTP client keeps its cookie
+# @name appSession
+POST {{panelUrl}}/api/session
+Content-Type: application/json
+
+{
+  "idToken": "{{firebaseLogin.response.body.$.idToken}}"
+}
+
+### Download recent error logs and remove exactly those records from Firebase
+POST {{logsUrl}}/api/logs/drain?limit={{limit}}
+Accept: application/x-ndjson
+
+>>! ./app-logs.logs

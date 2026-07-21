@@ -782,6 +782,9 @@ Expected behavior:
 - Include worker identity for worker events and user identity for UI/backend
   events, plus repository/container/job identifiers when available.
 - Error-reporting failures must never crash the worker or recursively report.
+- Administrators may drain up to 1000 recent `app_logs` records through the web
+  backend. A drain returns them as `app-logs.logs` and deletes only the returned
+  IDs, leaving errors created concurrently for the next collection.
 
 Docker and Compose errors should be compacted to the most useful lines instead
 of storing extremely long output.

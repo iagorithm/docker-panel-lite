@@ -10,7 +10,7 @@ Run these commands from the repository root.
 | --- | --- |
 | `./run.sh` | Shows the command menu. |
 | `./run.sh setup` | Creates `.env` from `.env.example` when `.env` does not exist yet. |
-| `./run.sh run` | Builds local source and starts `web`, the Python `worker`, and `worker-go` together. Uses local images and persistent folders under `volume/`. |
+| `./run.sh run` | Builds local source and starts `web`, the independent `logs` app, the Python `worker`, and `worker-go` together. Uses local images and persistent folders under `volume/`. |
 | `./run.sh run local` | Same as `./run.sh run`. |
 | `./run.sh run published` | Pulls and starts the stack using the images configured in `.env`. Use this for the deployed worker image flow. |
 | `./run.sh run go` | Builds and starts `web`, the Python `worker`, and `worker-go` with the Go worker profile enabled. |
@@ -18,6 +18,8 @@ Run these commands from the repository root.
 | `./run.sh restart` | Recreates and starts the published-image stack. |
 | `./run.sh ps` | Shows Compose service status. |
 | `./run.sh logs` | Follows logs for the main services. You can pass services, for example `./run.sh logs web worker`. |
+| `docker compose build logs` | Builds only the independent Next.js error-log application. |
+| `docker compose up -d logs` | Starts the error-log application on `${LOGS_PORT:-3001}`. Sign in through the main panel first. |
 | `./run.sh logs-go` | Follows only the Go worker logs. |
 | `./run.sh build` | Builds local images from `docker-compose.yaml` plus `docker-compose.build.yaml`. |
 | `./run.sh build all` | Same as `./run.sh build`. |
@@ -59,6 +61,16 @@ Run the web app, Python worker, and Go worker from local source:
 ```bash
 ./run.sh run
 ```
+
+The error-log console is a separate Next.js application and Docker container:
+
+```text
+http://localhost:3001
+```
+
+It reads only Firebase `app_logs`, filters by date, worker, container or UI,
+and downloads the selected errors to `app-logs.logs`. Downloading drains only
+the selected records; browsing and refreshing never delete logs.
 
 Run the Go worker tests:
 
