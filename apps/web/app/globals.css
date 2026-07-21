@@ -586,6 +586,10 @@ a:hover { text-decoration-color: var(--ui-text); }
   container-name: repositories-table;
   container-type: inline-size;
 }
+.containers-workspace .resource-panel {
+  container-name: containers-table;
+  container-type: inline-size;
+}
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1rem 0.75rem; }
 .panel > .section-title { padding: 0 0 0.75rem; }
 .resource-panel > .section-title { padding: 1rem 1rem 0.75rem; }
@@ -2272,6 +2276,155 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   }
   .repo-resource-row .settings-tabs button {
     padding-inline: 0.48rem;
+  }
+}
+
+@container containers-table (max-width: 72rem) {
+  .containers-workspace .resource-row,
+  .containers-workspace .container-group .resource-row {
+    grid-template-columns: minmax(12rem, 0.72fr) minmax(14rem, 1fr);
+    gap: 0.58rem 0.9rem;
+    min-height: 0;
+  }
+  .containers-workspace .resource-row > .row-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.22rem;
+    padding-left: 2.75rem;
+  }
+  .containers-workspace .container-group .resource-row {
+    margin-left: 3.7rem;
+  }
+  .containers-workspace .container-group-body::before,
+  .containers-workspace .worker-stack-section .container-group-body::before {
+    left: 2.28rem;
+  }
+  .containers-workspace .worker-stack-header {
+    padding-left: 3rem;
+  }
+}
+
+@container containers-table (max-width: 48rem) {
+  .containers-workspace .resource-row,
+  .containers-workspace .container-group .resource-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.48rem;
+  }
+  .containers-workspace .resource-row .resource-metadata,
+  .containers-workspace .resource-row > .row-actions {
+    margin-left: 2.75rem;
+  }
+  .containers-workspace .resource-row > .row-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+  .containers-workspace .container-group .resource-row {
+    margin: 0.34rem 0.58rem 0.34rem 2rem;
+    padding: 0.62rem 0.68rem;
+  }
+  .containers-workspace .container-group-body::before,
+  .containers-workspace .worker-stack-section .container-group-body::before {
+    left: 1.08rem;
+  }
+  .containers-workspace .worker-stack-header {
+    padding-inline: 2rem 0.72rem;
+  }
+  .containers-workspace .container-meta-line {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .containers-workspace .container-public-urls,
+  .containers-workspace .repo-public-url {
+    max-width: 100%;
+  }
+}
+
+@container containers-table (max-width: 34rem) {
+  .containers-workspace .container-group-header {
+    min-height: 4rem;
+    gap: 0.48rem;
+    padding: 0.58rem 0.62rem;
+  }
+  .containers-workspace .group-chevron {
+    width: 1rem;
+    height: 1rem;
+    flex-basis: 1rem;
+  }
+  .containers-workspace .group-stack-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    flex-basis: 2.2rem;
+  }
+  .containers-workspace .group-stack-icon .ui-icon {
+    width: 1.78rem;
+    height: 1.78rem;
+  }
+  .containers-workspace .group-title strong {
+    font-size: 0.82rem;
+  }
+  .containers-workspace .group-title small {
+    font-size: 0.64rem;
+  }
+  .containers-workspace .group-count {
+    min-width: 1.55rem;
+    min-height: 1.45rem;
+  }
+  .containers-workspace .worker-stack-header {
+    min-height: 2.4rem;
+    padding: 0.5rem 0.6rem 0.46rem 1.25rem;
+  }
+  .containers-workspace .worker-stack-header small {
+    max-width: 5.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .containers-workspace .container-group .resource-row {
+    margin: 0.28rem 0.34rem 0.28rem 1.1rem;
+    padding: 0.58rem;
+  }
+  .containers-workspace .container-group-body::before,
+  .containers-workspace .worker-stack-section .container-group-body::before {
+    left: 0.58rem;
+  }
+  .containers-workspace .resource-row .resource-metadata,
+  .containers-workspace .resource-row > .row-actions {
+    margin-left: 0;
+  }
+  .containers-workspace .container-group .resource-row > .row-actions {
+    margin-left: 0;
+  }
+  .containers-workspace .resource-status-line {
+    flex-wrap: wrap;
+  }
+  .containers-workspace .resource-row > .row-actions {
+    width: 100%;
+    gap: 0.14rem;
+  }
+  .containers-workspace .container-command-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    flex: 1 0 100%;
+    margin-bottom: 0.12rem;
+  }
+  .containers-workspace .container-command-select,
+  .containers-workspace .container-group .resource-row .container-command-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .containers-workspace .resource-row .row-actions .icon-button {
+    width: 2.12rem;
+    max-width: 2.12rem;
+    min-width: 2.12rem;
+    min-height: 2.12rem;
+  }
+  .containers-workspace .resource-row .row-actions .ui-icon,
+  .containers-workspace .resource-row .row-actions .button-spinner {
+    width: 1rem;
+    height: 1rem;
   }
 }
 
