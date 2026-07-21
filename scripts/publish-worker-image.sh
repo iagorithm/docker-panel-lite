@@ -156,6 +156,9 @@ build_runtime() {
   local push="$4"
   local progress="$5"
   local bake_config="$6"
+  local worker_version="$7"
+  local worker_commit="$8"
+  local worker_build_date="$9"
   local dockerfile
   local tag
   dockerfile="$(dockerfile_for_runtime "$runtime")"
@@ -180,6 +183,11 @@ build_runtime() {
   echo "  platforms: $platforms"
   echo "  push: $push"
   echo "  baked config: $([[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]] && echo yes || echo no)"
+  if [[ "$tag" == "go" ]]; then
+    echo "  worker version: $worker_version"
+    echo "  worker commit: $worker_commit"
+    echo "  worker build date: $worker_build_date"
+  fi
   if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
     echo "  warning: baked config is intended for private images only"
   fi
@@ -193,6 +201,13 @@ build_runtime() {
   )
   if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
     build_command+=(--build-arg WORKER_CONFIG_REQUIRED=true)
+  fi
+  if [[ "$tag" == "go" ]]; then
+    build_command+=(
+      --build-arg "WORKER_VERSION=$worker_version"
+      --build-arg "WORKER_COMMIT=$worker_commit"
+      --build-arg "WORKER_BUILD_DATE=$worker_build_date"
+    )
   fi
   if [[ "${#build_secrets[@]}" -gt 0 ]]; then
     build_command+=("${build_secrets[@]}")
@@ -235,7 +250,7 @@ main() {
     exit 1
   fi
 
-  local base_image platforms push progress bake_config
+  local base_image platforms push progress bake_config worker_version worker_commit worker_build_date
   base_image="$(base_image_ref)"
   platforms="$(env_value WORKER_IMAGE_PLATFORMS)"
   platforms="${platforms:-linux/amd64,linux/arm64}"
@@ -245,6 +260,12 @@ main() {
   progress="${progress:-plain}"
   bake_config="$(env_value WORKER_BAKE_CONFIG)"
   bake_config="${bake_config:-true}"
+  worker_commit="$(git -C "$ROOT_DIR" rev-parse --verify HEAD 2>/dev/null || true)"
+  worker_commit="${worker_commit:-unknown}"
+  worker_version="$(env_value WORKER_VERSION)"
+  worker_version="${worker_version:-$worker_commit}"
+  worker_build_date="$(git -C "$ROOT_DIR" show -s --format=%cI HEAD 2>/dev/null || true)"
+  worker_build_date="${worker_build_date:-unknown}"
 
   if [[ "$push" == "false" || "$push" == "0" ]]; then
     platforms="$(single_platform)"
@@ -257,14 +278,14 @@ main() {
 
   case "$target" in
     all|both)
-      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config"
-      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
+      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
       ;;
     py|python)
-      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
       ;;
     go)
-      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
       ;;
   esac
 

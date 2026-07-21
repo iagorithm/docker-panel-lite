@@ -1,10 +1,18 @@
 # syntax=docker/dockerfile:1.7
 FROM golang:1.24-alpine AS builder
+ARG WORKER_VERSION=dev
+ARG WORKER_COMMIT=unknown
+ARG WORKER_BUILD_DATE=unknown
 WORKDIR /src
 COPY services/worker-go/go.mod ./go.mod
 RUN go mod download
 COPY services/worker-go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/docker-panel-worker ./worker
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w \
+      -X docker-panel-lite-worker-go/worker/heartbeat.WorkerVersion=${WORKER_VERSION} \
+      -X docker-panel-lite-worker-go/worker/heartbeat.BuildCommit=${WORKER_COMMIT} \
+      -X docker-panel-lite-worker-go/worker/heartbeat.BuildDate=${WORKER_BUILD_DATE}" \
+    -o /out/docker-panel-worker ./worker
 
 FROM alpine:3.22
 ARG WORKER_CONFIG_REQUIRED=false

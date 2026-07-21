@@ -36,11 +36,14 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 	if sharing != "private" && sharing != "shared" && sharing != "public" {
 		sharing = "private"
 	}
+	build := CurrentBuildInfo()
 	payload := map[string]interface{}{
 		"id":               a.settings.WorkerID,
 		"runtime":          "go",
 		"runtimeVersion":   runtime.Version(),
-		"workerVersion":    WorkerVersion,
+		"workerVersion":    build.Version,
+		"buildCommit":      build.Commit,
+		"buildDate":        build.Date,
 		"features":         []string{"heartbeat", "claim", "docker-summary", "queue-polling", "job-leasing", "container-inventory", "container-actions", "git-sync", "compose-deploy", "dockerfile-deploy"},
 		"identitySource":   a.settings.WorkerIdentitySource,
 		"label":            a.settings.WorkerLabelOrDefault(),

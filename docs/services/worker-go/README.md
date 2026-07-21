@@ -18,6 +18,7 @@ Current implementation status:
 - Handles `discover_branches`, `sync`, `read_compose`, `deploy`, `build`, `stop`, `tunnel_start`, and `tunnel_stop` for repository jobs.
 - Decrypts Firebase-stored Git credentials with the same AES-256-GCM format as the app.
 - Opens public ngrok tunnels using the same repository secret path as the Python worker.
+- Reports immutable build version, commit, and commit date in its heartbeat.
 
 Not implemented yet:
 
@@ -43,6 +44,11 @@ Build with Docker:
 ```bash
 ./run.sh build go
 ```
+
+Published builds inject `workerVersion`, `buildCommit`, and `buildDate` into the
+binary. Set `WORKER_VERSION=v1.2.3` to report a release name; when it is empty,
+the publication script uses the exact Git commit SHA. Direct local builds report
+`dev`, `unknown`, and `unknown`.
 
 Build and run the local app with both Python and Go workers:
 

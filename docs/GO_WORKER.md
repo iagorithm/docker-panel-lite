@@ -17,7 +17,7 @@ Current Go implementation in `services/worker-go` supports:
 - SHA-256 worker token hash.
 - Online/offline heartbeat.
 - Preservation of owner and sharing metadata during heartbeat.
-- Runtime metadata: `runtime: "go"`, Go version, worker version placeholder, and feature list.
+- Runtime metadata: `runtime: "go"`, Go version, immutable worker build metadata, and feature list.
 - Docker availability summary through Docker CLI.
 - Queue polling for configured shards.
 - ETag-based conditional job leasing.
@@ -256,7 +256,9 @@ Required fields:
   "id": "worker-default-abc123",
   "runtime": "go",
   "runtimeVersion": "1.0.0",
-  "workerVersion": "git-sha-or-version",
+  "workerVersion": "release-name-or-git-sha",
+  "buildCommit": "full-git-sha",
+  "buildDate": "commit-date-in-RFC3339",
   "identitySource": "machine-id",
   "label": "Mexica",
   "hostname": "host-name",
