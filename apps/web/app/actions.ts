@@ -163,6 +163,97 @@ function safeDockerName(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").toLowerCase().slice(0, 63);
 }
 
+type PublishedPort = {
+  hostPort: number;
+  protocol: "tcp" | "udp";
+};
+
+function publishedPortKey(binding: PublishedPort) {
+  return `${binding.protocol}:${binding.hostPort}`;
+}
+
+function parseConfiguredPublishedPorts(value: unknown): PublishedPort[] {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const result: PublishedPort[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.split(/[\s,]+/).filter(Boolean)) {
+    const match = entry.match(/(?:^|:)(\d+):(\d+)(?:\/(tcp|udp))?$/i);
+    if (!match) throw new Error(`Invalid port mapping '${entry}'. Use host:container, for example 8080:80.`);
+    const hostPort = Number(match[1]);
+    const containerPort = Number(match[2]);
+    if (hostPort < 1 || hostPort > 65535 || containerPort < 1 || containerPort > 65535) {
+      throw new Error(`Invalid port mapping '${entry}'. Ports must be between 1 and 65535.`);
+    }
+    const binding: PublishedPort = { hostPort, protocol: match[3]?.toLowerCase() === "udp" ? "udp" : "tcp" };
+    const key = publishedPortKey(binding);
+    if (seen.has(key)) throw new Error(`Port ${hostPort}/${binding.protocol} is declared more than once.`);
+    seen.add(key);
+    result.push(binding);
+  }
+  return result;
+}
+
+function parseInventoryPublishedPorts(value: unknown): PublishedPort[] {
+  const entries = Array.isArray(value) ? value : String(value || "").split(",");
+  const result: PublishedPort[] = [];
+  for (const item of entries) {
+    const raw = String(item || "").trim();
+    const match = raw.match(/(?:^|:)(\d+)->\d+(?:\/(tcp|udp))?$/i);
+    if (!match) continue;
+    result.push({ hostPort: Number(match[1]), protocol: match[2]?.toLowerCase() === "udp" ? "udp" : "tcp" });
+  }
+  return result;
+}
+
+function assertConfiguredPortsAvailable(input: {
+  repositoryId: string;
+  poolId: string;
+  mode: string;
+  ports: string;
+  repositories: Record<string, Partial<Repository>>;
+}) {
+  if (input.mode !== "dockerfile") return;
+  const requested = parseConfiguredPublishedPorts(input.ports);
+  if (!requested.length) return;
+  const requestedKeys = new Set(requested.map(publishedPortKey));
+  for (const [otherId, repository] of Object.entries(input.repositories)) {
+    if (otherId === input.repositoryId || repository.mode !== "dockerfile") continue;
+    if (String(repository.poolId || "default") !== input.poolId) continue;
+    for (const binding of parseConfiguredPublishedPorts(repository.ports)) {
+      if (requestedKeys.has(publishedPortKey(binding))) {
+        throw new Error(`Port ${binding.hostPort}/${binding.protocol} is already reserved by repository '${repository.alias || otherId}' in pool '${input.poolId}'.`);
+      }
+    }
+  }
+}
+
+async function findOpenDeploymentPortCollision(input: {
+  workspaceId: string;
+  repositoryId: string;
+  repository: Partial<Repository>;
+  targetWorkerId: string;
+}) {
+  if (input.repository.mode !== "dockerfile") return "";
+  const requested = parseConfiguredPublishedPorts(input.repository.ports);
+  if (!requested.length) return "";
+  const requestedKeys = new Set(requested.map(publishedPortKey));
+  const project = safeDockerName(String(input.repository.alias || input.repositoryId));
+  const snapshot = await adminDatabase.ref(`workspaces/${input.workspaceId}/containers`).get();
+  const containers = (snapshot.val() ?? {}) as Record<string, Record<string, unknown>>;
+  for (const container of Object.values(containers)) {
+    if (String(container.workerId || "") !== input.targetWorkerId) continue;
+    if (!["running", "restarting", "created"].includes(String(container.status || "").toLowerCase())) continue;
+    if (safeDockerName(String(container.project || container.name || "")) === project) continue;
+    for (const binding of parseInventoryPublishedPorts(container.ports)) {
+      if (requestedKeys.has(publishedPortKey(binding))) {
+        return `Port ${binding.hostPort}/${binding.protocol} is already open on worker '${input.targetWorkerId}' by container '${container.name || container.id || "unknown"}'.`;
+      }
+    }
+  }
+  return "";
+}
+
 function secretMask(value: string) {
   return value.length > 10 ? `${value.slice(0, 5)}••••••••${value.slice(-4)}` : "••••••••";
 }
@@ -412,6 +503,14 @@ export async function saveRepository(formData: FormData) {
   const environment = parseEnvironment(input.environmentJson, input.environmentFormat, current?.environment ?? {});
   const publicTunnelDomains = input.publicTunnelDomainsJson ? normalizeStringMap(input.publicTunnelDomainsJson) : current?.publicTunnelDomains ?? {};
   const publicTunnelPorts = input.publicTunnelPortsJson ? normalizeStringMap(input.publicTunnelPortsJson) : current?.publicTunnelPorts ?? {};
+  const repositoriesSnapshot = await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories`).get();
+  assertConfiguredPortsAvailable({
+    repositoryId,
+    poolId: input.poolId,
+    mode: input.mode,
+    ports: input.ports,
+    repositories: (repositoriesSnapshot.val() ?? {}) as Record<string, Partial<Repository>>,
+  });
   const repositoryPayload = {
     id: repositoryId,
     alias: input.alias,
@@ -506,7 +605,8 @@ export async function importRepositoriesJson(formData: FormData) {
   const updates: Record<string, unknown> = {};
   const now = Date.now();
   const existingSnapshot = await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories`).get();
-  const existingRepositories = (existingSnapshot.val() ?? {}) as Record<string, RepositoryAccessRecord>;
+  const existingRepositories = (existingSnapshot.val() ?? {}) as Record<string, RepositoryAccessRecord & Partial<Repository>>;
+  const repositoriesWithImports: Record<string, Partial<Repository>> = { ...existingRepositories };
 
   for (const [key, value] of entries) {
     if (!value || Array.isArray(value) || typeof value !== "object") throw new Error(`Invalid repository '${key || "repository"}'`);
@@ -529,7 +629,7 @@ export async function importRepositoriesJson(formData: FormData) {
     const createdAt = input.createdAt || (input.added_at ? Date.parse(input.added_at) : NaN);
     const sharing = current ? repositorySharingMode(current) : "private";
     const ownerUid = currentOwnerUid || user.uid;
-    updates[`workspaces/${user.workspaceId}/repositories/${repositoryId}`] = {
+    const repositoryPayload = {
       id: repositoryId,
       alias: repositoryId,
       url: input.url,
@@ -565,7 +665,7 @@ export async function importRepositoriesJson(formData: FormData) {
       ngrokTokenSecret: Boolean(ngrokAuthtoken),
       ngrokTokenMask: ngrokAuthtoken ? secretMask(ngrokAuthtoken) : "",
       poolId: input.poolId || input.pool_id || "default",
-      scope: "workspace",
+      scope: "workspace" as const,
       sharing,
       shared: sharing === "shared" || sharing === "public",
       public: sharing === "public",
@@ -577,6 +677,15 @@ export async function importRepositoriesJson(formData: FormData) {
       updatedAt: now,
       updatedBy: user.uid,
     };
+    assertConfiguredPortsAvailable({
+      repositoryId,
+      poolId: repositoryPayload.poolId,
+      mode: repositoryPayload.mode,
+      ports: repositoryPayload.ports,
+      repositories: repositoriesWithImports,
+    });
+    repositoriesWithImports[repositoryId] = repositoryPayload;
+    updates[`workspaces/${user.workspaceId}/repositories/${repositoryId}`] = repositoryPayload;
     if (ngrokAuthtoken) {
       updates[`secrets/ngrok/${user.workspaceId}/${repositoryId}`] = {
         ...encryptSecret(ngrokAuthtoken),
@@ -733,6 +842,18 @@ export async function enqueueDeployment(formData: FormData) {
   if (targetWorkerId && !agentIsOnline(targetWorker, createdAt)) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
     return;
+  }
+  if (["deploy", "build"].includes(action)) {
+    const portCollision = await findOpenDeploymentPortCollision({
+      workspaceId: user.workspaceId,
+      repositoryId,
+      repository: repository as Partial<Repository>,
+      targetWorkerId,
+    });
+    if (portCollision) {
+      await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: portCollision });
+      return;
+    }
   }
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;

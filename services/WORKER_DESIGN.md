@@ -92,6 +92,7 @@ that every action depends on.
 | Queue cleanup | Remove terminal/orphaned queue items and wake scanning after completion. |
 | Docker summary | Report daemon availability, versions, platform, container counts, and image counts with bounded caching. |
 | Container inventory | Normalize Docker records, mark ownership, reconcile stale records, and preserve bounded log tails. |
+| Deployment port validation | In the backend, validate declared `host:container` mappings, reserve host ports per worker pool, and reject deploy/build jobs when an active container already publishes the requested TCP/UDP port on the selected worker. |
 | Worker protection | Identify the worker container and reject stop, delete, and exec operations against it. |
 | Repository paths | Derive safe clone/project paths and reject traversal outside configured roots. |
 | Git credentials | Decrypt, inject only for Git operations, and redact raw/encoded tokens from errors. |
@@ -199,6 +200,13 @@ even when a capability is initially marked as pending.
 - Deploy/stop Compose projects with a stable project name and a 900-second bound.
 - Build Dockerfiles, tag managed images, replace managed containers, and apply
   configured environment and port mappings.
+- Before enqueueing a Dockerfile deploy/build, the backend must validate the
+  declared mappings and compare their host-side TCP/UDP ports with the selected
+  worker's current container inventory. The repository's own project is excluded
+  so a normal replacement deploy can reuse its existing mapping. Repository
+  save/import also reserves declared host ports within the same worker pool.
+- Treat the backend check as an early conflict guard; the Docker daemon remains
+  the final authority because inventory can change between validation and bind.
 
 ### Commands, secrets, and public tunnels
 
@@ -626,6 +634,8 @@ Compose mode:
 
 Dockerfile mode:
 
+- Validate that configured host ports are not reserved in the repository pool
+  and are not currently published by another active container on the target worker.
 - Sync repository.
 - Validate Dockerfile path.
 - Load environment.
