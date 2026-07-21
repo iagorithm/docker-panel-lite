@@ -121,7 +121,7 @@ a:hover { text-decoration-color: var(--ui-text); }
   color: var(--ui-text-tertiary);
   place-items: center;
 }
-.sidebar-container-mark svg { display: block; width: 1.06rem; height: 1.06rem; fill: currentColor; }
+.sidebar-container-mark svg { display: block; width: 1.18rem; height: 1.18rem; fill: currentColor; }
 .sidebar-github-mark .github-mark { width: 1.06rem; height: 1.06rem; flex-basis: 1.06rem; }
 .sidebar-github-mark .github-mark svg { width: 1.02rem; height: 1.02rem; }
 .sidebar-nav button:hover { color: var(--ui-text); background: rgba(255, 255, 255, 0.45); }
