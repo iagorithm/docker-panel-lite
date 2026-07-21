@@ -16,7 +16,95 @@ independently of implementation language. Any runtime that follows this design
 must speak the same Firebase protocol, preserve the same ownership model, and
 produce compatible updates for the dashboard.
 
-## Core Responsibilities
+## Core Capability Inventory
+
+The worker contract is divided into two inventories:
+
+1. **Actions** are commands accepted through the job protocol. They are the
+   externally observable functionality of the worker.
+2. **Auxiliary capabilities** are internal responsibilities required to execute
+   those actions safely and consistently.
+
+A worker runtime reaches parity only when it implements both inventories. Having
+an action handler without its required leasing, locking, security, publication,
+and cleanup behavior does not count as complete implementation.
+
+## Action Inventory
+
+The canonical worker accepts exactly these 16 job actions.
+
+### Repository actions
+
+| Action | Core purpose |
+| --- | --- |
+| `discover_branches` | List remote Git branches and identify the default branch. |
+| `sync` | Clone or update the configured repository and branch. |
+| `read_compose` | Synchronize and return the validated Compose file content. |
+| `deploy` | Synchronize and deploy a Compose or Dockerfile repository. |
+| `build` | Build/deploy the repository using its configured execution mode. |
+| `stop` | Stop the Compose project or remove the managed Dockerfile container. |
+| `tunnel_start` | Start or reuse public tunnels for repository services. |
+| `tunnel_stop` | Stop repository tunnels and clear public URL state. |
+
+### Container actions
+
+| Action | Core purpose |
+| --- | --- |
+| `inventory_refresh` | Reconcile Docker containers with workspace inventory records. |
+| `container_start` | Start a selected container. |
+| `container_stop` | Stop a selected non-worker container. |
+| `container_restart` | Restart a selected container. |
+| `container_delete` | Force-remove a selected non-worker container. |
+| `container_logs` | Load and store the bounded log tail of a container. |
+| `container_exec` | Execute a bounded, non-interactive command inside a non-worker container. |
+
+### Worker action
+
+| Action | Core purpose |
+| --- | --- |
+| `worker_command` | Execute a bounded command in the worker clone root or a repository clone. |
+
+The detailed inputs, outputs, side effects, and limits for these actions are in
+[Complete Action Contract](#complete-action-contract).
+
+## Auxiliary Capability Inventory
+
+These capabilities are not independent job actions. They form the reusable core
+that every action depends on.
+
+| Auxiliary capability | Core responsibility |
+| --- | --- |
+| Configuration | Load runtime/fallback environment, validate limits, and resolve Firebase, Docker, paths, pool, shards, and tunnel settings. |
+| Worker identity | Produce a stable worker ID from configuration, host fingerprint, persisted marker, or generated fallback. |
+| Claim token | Generate/persist a secure token, publish only its SHA-256 hash, and expose the raw token only for claiming. |
+| Firebase client | Authenticate, read/write/patch records, support listeners, and provide transactional or conditional updates. |
+| Lifecycle | Start, publish `online`, handle signals, publish `stopping`, drain active work, publish `offline`, and close resources. |
+| Heartbeat | Publish runtime/host/capacity/Docker metadata while preserving ownership and sharing state. |
+| Queue discovery | Listen to assigned shards and poll as a recovery fallback; sort and filter candidate jobs. |
+| Concurrency | Enforce maximum active jobs and prevent duplicate local execution. |
+| Job leasing | Claim atomically, recover expired leases, increment attempts, assign worker, and renew leases. |
+| Resource locking | Acquire, renew, and release repository/container locks to prevent conflicting actions. |
+| Cancellation | Detect cancellation before/during/after execution and interrupt active process trees when possible. |
+| Job publication | Mirror progress and terminal results to canonical jobs and workspace deployments. |
+| Queue cleanup | Remove terminal/orphaned queue items and wake scanning after completion. |
+| Docker summary | Report daemon availability, versions, platform, container counts, and image counts with bounded caching. |
+| Container inventory | Normalize Docker records, mark ownership, reconcile stale records, and preserve bounded log tails. |
+| Worker protection | Identify the worker container and reject stop, delete, and exec operations against it. |
+| Repository paths | Derive safe clone/project paths and reject traversal outside configured roots. |
+| Git credentials | Decrypt, inject only for Git operations, and redact raw/encoded tokens from errors. |
+| Git synchronization | Discover branches, clone, fetch, switch/track, and fast-forward pull repositories. |
+| Environment normalization | Parse object, JSON, dotenv, legacy, and list formats; merge precedence and validate keys. |
+| Environment materialization | Write `.env` and generate Compose service overrides without leaking secrets. |
+| Compose execution | Validate Compose path and run bounded deploy/stop commands with stable project naming. |
+| Dockerfile execution | Validate Dockerfile, build/tag image, replace managed container, and apply environment/ports. |
+| Command execution | Parse commands, disable interactive Compose behavior, enforce timeout/cancellation, and bound output. |
+| Secret decryption | Implement the versioned AES-256-GCM contract used by the web application. |
+| Tunnel target discovery | Resolve host-port or container-network targets and attach the worker to required Docker networks. |
+| Tunnel lifecycle | Start/reuse/track/stop per-service tunnel processes and persist bounded state/log metadata. |
+| Error handling | Compact/redact errors, publish failure safely, release resources, and keep the worker alive. |
+| Observability | Emit useful lifecycle/action logs without exposing credentials or unbounded command output. |
+
+## Auxiliary Core Responsibilities
 
 This list is the minimum capability contract for every worker runtime. A new
 implementation, including the Go worker, must account for every responsibility
