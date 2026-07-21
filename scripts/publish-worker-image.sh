@@ -127,15 +127,31 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
   echo "  warning: baked config is intended for private images only"
 fi
 
-docker buildx build \
+if ! docker buildx build \
   --progress "$PROGRESS" \
   --platform "$PLATFORMS" \
   -f "$ROOT_DIR/services/worker/Dockerfile" \
   -t "$BASE_IMAGE:$TAG" \
   -t "$BASE_IMAGE:latest" \
-  "${BUILD_SECRETS[@]}" \
+  ${BUILD_SECRETS[@]+"${BUILD_SECRETS[@]}"} \
   "${OUTPUT_FLAG[@]}" \
-  "$ROOT_DIR"
+  "$ROOT_DIR"; then
+  echo
+  echo "Worker image build/publish failed."
+  if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
+    echo
+    echo "If the error says 'push access denied' or 'insufficient_scope', Docker Hub rejected the push."
+    echo "Check one of these:"
+    echo "  1. Run: docker login"
+    echo "  2. Make sure WORKER_IMAGE uses a namespace you can push to: $BASE_IMAGE"
+    echo "  3. Create the Docker Hub repository before pushing, especially for private/org repositories."
+    echo "  4. If this is an org repo, confirm your Docker Hub user has Write permission."
+    echo
+    echo "Example:"
+    echo "  WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:latest ./run.sh publish-worker"
+  fi
+  exit 1
+fi
 
 if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
   echo

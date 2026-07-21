@@ -19,6 +19,12 @@ docker login
 ./run.sh publish-worker
 ```
 
+If Docker Hub rejects the push with `push access denied` or `insufficient_scope`, the logged-in user cannot write to the namespace in `WORKER_IMAGE`. Either create/grant access to that repository, or publish under a namespace you own:
+
+```bash
+WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:latest ./run.sh publish-worker
+```
+
 To publish a private image that already includes the worker Firebase configuration, set:
 
 ```env
