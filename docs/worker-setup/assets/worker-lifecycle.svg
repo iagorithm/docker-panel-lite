@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-labelledby="title desc">
+  <title id="title">Persistent worker lifecycle</title>
+  <desc id="desc">The worker image can be replaced while its identity, token, and repositories remain stored in persistent host directories.</desc>
+  <rect width="1200" height="260" rx="28" fill="#171918"/>
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <circle cx="135" cy="112" r="50" fill="#2496ed"/><text x="135" y="120" font-size="22" font-weight="700" fill="#fff">PULL</text>
+    <circle cx="445" cy="112" r="50" fill="#6154d6"/><text x="445" y="120" font-size="22" font-weight="700" fill="#fff">RUN</text>
+    <circle cx="755" cy="112" r="50" fill="#37b9aa"/><text x="755" y="120" font-size="19" font-weight="700" fill="#fff">CLAIM</text>
+    <circle cx="1065" cy="112" r="50" fill="#e8903b"/><text x="1065" y="120" font-size="18" font-weight="700" fill="#fff">OPERATE</text>
+    <text x="135" y="194" font-size="17" fill="#b8bfbc">Private image</text>
+    <text x="445" y="194" font-size="17" fill="#b8bfbc">Persistent mounts</text>
+    <text x="755" y="194" font-size="17" fill="#b8bfbc">Worker token</text>
+    <text x="1065" y="194" font-size="17" fill="#b8bfbc">Deploy and monitor</text>
+  </g>
+  <path d="M198 112h180M508 112h180M818 112h180" stroke="#6a716e" stroke-width="4" stroke-linecap="round" stroke-dasharray="9 11"/>
+</svg>

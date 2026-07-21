@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Docker Panel Lite Worker - Quick Setup</title>
+  <style>
+    @page {
+      size:A4;
+      margin:10mm 12mm 11mm;
+      background:#fff;
+      @bottom-left { content:"Internal Use Only"; color:#858b88; font:7pt Arial; }
+      @bottom-right { content:"Docker Panel Lite Worker"; color:#858b88; font:7pt Arial; }
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; color:#171918; background:#fff; font-family:Arial,Helvetica,sans-serif; font-size:8.2pt; line-height:1.28; }
+    h1 { margin:0 0 1.5mm; font-size:20pt; line-height:1.05; }
+    h2 { margin:0 0 2mm; font-size:10.5pt; }
+    p { margin:0 0 2mm; }
+    a { color:#187bc0; text-decoration:none; }
+    code { font-family:Menlo,Consolas,monospace; }
+    .header { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:4mm; padding-bottom:3mm; border-bottom:.3mm solid #d9dcda; }
+    .header p { margin:0; color:#68706d; }
+    .tag { color:#6154d6; font-size:7pt; font-weight:700; letter-spacing:.8pt; text-transform:uppercase; }
+    .section { margin-bottom:3.5mm; page-break-inside:avoid; }
+    .step { display:inline-block; width:5.5mm; height:5.5mm; margin-right:2mm; color:#fff; background:#171918; border-radius:1.4mm; text-align:center; vertical-align:middle; line-height:5.5mm; }
+    .terminal { overflow:hidden; color:#e9ecea; background:#171918; border-radius:2mm; }
+    .terminal-label { padding:1.6mm 3mm; color:#aeb5b1; background:#272a28; font-size:7pt; }
+    pre { margin:0; padding:2.8mm 3mm; white-space:pre-wrap; overflow-wrap:anywhere; font:7.25pt/1.38 Menlo,Consolas,monospace; }
+    .comment { color:#929b96; }
+    .grid { display:flex; margin:0 -1.5mm 3.5mm; }
+    .grid .section { width:50%; margin:0 1.5mm; }
+    .claim { display:flex; align-items:flex-start; margin-top:2mm; }
+    .claim img { width:58%; margin-right:4mm; border:.3mm solid #d9dcda; border-radius:2mm; }
+    .claim ol { width:42%; margin:0; padding-left:5mm; }
+    .claim li { margin-bottom:1.8mm; }
+    .note { margin-top:2mm; padding:2.2mm 3mm; color:#5f431e; background:#fff5e9; border-left:.8mm solid #d97825; }
+    .ops { width:100%; border-collapse:collapse; }
+    .ops td { padding:1.8mm 2mm; border-top:.25mm solid #dfe1df; vertical-align:top; }
+    .ops td:first-child { width:43%; font-family:Menlo,Consolas,monospace; font-size:7.1pt; }
+    .muted { color:#68706d; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div><p class="tag">Internal Quick Guide</p><h1>Docker Panel Lite Worker</h1><p>Launch and claim a remote worker from <code>cjarn/docker-panel-lite-worker:latest</code>.</p></div>
+    <p><a href="https://v0-dpanel-c.vercel.app/dashboard">v0-dpanel-c.vercel.app/dashboard</a></p>
+  </header>
+
+  <div class="grid">
+    <section class="section">
+      <h2><span class="step">1</span>Docker Hub login</h2>
+      <div class="terminal">
+        <div class="terminal-label">Authenticate to the private registry</div>
+        <pre>docker login -u cjarn
+<span class="comment"># When prompted, paste your PAT instead of your password
+# PAT: dckr_pat_&lt;your-personal-access-token&gt;</span></pre>
+      </div>
+    </section>
+    <section class="section">
+      <h2><span class="step">2</span>Create persistent folders</h2>
+      <div class="terminal">
+        <div class="terminal-label">Keep repositories, identity and token</div>
+        <pre>mkdir -p "$HOME/docker-panel-worker/repos" \
+  "$HOME/docker-panel-worker/data"</pre>
+      </div>
+      <div class="note">Keep <code>data</code> to preserve the worker name, ID and claim token.</div>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2><span class="step">3</span>Launch the worker</h2>
+    <div class="terminal">
+      <div class="terminal-label">Run on the remote Docker host</div>
+      <pre>docker run -d --pull always \
+  --name docker-panel-lite-worker \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/docker-panel-worker/repos:/app/clones" \
+  -v "$HOME/docker-panel-worker/data:/app/data" \
+  cjarn/docker-panel-lite-worker:latest</pre>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2><span class="step">4</span>Read and claim the Worker Token</h2>
+    <div class="terminal">
+      <div class="terminal-label">Copy the token printed at startup</div>
+      <pre>docker logs --tail 100 docker-panel-lite-worker
+<span class="comment"># Look for: Worker claim token for worker-default-...: &lt;generated-worker-token&gt;</span></pre>
+    </div>
+    <div class="claim">
+      <img src="assets/claim-worker.svg" alt="Workers view with Worker token field and claim button">
+      <ol>
+        <li>Open <a href="https://v0-dpanel-c.vercel.app/dashboard">the dashboard</a> and sign in.</li>
+        <li>Open <strong>Containers</strong> and select the Workers icon.</li>
+        <li>Paste the token in <strong>Worker token</strong>.</li>
+        <li>Select <strong>+</strong>, then choose Private, Shared or Public.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Essential operations</h2>
+    <table class="ops">
+      <tr><td>docker logs -f docker-panel-lite-worker</td><td>Follow worker activity; <code>Ctrl+C</code> exits the log stream.</td></tr>
+      <tr><td>docker restart docker-panel-lite-worker</td><td>Restart while preserving identity.</td></tr>
+      <tr><td>docker rm -f docker-panel-lite-worker</td><td>Remove only the container; persistent folders remain.</td></tr>
+      <tr><td>rm -rf "$HOME/docker-panel-worker"</td><td><strong>Permanent:</strong> deletes repositories, identity and token.</td></tr>
+    </table>
+    <p class="muted">Never share Docker Hub PATs, Worker Tokens, Firebase credentials or encryption keys in logs or documentation.</p>
+  </section>
+</body>
+</html>

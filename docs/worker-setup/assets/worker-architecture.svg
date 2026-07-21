@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Docker Panel Lite worker architecture</title>
+  <desc id="desc">A private Docker Hub image runs on a remote host, controls the local Docker engine, and connects to the Docker Panel control plane.</desc>
+  <rect width="1200" height="420" rx="28" fill="#f3f4f4"/>
+  <rect x="52" y="92" width="238" height="236" rx="22" fill="#ffffff" stroke="#d5d8d7" stroke-width="2"/>
+  <rect x="481" y="52" width="238" height="316" rx="22" fill="#171918"/>
+  <rect x="910" y="92" width="238" height="236" rx="22" fill="#ffffff" stroke="#d5d8d7" stroke-width="2"/>
+  <path d="M291 210H449" stroke="#6b7470" stroke-width="4" stroke-linecap="round"/>
+  <path d="m431 194 20 16-20 16" fill="none" stroke="#6b7470" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M751 210H908" stroke="#6b7470" stroke-width="4" stroke-linecap="round"/>
+  <path d="m770 194-20 16 20 16" fill="none" stroke="#6b7470" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="171" cy="155" r="35" fill="#2496ed"/>
+  <path d="M145 153h52v18h-52zM151 135h14v14h-14zM169 135h14v14h-14zM187 135h14v14h-14z" fill="#fff"/>
+  <path d="M140 173c10 19 54 22 69-3-9 4-14 2-18-2-8 8-37 9-51 5Z" fill="#fff"/>
+  <text x="171" y="220" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#171918">Private registry</text>
+  <text x="171" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" fill="#6b7470">cjarn/worker:latest</text>
+  <text x="600" y="102" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#aeb5b1">REMOTE HOST</text>
+  <rect x="534" y="129" width="132" height="104" rx="18" fill="#6154d6"/>
+  <path d="M600 149 637 170 600 191 563 170 600 149Zm-33 31 29 17v32l-29-17v-32Zm66 0v32l-29 17v-32l29-17Z" fill="#fff"/>
+  <text x="600" y="270" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#fff">Worker</text>
+  <text x="600" y="302" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" fill="#cfd3d1">Docker socket + data</text>
+  <circle cx="1029" cy="156" r="35" fill="#37b9aa"/>
+  <path d="M1029 130 1057 146 1029 162 1001 146l28-16Zm-24 25 21 12v25l-21-12v-25Zm48 0v25l-21 12v-25l21-12Z" fill="#fff"/>
+  <text x="1029" y="220" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#171918">Control plane</text>
+  <text x="1029" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" fill="#6b7470">Deploy, logs and commands</text>
+  <text x="370" y="187" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#6b7470">PULL</text>
+  <text x="830" y="187" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#6b7470">REALTIME</text>
+</svg>
