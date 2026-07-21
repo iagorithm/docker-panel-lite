@@ -32,7 +32,14 @@ export type Repository = {
   createdAt: number;
   updatedAt: number;
   scope?: "workspace";
+  sharing?: "private" | "shared" | "public";
   shared?: boolean;
+  public?: boolean;
+  sharingUpdatedAt?: number;
+  sharingUpdatedBy?: string;
+  ownerUid?: string;
+  ownerEmail?: string;
+  sharedEmails?: string[];
   createdBy?: string;
   updatedBy?: string;
 };

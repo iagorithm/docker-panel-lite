@@ -15,6 +15,14 @@ import {
 } from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
 import { encryptSecret } from "@/lib/secrets";
+import {
+  canAccessRepository,
+  canManageRepository,
+  normalizeRepositoryEmail,
+  repositoryOwnerUid,
+  repositorySharingMode,
+  type RepositoryAccessRecord,
+} from "@/lib/repository-access";
 import { canAccessWorker, canManageWorker, normalizeWorkerEmail, type WorkerAccessRecord } from "@/lib/worker-access";
 
 const aliasPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -49,6 +57,8 @@ const repositorySchema = z.object({
   publicTunnelPortsJson: z.string().trim().default(""),
   ngrokAuthtoken: z.string().trim().default(""),
   poolId: z.string().trim().regex(aliasPattern).default("default"),
+  sharing: z.enum(["private", "shared", "public"]).default("private"),
+  sharedEmails: z.string().trim().max(4000).default(""),
 });
 
 const credentialSchema = z.object({
@@ -383,10 +393,16 @@ export async function saveRepository(formData: FormData) {
   const user = await requireSession("operator");
   const input = repositorySchema.parse(formObject(formData));
   const repositoryId = input.repositoryId || input.alias;
-  if (!(await userCanAccessCredential(user.workspaceId, input.credentialId, user))) throw new Error("Credential is not available to this user");
   const now = Date.now();
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
-  const current = (await currentRef.get()).val();
+  const current = (await currentRef.get()).val() as RepositoryAccessRecord | null;
+  const currentOwnerUid = current ? repositoryOwnerUid(current) : "";
+  if (current && currentOwnerUid && !canManageRepository(current, user)) throw new Error("Repository is owned by another user");
+  if (current && !currentOwnerUid) throw new Error("Legacy repository has no owner. Remove it before registering it again");
+  if (!(await userCanAccessCredential(user.workspaceId, input.credentialId, user))) throw new Error("Credential is not available to this user");
+  const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
+  if (!sharedEmails) throw new Error("Enter valid email addresses to share this repository");
+  const ownerUid = currentOwnerUid || user.uid;
   const environment = parseEnvironment(input.environmentJson, input.environmentFormat, current?.environment ?? {});
   const publicTunnelDomains = input.publicTunnelDomainsJson ? normalizeStringMap(input.publicTunnelDomainsJson) : current?.publicTunnelDomains ?? {};
   const publicTunnelPorts = input.publicTunnelPortsJson ? normalizeStringMap(input.publicTunnelPortsJson) : current?.publicTunnelPorts ?? {};
@@ -420,9 +436,20 @@ export async function saveRepository(formData: FormData) {
     ngrokTokenMask: input.ngrokAuthtoken ? secretMask(input.ngrokAuthtoken) : current?.ngrokTokenMask ?? "",
     poolId: input.poolId,
     scope: "workspace" as const,
-    shared: true,
+    sharing: input.sharing,
+    shared: input.sharing === "shared" || input.sharing === "public",
+    public: input.sharing === "public",
+    sharedEmails,
+    ownerUid,
+    ownerEmail: current?.ownerEmail || normalizeRepositoryEmail(user.email),
+    sharingUpdatedAt: current?.sharing === input.sharing && JSON.stringify(current?.sharedEmails || []) === JSON.stringify(sharedEmails)
+      ? current?.sharingUpdatedAt || now
+      : now,
+    sharingUpdatedBy: current?.sharing === input.sharing && JSON.stringify(current?.sharedEmails || []) === JSON.stringify(sharedEmails)
+      ? current?.sharingUpdatedBy || ownerUid
+      : user.uid,
     createdAt: current?.createdAt ?? now,
-    createdBy: current?.createdBy ?? user.uid,
+    createdBy: current?.createdBy ?? ownerUid,
     updatedAt: now,
     updatedBy: user.uid,
   };
@@ -451,12 +478,18 @@ export async function importRepositoriesJson(formData: FormData) {
     : Object.entries(parsed as Record<string, unknown>);
   const updates: Record<string, unknown> = {};
   const now = Date.now();
+  const existingSnapshot = await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories`).get();
+  const existingRepositories = (existingSnapshot.val() ?? {}) as Record<string, RepositoryAccessRecord>;
 
   for (const [key, value] of entries) {
     if (!value || Array.isArray(value) || typeof value !== "object") throw new Error(`Invalid repository '${key || "repository"}'`);
     const input = repositoryImportSchema.parse({ ...(value as Record<string, unknown>), alias: (value as Record<string, unknown>).alias ?? key });
     const repositoryId = input.id || input.alias || input.name || aliasFromUrl(input.url);
     if (!aliasPattern.test(repositoryId)) throw new Error(`Invalid repository alias '${repositoryId}'`);
+    const current = existingRepositories[repositoryId];
+    const currentOwnerUid = current ? repositoryOwnerUid(current) : "";
+    if (current && currentOwnerUid && !canManageRepository(current, user)) throw new Error(`Repository '${repositoryId}' is owned by another user`);
+    if (current && !currentOwnerUid) throw new Error(`Legacy repository '${repositoryId}' has no owner. Remove it before importing it again`);
     const branch = input.branch || "";
     if (branch && !branchPattern.test(branch)) throw new Error(`Invalid branch for '${repositoryId}'`);
     const credentialId = input.credentialId || input.credential || "";
@@ -467,6 +500,8 @@ export async function importRepositoriesJson(formData: FormData) {
     };
     const ngrokAuthtoken = input.ngrokAuthtoken || input.ngrok_authtoken || input.ngrokApiKey || input.ngrok_api_key || "";
     const createdAt = input.createdAt || (input.added_at ? Date.parse(input.added_at) : NaN);
+    const sharing = current ? repositorySharingMode(current) : "private";
+    const ownerUid = currentOwnerUid || user.uid;
     updates[`workspaces/${user.workspaceId}/repositories/${repositoryId}`] = {
       id: repositoryId,
       alias: repositoryId,
@@ -504,9 +539,14 @@ export async function importRepositoriesJson(formData: FormData) {
       ngrokTokenMask: ngrokAuthtoken ? secretMask(ngrokAuthtoken) : "",
       poolId: input.poolId || input.pool_id || "default",
       scope: "workspace",
-      shared: true,
-      createdAt: Number.isFinite(createdAt) ? createdAt : now,
-      createdBy: user.uid,
+      sharing,
+      shared: sharing === "shared" || sharing === "public",
+      public: sharing === "public",
+      sharedEmails: current && Array.isArray(current.sharedEmails) ? current.sharedEmails : [],
+      ownerUid,
+      ownerEmail: current?.ownerEmail || normalizeRepositoryEmail(user.email),
+      createdAt: current?.createdAt || (Number.isFinite(createdAt) ? createdAt : now),
+      createdBy: current?.createdBy || ownerUid,
       updatedAt: now,
       updatedBy: user.uid,
     };
@@ -641,6 +681,7 @@ export async function enqueueDeployment(formData: FormData) {
     await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).get()
   ).val();
   if (!repository) throw new Error("Repository not found");
+  if (!canAccessRepository(repository as RepositoryAccessRecord, user)) throw new Error("Repository is not available to this user");
   const createdAt = Date.now();
   const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
@@ -711,6 +752,7 @@ export async function enqueueAllRepositories() {
   if (!targets.length) return;
   let targetIndex = 0;
   for (const [repositoryId, repository] of Object.entries(repositories) as [string, Record<string, string>][]) {
+    if (!canAccessRepository(repository as RepositoryAccessRecord, user)) continue;
     const credentialId = repository.credentialId || "";
     if (credentialId && (!credentials[credentialId] || !canAccessCredential(credentials[credentialId], user))) continue;
     const target = targets[targetIndex % targets.length];
@@ -766,8 +808,9 @@ export async function enqueueWorkerCommand(formData: FormData) {
     return;
   }
   if (repositoryId) {
-    const repository = await adminDatabase.ref(`${workspaceRoot}/repositories/${repositoryId}`).get();
-    if (!repository.exists()) throw new Error("Repository not found");
+    const repositorySnapshot = await adminDatabase.ref(`${workspaceRoot}/repositories/${repositoryId}`).get();
+    if (!repositorySnapshot.exists()) throw new Error("Repository not found");
+    if (!canAccessRepository(repositorySnapshot.val() as RepositoryAccessRecord, user)) throw new Error("Repository is not available to this user");
   }
 
   const jobRef = adminDatabase.ref("jobs").push();
@@ -851,6 +894,7 @@ export async function enqueueContainerTunnelRefresh(formData: FormData) {
   const containerProject = safeDockerName(String(container.project || ""));
   const containerName = safeDockerName(String(container.name || ""));
   const match = Object.entries(repositories as Record<string, Record<string, unknown>>).find(([repositoryId, repository]) => {
+    if (!canAccessRepository(repository as RepositoryAccessRecord, user)) return false;
     const alias = safeDockerName(String(repository.alias || repositoryId));
     return Boolean(alias && (alias === containerProject || alias === containerName));
   });
@@ -1145,6 +1189,7 @@ export async function deleteRepository(formData: FormData) {
   const snapshot = await ref.get();
   if (!snapshot.exists()) return;
   const repository = snapshot.val() as Record<string, unknown>;
+  if (!canManageRepository(repository as RepositoryAccessRecord, user)) return;
   const expected = String(repository.alias || repositoryId);
   if (confirmation !== expected) return;
   await adminDatabase.ref().update({
