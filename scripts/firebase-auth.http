@@ -1,0 +1,28 @@
+@firebaseApiKey = REPLACE_WITH_NEXT_PUBLIC_FIREBASE_API_KEY
+@email = test@test.com
+@password = 000000
+
+### Authenticate with Firebase email and password
+# Copy NEXT_PUBLIC_FIREBASE_API_KEY from .env into firebaseApiKey above.
+POST https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebaseApiKey}}
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "returnSecureToken": true
+}
+
+> {%
+  client.global.set("firebaseIdToken", response.body.idToken);
+  client.global.set("firebaseRefreshToken", response.body.refreshToken);
+  client.global.set("firebaseLocalId", response.body.localId);
+%}
+
+### Verify the authenticated Firebase user
+POST https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebaseApiKey}}
+Content-Type: application/json
+
+{
+  "idToken": "{{firebaseIdToken}}"
+}
