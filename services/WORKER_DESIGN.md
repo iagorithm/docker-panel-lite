@@ -107,6 +107,7 @@ that every action depends on.
 | Tunnel lifecycle | Start/reuse/track/stop per-service tunnel processes and persist bounded state/log metadata. |
 | Error handling | Compact/redact errors, publish failure safely, release resources, and keep the worker alive. |
 | Observability | Emit useful lifecycle/action logs without exposing credentials or unbounded command output. |
+| Application error registry | Publish sanitized failures to workspace `app_logs` with actor, attempted action, source, context, and timestamp. Worker failures identify the worker; UI/backend failures identify the authenticated user. |
 
 ## Auxiliary Core Responsibilities
 
@@ -207,6 +208,12 @@ even when a capability is initially marked as pending.
   save/import also reserves declared host ports within the same worker pool.
 - Treat the backend check as an early conflict guard; the Docker daemon remains
   the final authority because inventory can change between validation and bind.
+- Return backend preflight failures to the deployment control immediately so the
+  UI identifies the occupied port and owning container instead of silently
+  creating only a failed deployment record.
+- Publish worker-side validation failures as the deployment job `message`; the
+  repository UI exposes these job events from a dedicated diagnostics control,
+  separate from container stdout/stderr logs.
 - Each worker must repeat the validation against its local Docker daemon directly
   before deployment. Compose workers resolve the effective merged configuration
   and validate its published ports; Dockerfile workers validate the repository
@@ -769,6 +776,12 @@ Expected behavior:
 - Release locks after failure.
 - Keep heartbeat alive after job failures.
 - Redact credentials from Git and command output when possible.
+- Write a sanitized `app_logs` entry for job and worker-infrastructure failures.
+- Use the same action names as the job/UI action contract so failures can be
+  grouped across runtimes (`deploy`, `build`, `sync`, tunnels, containers, and commands).
+- Include worker identity for worker events and user identity for UI/backend
+  events, plus repository/container/job identifiers when available.
+- Error-reporting failures must never crash the worker or recursively report.
 
 Docker and Compose errors should be compacted to the most useful lines instead
 of storing extremely long output.

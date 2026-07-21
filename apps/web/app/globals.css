@@ -1083,6 +1083,33 @@ a:hover { text-decoration-color: var(--ui-text); }
   left: 3.28rem;
 }
 .repo-resource-row { grid-template-columns: minmax(18rem, 0.34fr) minmax(20rem, 1fr) auto; }
+.repository-deployment-log {
+  grid-column: 1 / -1;
+  margin-top: 0.7rem;
+  overflow: hidden;
+  background: #111827;
+  border: 1px solid #273449;
+  border-radius: 0.62rem;
+  color: #dbe5f2;
+}
+.repository-deployment-log-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.7rem 0.8rem; border-bottom: 1px solid #273449; }
+.repository-deployment-log-header > div { display: flex; min-width: 0; flex-direction: column; gap: 0.12rem; }
+.repository-deployment-log-header strong { font-size: 0.74rem; }
+.repository-deployment-log-header span { color: #93a4b8; font-size: 0.62rem; }
+.repository-deployment-log-header .icon-button { width: 1.9rem; min-width: 1.9rem; min-height: 1.9rem; color: #cbd5e1; background: transparent; border-color: #334155; }
+.repository-deployment-log-list { display: grid; max-height: 22rem; overflow-y: auto; }
+.repository-deployment-event { display: grid; grid-template-columns: minmax(14rem, 0.35fr) minmax(18rem, 1fr) auto; gap: 0.8rem; align-items: start; padding: 0.65rem 0.8rem; border-bottom: 1px solid #202d40; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.repository-deployment-event:last-child { border-bottom: 0; }
+.repository-deployment-event > div { display: flex; flex-wrap: wrap; gap: 0.35rem 0.55rem; align-items: center; }
+.repository-deployment-event strong { color: #f8fafc; font-size: 0.68rem; text-transform: uppercase; }
+.repository-deployment-event span { padding: 0.12rem 0.35rem; color: #bfdbfe; background: #172554; border-radius: 999px; font-size: 0.58rem; }
+.repository-deployment-event time, .repository-deployment-event small { color: #8292a8; font-size: 0.58rem; }
+.repository-deployment-event p { margin: 0; color: #cbd5e1; font-size: 0.65rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.repository-deployment-event.is-failed { box-shadow: inset 3px 0 #ef4444; }
+.repository-deployment-event.is-failed span { color: #fecaca; background: #450a0a; }
+.repository-deployment-event.is-completed { box-shadow: inset 3px 0 #22c55e; }
+.repository-deployment-event.is-completed span { color: #bbf7d0; background: #052e16; }
+.repository-deployment-log-empty { margin: 0; padding: 1rem; color: #93a4b8; font-size: 0.68rem; }
 .resource-divider { position: absolute; top: 0; right: 0; left: 0; height: 1px; background: var(--ui-border); }
 .resource-identity { display: flex; min-width: 0; min-height: 2.5rem; align-items: center; gap: 0.75rem; }
 .resource-glyph { position: relative; width: 2.25rem; height: 2.25rem; flex: 0 0 2.25rem; background: var(--ui-surface-subtle); border: 1px solid var(--ui-border-strong); border-radius: 9px; }

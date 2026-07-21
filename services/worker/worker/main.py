@@ -91,6 +91,30 @@ class Worker:
         self.worker_token = self._resolve_worker_token()
         self.worker_token_hash = hashlib.sha256(self.worker_token.encode("utf-8")).hexdigest()
 
+    def _record_app_error(self, action: str, error: object, *, source: str, job: dict | None = None) -> None:
+        try:
+            message = re.sub(r"([?&](?:access_token|token|key)=)[^&\s]+", r"\1[REDACTED]", str(error) or "Unknown worker error", flags=re.IGNORECASE)[:2000]
+            log_ref = reference(f"workspaces/{self.settings.workspace_id}/app_logs").push()
+            log_ref.set({
+                "id": log_ref.key,
+                "actorType": "worker",
+                "actorId": self.settings.worker_id,
+                "actorLabel": self.worker_label or "",
+                "action": str(action or "worker_runtime")[:120],
+                "source": str(source or "worker")[:160],
+                "severity": "error",
+                "message": message,
+                "context": {
+                    "jobId": str((job or {}).get("id") or ""),
+                    "repositoryId": str((job or {}).get("repositoryId") or ""),
+                    "containerId": str((job or {}).get("containerId") or ""),
+                    "targetWorkerId": str((job or {}).get("targetWorkerId") or ""),
+                },
+                "createdAt": now_ms(),
+            })
+        except Exception as reporting_error:
+            LOG.warning("Could not publish app log: %s", reporting_error)
+
     def _resolve_worker_token(self) -> str:
         configured = os.getenv("WORKER_TOKEN", "").strip()
         if configured:
@@ -224,8 +248,9 @@ class Worker:
         while not self.stop_event.is_set():
             try:
                 self.scan()
-            except Exception:
+            except Exception as error:
                 LOG.exception("Worker scan failed")
+                self._record_app_error("queue_scan", error, source="worker.scan")
             finally:
                 self.wake_event.wait(self.settings.poll_seconds)
                 self.wake_event.clear()
@@ -236,13 +261,15 @@ class Worker:
         for listener in self.listeners:
             try:
                 listener.close()
-            except Exception:
+            except Exception as error:
                 LOG.exception("Could not close Firebase listener")
+                self._record_app_error("worker_shutdown", error, source="worker.listener.close")
         self.pool.shutdown(wait=True, cancel_futures=False)
         try:
             self._heartbeat("offline")
-        except Exception:
+        except Exception as error:
             LOG.exception("Could not mark worker offline")
+            self._record_app_error("worker_shutdown", error, source="worker.offline")
 
     def request_stop(self) -> None:
         self.stop_event.set()
@@ -256,8 +283,9 @@ class Worker:
     def _mark_stopping(self) -> None:
         try:
             self._heartbeat("stopping")
-        except Exception:
+        except Exception as error:
             LOG.exception("Could not mark worker stopping")
+            self._record_app_error("worker_shutdown", error, source="worker.stopping")
 
     def _record_belongs_to_worker(self, record_id: str, item: dict) -> bool:
         if item.get("workerId") == self.settings.worker_id or record_id.startswith(f"{self.settings.worker_id}--"):
@@ -287,8 +315,9 @@ class Worker:
         if status == "online":
             try:
                 self._publish_container_inventory(self.settings.workspace_id, reset_worker_records=reset_inventory)
-            except Exception:
+            except Exception as error:
                 LOG.exception("Container inventory failed")
+                self._record_app_error("inventory_refresh", error, source="worker.heartbeat.inventory")
 
     def _publish_container_inventory(self, workspace_id: str, reset_worker_records: bool = False) -> None:
         inventory = container_inventory()
@@ -337,8 +366,9 @@ class Worker:
         while not self.stop_event.wait(10):
             try:
                 self._heartbeat()
-            except Exception:
+            except Exception as error:
                 LOG.exception("Heartbeat failed")
+                self._record_app_error("heartbeat", error, source="worker.heartbeat")
 
     def scan(self) -> None:
         with self.lock:
@@ -441,8 +471,9 @@ class Worker:
                         self._publish(job, {"leaseExpiresAt": now_ms() + self.settings.lease_seconds * 1000})
                         lock_key = job.get("repositoryId") or f"container-{job.get('containerId', 'unknown')}"
                         reference(f"locks/{job['workspaceId']}/{lock_key}/expiresAt").set(now_ms() + self.settings.lease_seconds * 1000)
-                except Exception:
+                except Exception as error:
                     LOG.exception("Lease renewal failed for job %s", job_id)
+                    self._record_app_error(str((job or {}).get("action") or "lease_renewal"), error, source="worker.lease", job=job)
             threading.Thread(target=renew, daemon=True).start()
             self._publish(job, {"progress": 25, "message": f"Executing {job_action_label(job['action'])}"})
             if job["action"] == "inventory_refresh":
@@ -490,28 +521,33 @@ class Worker:
         except Exception as error:
             LOG.error("Job %s failed: %s", job_id, error)
             LOG.debug("Job %s traceback:\n%s", job_id, traceback.format_exc())
+            self._record_app_error(str((job or {}).get("action") or "unknown_job"), error, source="worker.job", job=job)
             try:
                 job = reference(f"jobs/{job_id}").get() or job or {"id": job_id, "workspaceId": self.settings.workspace_id}
                 self._publish(job, {"status": "failed", "message": str(error)[:1000], "finishedAt": now_ms(), "leaseExpiresAt": None})
-            except Exception:
+            except Exception as publish_error:
                 LOG.exception("Could not publish failure for job %s", job_id)
+                self._record_app_error(str((job or {}).get("action") or "unknown_job"), publish_error, source="worker.job.publish_failure", job=job)
             try:
                 reference(f"queues/{self.settings.pool_id}/{shard}/{job_id}").delete()
-            except Exception:
+            except Exception as queue_error:
                 LOG.exception("Could not remove queue item for failed job %s", job_id)
+                self._record_app_error(str((job or {}).get("action") or "unknown_job"), queue_error, source="worker.queue.cleanup", job=job)
         finally:
             renewal_stop.set()
             if job:
                 try:
                     self._release_repository_lock(job)
-                except Exception:
+                except Exception as lock_error:
                     LOG.exception("Could not release repository lock for job %s", job_id)
+                    self._record_app_error(str(job.get("action") or "unknown_job"), lock_error, source="worker.lock.release", job=job)
             with self.lock:
                 self.active.discard(job_id)
             try:
                 self._heartbeat()
-            except Exception:
+            except Exception as heartbeat_error:
                 LOG.exception("Post-job heartbeat failed")
+                self._record_app_error(str((job or {}).get("action") or "heartbeat"), heartbeat_error, source="worker.post_job_heartbeat", job=job)
             self.wake_event.set()
 
 

@@ -37,6 +37,18 @@ type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branche
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
 type JobAction = RepositoryAction | ContainerJobAction;
 
+function sanitizeAppLogMessage(value: unknown) {
+  return String(value || "Unknown error")
+    .replace(/([?&](?:access_token|token|key)=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/(authorization:\s*(?:bearer|basic)\s+)[^\s]+/gi, "$1[REDACTED]")
+    .slice(0, 2000);
+}
+
+async function writeUiAppLog(input: { workspaceId: string; user: { uid: string; email?: string }; action: string; source: string; message: unknown; context?: Record<string, unknown> }) {
+  const ref = adminDatabase.ref(`workspaces/${input.workspaceId}/app_logs`).push();
+  await ref.set({ id: ref.key, actorType: "ui", actorId: input.user.uid, actorEmail: input.user.email || "", action: String(input.action || "unknown").slice(0, 120), source: String(input.source || "ui").slice(0, 160), severity: "error", message: sanitizeAppLogMessage(input.message), context: input.context || {}, createdAt: Date.now() });
+}
+
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
   alias: z.string().trim().regex(aliasPattern, "Invalid alias"),
@@ -137,6 +149,25 @@ export type RepositorySaveState = {
   status: "idle" | "success" | "error";
   message: string;
 };
+
+export type DeploymentQueueState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+const uiAppLogSchema = z.object({
+  action: z.string().trim().min(1).max(120).default("ui_runtime"),
+  source: z.string().trim().min(1).max(160).default("browser"),
+  message: z.string().trim().min(1).max(4000),
+  path: z.string().trim().max(500).default(""),
+  repositoryId: z.string().trim().max(200).default(""),
+});
+
+export async function recordUiAppLog(payload: unknown) {
+  const user = await requireSession();
+  const input = uiAppLogSchema.parse(payload);
+  await writeUiAppLog({ workspaceId: user.workspaceId, user, action: input.action, source: input.source, message: input.message, context: { path: input.path, repositoryId: input.repositoryId } });
+}
 
 function formObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
@@ -409,6 +440,7 @@ async function recordFailedDeployment(input: {
   const createdAt = Date.now();
   const jobRef = adminDatabase.ref("jobs").push();
   const jobId = jobRef.key!;
+  const appLogRef = adminDatabase.ref(`workspaces/${input.workspaceId}/app_logs`).push();
   const job = {
     id: jobId,
     workspaceId: input.workspaceId,
@@ -430,6 +462,17 @@ async function recordFailedDeployment(input: {
   await adminDatabase.ref().update({
     [`jobs/${jobId}`]: job,
     [`workspaces/${input.workspaceId}/deployments/${jobId}`]: job,
+    [`workspaces/${input.workspaceId}/app_logs/${appLogRef.key}`]: {
+      id: appLogRef.key,
+      actorType: "ui",
+      actorId: input.requestedBy,
+      action: input.action,
+      source: "server_action.preflight",
+      severity: "error",
+      message: sanitizeAppLogMessage(input.message),
+      context: { jobId, repositoryId: input.repositoryId, containerId: input.containerId || "", targetWorkerId: input.targetWorkerId },
+      createdAt,
+    },
   });
 }
 
@@ -579,6 +622,8 @@ export async function saveRepositoryWithState(_previousState: RepositorySaveStat
     return { status: "success", message: isEditing ? "Repository settings saved." : "Repository registered." };
   } catch (error) {
     console.error("saveRepository failed", error);
+    const user = await requireSession();
+    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: "save_repository", source: "server_action", message: error, context: { repositoryId: String(formData.get("repositoryId") || formData.get("alias") || "") } }).catch(console.error);
     if (error instanceof z.ZodError) {
       return { status: "error", message: error.issues[0]?.message || "Check the repository fields and try again." };
     }
@@ -808,7 +853,7 @@ export async function deleteCommandPreset(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
-export async function enqueueDeployment(formData: FormData) {
+async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQueueState> {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
   const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose", "tunnel_start", "tunnel_stop"]).parse(formData.get("action"));
@@ -821,27 +866,32 @@ export async function enqueueDeployment(formData: FormData) {
   const createdAt = Date.now();
   const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Repository credential is not available to this user" });
-    return;
+    const message = "Repository credential is not available to this user";
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    return { status: "error", message };
   }
   if (!targetWorkerId) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Select a worker before running this action" });
-    return;
+    const message = "Select a worker before running this action";
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    return { status: "error", message };
   }
   const targetWorker = targetWorkerId
     ? (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${targetWorkerId}`).get()).val()
     : null;
   if (targetWorkerId && !targetWorker) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
-    return;
+    const message = "Worker not found";
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    return { status: "error", message };
   }
   if (targetWorkerId && !canAccessWorker(targetWorker as WorkerAccessRecord, user)) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available to this user" });
-    return;
+    const message = "Worker is not available to this user";
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    return { status: "error", message };
   }
   if (targetWorkerId && !agentIsOnline(targetWorker, createdAt)) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
-    return;
+    const message = "Worker is not available";
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    return { status: "error", message };
   }
   if (["deploy", "build"].includes(action)) {
     const portCollision = await findOpenDeploymentPortCollision({
@@ -852,7 +902,7 @@ export async function enqueueDeployment(formData: FormData) {
     });
     if (portCollision) {
       await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: portCollision });
-      return;
+      return { status: "error", message: portCollision };
     }
   }
   const jobRef = adminDatabase.ref("jobs").push();
@@ -879,6 +929,26 @@ export async function enqueueDeployment(formData: FormData) {
     [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId },
     [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
   });
+  return { status: "success", message: `${action} queued.` };
+}
+
+export async function enqueueDeployment(formData: FormData) {
+  await enqueueDeploymentRequest(formData);
+}
+
+export async function enqueueDeploymentWithState(
+  _previousState: DeploymentQueueState,
+  formData: FormData,
+): Promise<DeploymentQueueState> {
+  try {
+    const result = await enqueueDeploymentRequest(formData);
+    return result;
+  } catch (error) {
+    console.error("enqueueDeployment failed", error);
+    const user = await requireSession();
+    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: String(formData.get("action") || "deployment"), source: "server_action", message: error, context: { repositoryId: String(formData.get("repositoryId") || ""), targetWorkerId: String(formData.get("targetWorkerId") || "") } }).catch(console.error);
+    return { status: "error", message: error instanceof Error ? error.message : "Deployment could not be created." };
+  }
 }
 
 export async function enqueueAllRepositories() {

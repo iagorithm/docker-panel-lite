@@ -19,8 +19,10 @@ import {
   enqueueContainerTunnelRefresh,
   enqueueContainerAction,
   enqueueDeployment,
+  enqueueDeploymentWithState,
   enqueueInventoryRefresh,
   importRepositoriesJson,
+  recordUiAppLog,
   saveCommandPreset,
   saveCredential,
   saveCredentialSharing,
@@ -28,6 +30,7 @@ import {
   saveRepositoryWithState,
   saveWorkerSharing,
   type RepositorySaveState,
+  type DeploymentQueueState,
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
@@ -56,6 +59,7 @@ const orphanWorkerDeleteAge = 2 * 60 * 1000;
 const activeJobMaxAge = 15 * 60 * 1000;
 const pendingButtonMaxAge = 15 * 1000;
 const initialRepositorySaveState: RepositorySaveState = { status: "idle", message: "" };
+const initialDeploymentQueueState: DeploymentQueueState = { status: "idle", message: "" };
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -204,7 +208,7 @@ function SidebarContainerMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
+function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "bug" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -217,6 +221,7 @@ function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "
       {name === "play" ? <path d="M8.75 6.45v11.1a1 1 0 0 0 1.55.84l8.15-5.55a1 1 0 0 0 0-1.68L10.3 5.61a1 1 0 0 0-1.55.84Z" fill="currentColor" /> : null}
       {name === "stop" ? <rect x="7.75" y="7.75" width="8.5" height="8.5" rx="1.45" fill="currentColor" /> : null}
       {name === "logs" ? <path {...common} d="M6.5 4.75h11A1.25 1.25 0 0 1 18.75 6v12A1.25 1.25 0 0 1 17.5 19.25h-11A1.25 1.25 0 0 1 5.25 18V6A1.25 1.25 0 0 1 6.5 4.75ZM8.5 8.15h7M8.5 11.05h7M8.5 13.95h5.6M8.5 16.85h3.8" /> : null}
+      {name === "bug" ? <path {...common} d="M9 5.25V3.5M15 5.25V3.5M5.25 9H3.5M20.5 9h-1.75M5.25 15H3.5m17 0h-1.75M8 6.25h8v9.5a4 4 0 0 1-8 0v-9.5ZM8 10h8M12 10v9.75" /> : null}
       {name === "terminal" ? <path {...common} d="M4.5 6.25h15v11.5h-15zM8.2 10l2.15 2-2.15 2M12.35 14h4.2" /> : null}
       {name === "trash" ? <path {...common} d="M4.75 7h14.5M9.75 11v5.75M14.25 11v5.75M8 7l1.1-3h5.8L16 7M6.75 7l.9 13.25h8.7L17.25 7" /> : null}
       {name === "logout" ? <path {...common} d="M10.25 5.75h-4.5v12.5h4.5M14.25 8.25 18 12l-3.75 3.75M8.25 12H18" /> : null}
@@ -293,11 +298,15 @@ function QueueButton({ repositoryId, action, children, title, primary = false, b
   disabled?: boolean;
   targetWorkerId?: string;
 }) {
+  const [queueState, queueAction] = useActionState(enqueueDeploymentWithState, initialDeploymentQueueState);
+  useEffect(() => {
+    if (queueState.status === "error" && queueState.message) window.alert(queueState.message);
+  }, [queueState]);
   if (disabled) {
     return <IconButton title="Select a worker first" primary={primary} disabled>{children}</IconButton>;
   }
   return (
-    <form action={enqueueDeployment}>
+    <form action={queueAction}>
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
       <input type="hidden" name="targetWorkerId" value={targetWorkerId || ""} />
@@ -312,6 +321,42 @@ function activeRepositoryJobKey(job: Deployment) {
 
 function EmptyState({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-state"><span className="empty-state-icon" aria-hidden="true" /><h3>{title}</h3><p>{copy}</p></div>;
+}
+
+function RepositoryDeploymentLog({ repository, deployments, open, onClose }: {
+  repository: Repository;
+  deployments: Deployment[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  const entries = deployments
+    .filter((deployment) => deployment.repositoryId === repository.id)
+    .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0))
+    .slice(0, 20);
+  return (
+    <section className="repository-deployment-log" aria-label={`Deployment log for ${repository.alias}`}>
+      <div className="repository-deployment-log-header">
+        <div><strong>Deployment events</strong><span>{repository.alias} · latest 20 jobs</span></div>
+        <IconButton title="Close deployment events" onClick={onClose}><Icon name="close" /></IconButton>
+      </div>
+      {entries.length ? (
+        <div className="repository-deployment-log-list">
+          {entries.map((deployment) => (
+            <article className={`repository-deployment-event is-${deployment.status}`} key={deployment.id}>
+              <div>
+                <strong>{deployment.action}</strong>
+                <span>{deployment.status}</span>
+                <time dateTime={new Date(deployment.createdAt).toISOString()}>{new Date(deployment.createdAt).toLocaleString()}</time>
+              </div>
+              <p>{deployment.message || (isActiveJob(deployment, Date.now()) ? "Worker is processing this job…" : "No additional message was published.")}</p>
+              {deployment.targetWorkerId ? <small>Worker: {deployment.targetWorkerId}</small> : null}
+            </article>
+          ))}
+        </div>
+      ) : <p className="repository-deployment-log-empty">No deployment events have been recorded for this repository.</p>}
+    </section>
+  );
 }
 
 function matchesQuery(values: Array<string | undefined>, query: string) {
@@ -497,6 +542,26 @@ export function RealtimeDashboard(props: Props) {
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const recentlyReported = new Map<string, number>();
+    const report = (message: string, source: string) => {
+      const normalized = message.slice(0, 2000);
+      const key = `${source}:${normalized}`;
+      const timestamp = Date.now();
+      if (timestamp - (recentlyReported.get(key) || 0) < 30_000) return;
+      recentlyReported.set(key, timestamp);
+      void recordUiAppLog({ action: "ui_runtime", source, message: normalized, path: window.location.pathname }).catch(() => undefined);
+    };
+    const onError = (event: ErrorEvent) => report(event.error instanceof Error ? event.error.message : event.message, "window.error");
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => report(event.reason instanceof Error ? event.reason.message : String(event.reason), "window.unhandledrejection");
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
   }, []);
 
   const visibleWorkerIds = useMemo(() => new Set(agents.map((agent) => agent.id)), [agents]);
@@ -1050,6 +1115,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
+  const [viewingDeploymentLogRepositoryId, setViewingDeploymentLogRepositoryId] = useState<string | null>(null);
   const [deletingRepositoryId, setDeletingRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
@@ -1172,6 +1238,11 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                   )
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
+                <IconButton
+                  title={viewingDeploymentLogRepositoryId === repository.id ? "Close deployment events" : "Deployment events"}
+                  active={viewingDeploymentLogRepositoryId === repository.id}
+                  onClick={() => setViewingDeploymentLogRepositoryId((current) => current === repository.id ? null : repository.id)}
+                ><Icon name={viewingDeploymentLogRepositoryId === repository.id ? "close" : "bug"} /></IconButton>
                 <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
                 {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
@@ -1179,6 +1250,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               </div>
               {isOwner ? <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} /> : null}
               <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
+              <RepositoryDeploymentLog repository={repository} deployments={deployments} open={viewingDeploymentLogRepositoryId === repository.id} onClose={() => setViewingDeploymentLogRepositoryId(null)} />
               {isOwner ? <RepositoryDeleteConfirm repository={repository} open={deletingRepositoryId === repository.id} onClose={() => setDeletingRepositoryId(null)} /> : null}
             </article>
           );

@@ -70,6 +70,7 @@ Status legend: **Implemented**, **Partial**, **Pending**.
 | Tunnel target and Docker network attachment | `executor.py:_container_tunnel_target/_connect_worker_to_container_networks` | Implemented | — |
 | Ngrok process/state lifecycle | `core/ngrok.py:NgrokService` | Implemented | Stale tunnel reconciliation can be improved. |
 | Error compaction/output limits | `executor.py:_compact_process_error/_command_output`; `main.py:Worker._process` | Implemented | Stronger generic secret redaction is desirable. |
+| Firebase application error registry | `main.py:Worker._record_app_error` and job/infrastructure exception boundaries | Implemented | Reporting is best-effort to avoid recursive Firebase failures. |
 | Automated contract tests | No shared runtime fixture suite | Pending | Add the same action/protocol fixtures used by Go and future workers. |
 
 ## Summary

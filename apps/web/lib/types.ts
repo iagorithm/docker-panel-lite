@@ -96,6 +96,20 @@ export type Deployment = {
   leaseExpiresAt?: number;
 };
 
+export type AppLog = {
+  id: string;
+  actorType: "worker" | "ui";
+  actorId: string;
+  actorEmail?: string;
+  actorLabel?: string;
+  action: string;
+  source: string;
+  severity: "error";
+  message: string;
+  context?: Record<string, string>;
+  createdAt: number;
+};
+
 export type Agent = {
   id: string;
   identitySource?: string;
