@@ -64,6 +64,46 @@ function useCollection<T>(path: string, initial: T[]) {
   return items;
 }
 
+function useSharedWorkspaceResources(initialRepositories: Repository[], initialCredentials: CredentialSummary[]) {
+  const [resources, setResources] = useState({ repositories: initialRepositories, credentials: initialCredentials });
+  useEffect(() => setResources({ repositories: initialRepositories, credentials: initialCredentials }), [initialRepositories, initialCredentials]);
+  useEffect(() => {
+    let active = true;
+    let loading = false;
+    const refresh = async () => {
+      if (!active || loading) return;
+      loading = true;
+      try {
+        const response = await fetch("/api/shared-resources", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json() as { repositories?: Repository[]; credentials?: CredentialSummary[] };
+        if (active) {
+          setResources({
+            repositories: Array.isArray(payload.repositories) ? payload.repositories : [],
+            credentials: Array.isArray(payload.credentials) ? payload.credentials : [],
+          });
+        }
+      } catch {
+        // Preserve the last shared snapshot during short network interruptions.
+      } finally {
+        loading = false;
+      }
+    };
+    const interval = window.setInterval(refresh, 5_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void refresh();
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  return resources;
+}
+
 function useWorkers(initial: Agent[]) {
   const [workers, setWorkers] = useState(initial);
   useEffect(() => setWorkers(initial), [initial]);
@@ -429,10 +469,11 @@ function EnvironmentEditor({ environment = {}, initialEnvText, className = "envi
 export function RealtimeDashboard(props: Props) {
   const router = useRouter();
   const base = `workspaces/${props.workspaceId}`;
-  const repositories = useCollection<Repository>(`${base}/repositories`, props.initialRepositories);
+  const sharedResources = useSharedWorkspaceResources(props.initialRepositories, props.initialCredentials);
+  const repositories = sharedResources.repositories;
   const allDeployments = useCollection<Deployment>(`${base}/deployments`, props.initialDeployments);
   const agents = useWorkers(props.initialAgents);
-  const credentials = useCollection<CredentialSummary>(`${base}/credentials`, props.initialCredentials);
+  const credentials = sharedResources.credentials;
   const allContainers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
   const commandPresets = useCollection<CommandPreset>(`${base}/commandPresets`, props.initialCommandPresets);
   const [view, setView] = useState<View>("containers");

@@ -31,6 +31,10 @@ export type Repository = {
   composeContent?: string;
   createdAt: number;
   updatedAt: number;
+  scope?: "workspace";
+  shared?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
 };
 
 export type CredentialSummary = {
@@ -39,6 +43,10 @@ export type CredentialSummary = {
   username: string;
   tokenMask: string;
   updatedAt: number;
+  scope?: "workspace";
+  shared?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
 };
 
 export type CommandPreset = {

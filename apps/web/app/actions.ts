@@ -398,7 +398,10 @@ export async function saveRepository(formData: FormData) {
     ngrokTokenSecret: current?.ngrokTokenSecret || Boolean(input.ngrokAuthtoken),
     ngrokTokenMask: input.ngrokAuthtoken ? secretMask(input.ngrokAuthtoken) : current?.ngrokTokenMask ?? "",
     poolId: input.poolId,
+    scope: "workspace" as const,
+    shared: true,
     createdAt: current?.createdAt ?? now,
+    createdBy: current?.createdBy ?? user.uid,
     updatedAt: now,
     updatedBy: user.uid,
   };
@@ -477,7 +480,10 @@ export async function importRepositoriesJson(formData: FormData) {
       ngrokTokenSecret: Boolean(ngrokAuthtoken),
       ngrokTokenMask: ngrokAuthtoken ? secretMask(ngrokAuthtoken) : "",
       poolId: input.poolId || input.pool_id || "default",
+      scope: "workspace",
+      shared: true,
       createdAt: Number.isFinite(createdAt) ? createdAt : now,
+      createdBy: user.uid,
       updatedAt: now,
       updatedBy: user.uid,
     };
@@ -511,7 +517,11 @@ export async function saveCredential(formData: FormData) {
       alias: input.alias,
       username: input.username,
       tokenMask: input.token.length > 8 ? `${input.token.slice(0, 4)}••••••••${input.token.slice(-4)}` : "••••••••",
+      scope: "workspace",
+      shared: true,
+      createdBy: user.uid,
       updatedAt: now,
+      updatedBy: user.uid,
     },
   };
   await adminDatabase.ref().update(updates);
@@ -531,7 +541,7 @@ export async function saveCredentialsJson(formData: FormData) {
     const token = z.string().min(1).parse(item.token);
     const username = z.string().max(200).default("").parse(item.username);
     updates[`secrets/credentials/${user.workspaceId}/${alias}`] = { ...encryptSecret(token), username, updatedAt: now };
-    updates[`workspaces/${user.workspaceId}/credentials/${alias}`] = { id: alias, alias, username, tokenMask: token.length > 8 ? `${token.slice(0, 4)}••••••••${token.slice(-4)}` : "••••••••", updatedAt: now };
+    updates[`workspaces/${user.workspaceId}/credentials/${alias}`] = { id: alias, alias, username, tokenMask: token.length > 8 ? `${token.slice(0, 4)}••••••••${token.slice(-4)}` : "••••••••", scope: "workspace", shared: true, createdBy: user.uid, updatedAt: now, updatedBy: user.uid };
   }
   await adminDatabase.ref().update(updates);
 }
