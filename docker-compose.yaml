@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ${WORKER_IMAGE:-cjarn/docker-panel-lite-worker:latest}
+    image: ${WORKER_IMAGE:-cjarn/docker-panel-lite-worker:py}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./volume/repos/worker-py:/app/clones

@@ -97,7 +97,7 @@ export default function DocsPage() {
             <span>3</span>
             <h3>Launch the worker</h3>
             <p>Mount the Docker socket so the worker can manage containers on this host.</p>
-            <pre><code>{"docker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  cjarn/docker-panel-lite-worker:latest"}</code></pre>
+            <pre><code>{"docker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  cjarn/docker-panel-lite-worker:py"}</code></pre>
           </article>
           <article>
             <span>4</span>

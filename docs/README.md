@@ -23,7 +23,7 @@ Build the web app and Python worker from local source:
 Build the Go worker image from local source:
 
 ```bash
-./run.sh build-go
+./run.sh build go
 ```
 
 ## Publish Worker Image
@@ -37,21 +37,21 @@ docker login
 Set the image in `.env`:
 
 ```env
-WORKER_IMAGE=your-dockerhub-user/docker-panel-lite-worker:latest
-WORKER_IMAGE_TAG=latest
+WORKER_IMAGE=your-dockerhub-user/docker-panel-lite-worker:py
+WORKER_GO_IMAGE=your-dockerhub-user/docker-panel-lite-worker:go
 WORKER_IMAGE_PLATFORMS=linux/amd64,linux/arm64
 ```
 
 Build and push the worker image:
 
 ```bash
-./run.sh publish-worker
+./run.sh publish
 ```
 
 Verify the published image:
 
 ```bash
-./run.sh verify-worker-image
+./run.sh verify
 ```
 
 ## Run Local Source Stack
@@ -59,7 +59,7 @@ Verify the published image:
 Run the web app, Python worker, and Go worker from local source:
 
 ```bash
-./run-local.sh
+./run.sh run
 ```
 
 Follow logs:
@@ -80,8 +80,7 @@ Stop the stack:
 Pull and start the stack using the worker image configured in `.env`:
 
 ```bash
-./run.sh pull
-./run.sh up
+./run.sh run published
 ```
 
 Run only the published worker image on another Docker host:
@@ -96,7 +95,7 @@ docker run -d --pull always \
   -v "$HOME/docker-panel-worker/repos:/app/clones" \
   -v "$HOME/docker-panel-worker/data:/app/data" \
   --env-file .env \
-  your-dockerhub-user/docker-panel-lite-worker:latest
+  your-dockerhub-user/docker-panel-lite-worker:py
 ```
 
 Read the claim token:
@@ -111,4 +110,5 @@ docker logs --tail 100 docker-panel-lite-worker
 ./run.sh ps
 ./run.sh restart
 ./run.sh scale-worker 2
+./run.sh firebase-rules
 ```

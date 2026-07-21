@@ -34,7 +34,7 @@ docker login
 Pull the worker image:
 
 ```bash
-docker pull cjarn/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:py
 ```
 
 If Docker reports `pull access denied`, verify that:
@@ -69,7 +69,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  cjarn/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:py
 ```
 
 No Firebase environment variables are required when the image was published
@@ -160,7 +160,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  cjarn/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:py
 ```
 
 Common optional overrides are:
@@ -196,7 +196,7 @@ returns online.
 Pull the new image:
 
 ```bash
-docker pull cjarn/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:py
 ```
 
 Remove only the container, preserving the mounted directories:

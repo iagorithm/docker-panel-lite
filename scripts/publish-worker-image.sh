@@ -13,8 +13,6 @@ publish_error() {
 
 trap 'status=$?; publish_error "$status" "$LINENO"; exit "$status"' ERR
 
-echo "Preparing worker image publication..."
-
 env_value() {
   local key="$1"
   local value="${!key:-}"
@@ -31,43 +29,31 @@ env_value() {
   printf '%s' "$value"
 }
 
-IMAGE="$(env_value WORKER_IMAGE)"
-IMAGE="${IMAGE:-cjarn/docker-panel-lite-worker}"
-TAG="$(env_value WORKER_IMAGE_TAG)"
-TAG="${TAG:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
-PLATFORMS="$(env_value WORKER_IMAGE_PLATFORMS)"
-PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
-PUSH="$(env_value PUSH)"
-PUSH="${PUSH:-true}"
-PROGRESS="$(env_value BUILDKIT_PROGRESS)"
-PROGRESS="${PROGRESS:-plain}"
-BAKE_CONFIG="$(env_value WORKER_BAKE_CONFIG)"
-BAKE_CONFIG="${BAKE_CONFIG:-true}"
+base_image_ref() {
+  local image
+  image="$(env_value WORKER_IMAGE)"
+  image="${image:-cjarn/docker-panel-lite-worker:py}"
+  if [[ "$image" == *:* ]]; then
+    printf '%s' "${image%:*}"
+  else
+    printf '%s' "$image"
+  fi
+}
 
-if [[ "$IMAGE" == *:* ]]; then
-  BASE_IMAGE="${IMAGE%:*}"
-  DEFAULT_TAG="${IMAGE##*:}"
-else
-  BASE_IMAGE="$IMAGE"
-  DEFAULT_TAG="latest"
-fi
-
-if [[ "$TAG" == "latest" && "$DEFAULT_TAG" != "latest" ]]; then
-  TAG="$DEFAULT_TAG"
-fi
-
-if ! docker buildx version >/dev/null 2>&1; then
-  echo "Docker buildx is required."
-  exit 1
-fi
+single_platform() {
+  docker version --format '{{.Server.Os}}/{{.Server.Arch}}'
+}
 
 ensure_builder() {
+  local push="$1"
+  local platforms="$2"
   local builder
   builder="$(env_value WORKER_BUILDX_BUILDER)"
   builder="${builder:-docker-panel-lite-builder}"
-  if [[ "$PUSH" == "false" || "$PUSH" == "0" || "$PLATFORMS" != *,* ]]; then
+  if [[ "$push" == "false" || "$push" == "0" || "$platforms" != *,* ]]; then
     return
   fi
+
   local current_driver
   current_driver="$(docker buildx inspect 2>/dev/null | awk -F': +' '/^Driver:/ {print $2; exit}' || true)"
   if [[ "$current_driver" == "docker-container" ]]; then
@@ -76,34 +62,21 @@ ensure_builder() {
 
   echo "Preparing multi-platform builder: $builder"
   if docker buildx inspect "$builder" >/dev/null 2>&1; then
-    if ! docker buildx use "$builder"; then
-      echo "Could not select Docker Buildx builder '$builder'." >&2
-      return 1
-    fi
+    docker buildx use "$builder"
   else
-    if ! docker buildx create --name "$builder" --driver docker-container --use; then
-      echo "Could not create Docker Buildx builder '$builder'." >&2
-      return 1
-    fi
+    docker buildx create --name "$builder" --driver docker-container --use
   fi
-  if ! docker buildx inspect --bootstrap; then
-    echo "Could not start Docker Buildx builder '$builder'." >&2
-    return 1
-  fi
+  docker buildx inspect --bootstrap >/dev/null
 }
 
-OUTPUT_FLAG=(--push)
-if [[ "$PUSH" == "false" || "$PUSH" == "0" ]]; then
-  OUTPUT_FLAG=(--load)
-  PLATFORMS="${WORKER_IMAGE_PLATFORMS:-$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')}"
-fi
+worker_config_secret() {
+  local bake_config="$1"
+  if [[ "$bake_config" != "true" && "$bake_config" != "1" && "$bake_config" != "yes" ]]; then
+    return
+  fi
 
-ensure_builder
-
-BUILD_SECRETS=()
-if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
-  CONFIG_TEXT=""
-  CONFIG_KEYS=(
+  local config_text=""
+  local config_keys=(
     FIREBASE_DATABASE_URL
     NEXT_PUBLIC_FIREBASE_DATABASE_URL
     FIREBASE_PROJECT_ID
@@ -121,91 +94,198 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
     NGROK_AUTHTOKEN
     NGROK_REGION
   )
-  for key in "${CONFIG_KEYS[@]}"; do
+  for key in "${config_keys[@]}"; do
+    local value
     value="$(env_value "$key")"
     if [[ -n "$value" ]]; then
-      CONFIG_TEXT+="${key}=${value}"$'\n'
+      config_text+="${key}=${value}"$'\n'
     fi
   done
-  if [[ -z "$CONFIG_TEXT" ]]; then
-    echo "WORKER_BAKE_CONFIG is enabled, but no worker configuration values were found in $ENV_FILE."
+
+  if [[ -z "$config_text" ]]; then
+    echo "WORKER_BAKE_CONFIG is enabled, but no worker configuration values were found in $ENV_FILE." >&2
     exit 1
   fi
-  DATABASE_URL="$(env_value FIREBASE_DATABASE_URL)"
-  DATABASE_URL="${DATABASE_URL:-$(env_value NEXT_PUBLIC_FIREBASE_DATABASE_URL)}"
-  FIREBASE_PROJECT="$(env_value FIREBASE_PROJECT_ID)"
-  FIREBASE_PROJECT="${FIREBASE_PROJECT:-$(env_value NEXT_PUBLIC_FIREBASE_PROJECT_ID)}"
-  SERVICE_ACCOUNT="$(env_value FIREBASE_SERVICE_ACCOUNT_JSON)"
-  ENCRYPTION_KEY="$(env_value CREDENTIAL_ENCRYPTION_KEY)"
-  if [[ -z "$DATABASE_URL" && -z "$FIREBASE_PROJECT" && -z "$SERVICE_ACCOUNT" ]]; then
+
+  local database_url firebase_project service_account encryption_key
+  database_url="$(env_value FIREBASE_DATABASE_URL)"
+  database_url="${database_url:-$(env_value NEXT_PUBLIC_FIREBASE_DATABASE_URL)}"
+  firebase_project="$(env_value FIREBASE_PROJECT_ID)"
+  firebase_project="${firebase_project:-$(env_value NEXT_PUBLIC_FIREBASE_PROJECT_ID)}"
+  service_account="$(env_value FIREBASE_SERVICE_ACCOUNT_JSON)"
+  encryption_key="$(env_value CREDENTIAL_ENCRYPTION_KEY)"
+  if [[ -z "$database_url" && -z "$firebase_project" && -z "$service_account" ]]; then
     echo "Cannot bake worker fallback configuration: Firebase database URL or project identity is missing in $ENV_FILE." >&2
     exit 1
   fi
-  if [[ -z "$SERVICE_ACCOUNT" || "$SERVICE_ACCOUNT" == "{}" ]]; then
+  if [[ -z "$service_account" || "$service_account" == "{}" ]]; then
     echo "Cannot bake worker fallback configuration: FIREBASE_SERVICE_ACCOUNT_JSON is missing in $ENV_FILE." >&2
     exit 1
   fi
-  if [[ -z "$ENCRYPTION_KEY" ]]; then
+  if [[ -z "$encryption_key" ]]; then
     echo "Cannot bake worker fallback configuration: CREDENTIAL_ENCRYPTION_KEY is missing in $ENV_FILE." >&2
     exit 1
   fi
-  WORKER_CONFIG_SECRET="$(mktemp)"
-  trap 'rm -f "$WORKER_CONFIG_SECRET"' EXIT
-  printf '%s' "$CONFIG_TEXT" > "$WORKER_CONFIG_SECRET"
-  BUILD_SECRETS+=(--secret "id=worker_config,src=$WORKER_CONFIG_SECRET")
-fi
 
-echo "Building worker image:"
-echo "  image: $BASE_IMAGE"
-echo "  tag: $TAG"
-echo "  platforms: $PLATFORMS"
-echo "  push: $PUSH"
-echo "  builder: $(docker buildx inspect 2>/dev/null | awk -F': +' '/^Name:/ {print $2; exit}')"
-echo "  baked config: $([[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]] && echo yes || echo no)"
-if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
-  echo "  warning: baked config is intended for private images only"
-fi
+  local secret_file
+  secret_file="$(mktemp)"
+  printf '%s' "$config_text" > "$secret_file"
+  printf '%s' "$secret_file"
+}
 
-BUILD_COMMAND=(
-  docker buildx build
-  --progress "$PROGRESS"
-  --platform "$PLATFORMS"
-  -f "$ROOT_DIR/services/worker/Dockerfile"
-  -t "$BASE_IMAGE:$TAG"
-  -t "$BASE_IMAGE:latest"
-)
-if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
-  BUILD_COMMAND+=(--build-arg WORKER_CONFIG_REQUIRED=true)
-fi
-if [[ "${#BUILD_SECRETS[@]}" -gt 0 ]]; then
-  BUILD_COMMAND+=("${BUILD_SECRETS[@]}")
-fi
-BUILD_COMMAND+=("${OUTPUT_FLAG[@]}" "$ROOT_DIR")
+dockerfile_for_runtime() {
+  case "$1" in
+    py|python) printf '%s' "$ROOT_DIR/services/worker/Dockerfile" ;;
+    go) printf '%s' "$ROOT_DIR/services/worker-go/Dockerfile" ;;
+    *) echo "Unknown worker runtime: $1" >&2; exit 1 ;;
+  esac
+}
 
-if ! "${BUILD_COMMAND[@]}"; then
-  echo
-  echo "Worker image build/publish failed."
-  if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
-    echo
-    echo "If the error says 'push access denied' or 'insufficient_scope', Docker Hub rejected the push."
-    echo "Check one of these:"
-    echo "  1. Run: docker login"
-    echo "  2. Make sure WORKER_IMAGE uses a namespace you can push to: $BASE_IMAGE"
-    echo "  3. Create the Docker Hub repository before pushing, especially for private/org repositories."
-    echo "  4. If this is an org repo, confirm your Docker Hub user has Write permission."
-    echo
-    echo "Example:"
-    echo "  WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:latest ./run.sh publish-worker"
+tag_for_runtime() {
+  case "$1" in
+    py|python) printf 'py' ;;
+    go) printf 'go' ;;
+    *) echo "Unknown worker runtime: $1" >&2; exit 1 ;;
+  esac
+}
+
+build_runtime() {
+  local runtime="$1"
+  local base_image="$2"
+  local platforms="$3"
+  local push="$4"
+  local progress="$5"
+  local bake_config="$6"
+  local dockerfile
+  local tag
+  dockerfile="$(dockerfile_for_runtime "$runtime")"
+  tag="$(tag_for_runtime "$runtime")"
+
+  local output_flag=(--push)
+  if [[ "$push" == "false" || "$push" == "0" ]]; then
+    output_flag=(--load)
   fi
-  exit 1
-fi
 
-if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
+  local build_secrets=()
+  local secret_file=""
+  secret_file="$(worker_config_secret "$bake_config")"
+  if [[ -n "$secret_file" ]]; then
+    build_secrets+=(--secret "id=worker_config,src=$secret_file")
+  fi
+
   echo
-  echo "Verifying pushed image:"
-  docker buildx imagetools inspect "$BASE_IMAGE:$TAG"
-  echo
-  echo "Pushed:"
-  echo "  $BASE_IMAGE:$TAG"
-  echo "  $BASE_IMAGE:latest"
-fi
+  echo "Building worker image:"
+  echo "  runtime: $tag"
+  echo "  image: $base_image:$tag"
+  echo "  platforms: $platforms"
+  echo "  push: $push"
+  echo "  baked config: $([[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]] && echo yes || echo no)"
+  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
+    echo "  warning: baked config is intended for private images only"
+  fi
+
+  local build_command=(
+    docker buildx build
+    --progress "$progress"
+    --platform "$platforms"
+    -f "$dockerfile"
+    -t "$base_image:$tag"
+  )
+  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
+    build_command+=(--build-arg WORKER_CONFIG_REQUIRED=true)
+  fi
+  if [[ "${#build_secrets[@]}" -gt 0 ]]; then
+    build_command+=("${build_secrets[@]}")
+  fi
+  build_command+=("${output_flag[@]}" "$ROOT_DIR")
+
+  if ! "${build_command[@]}"; then
+    echo
+    echo "Worker image build/publish failed for runtime '$tag'."
+    if [[ "$push" != "false" && "$push" != "0" ]]; then
+      echo
+      echo "If the error says 'push access denied' or 'insufficient_scope', Docker Hub rejected the push."
+      echo "Check one of these:"
+      echo "  1. Run: docker login"
+      echo "  2. Make sure WORKER_IMAGE uses a namespace you can push to: $base_image"
+      echo "  3. Create the Docker Hub repository before pushing, especially for private/org repositories."
+      echo "  4. If this is an org repo, confirm your Docker Hub user has Write permission."
+      echo
+      echo "Example:"
+      echo "  WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:py ./run.sh publish"
+    fi
+    exit 1
+  fi
+
+  if [[ -n "$secret_file" ]]; then
+    rm -f "$secret_file"
+  fi
+}
+
+main() {
+  local target="${1:-all}"
+  case "$target" in
+    all|both) ;;
+    py|python|go) ;;
+    *) echo "Usage: ./run.sh publish [all|py|go]" >&2; exit 1 ;;
+  esac
+
+  if ! docker buildx version >/dev/null 2>&1; then
+    echo "Docker buildx is required." >&2
+    exit 1
+  fi
+
+  local base_image platforms push progress bake_config
+  base_image="$(base_image_ref)"
+  platforms="$(env_value WORKER_IMAGE_PLATFORMS)"
+  platforms="${platforms:-linux/amd64,linux/arm64}"
+  push="$(env_value PUSH)"
+  push="${push:-true}"
+  progress="$(env_value BUILDKIT_PROGRESS)"
+  progress="${progress:-plain}"
+  bake_config="$(env_value WORKER_BAKE_CONFIG)"
+  bake_config="${bake_config:-true}"
+
+  if [[ "$push" == "false" || "$push" == "0" ]]; then
+    platforms="$(single_platform)"
+  fi
+  ensure_builder "$push" "$platforms"
+
+  echo "Preparing worker image publication..."
+  echo "  repository: $base_image"
+  echo "  target: $target"
+
+  case "$target" in
+    all|both)
+      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      ;;
+    py|python)
+      build_runtime py "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      ;;
+    go)
+      build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config"
+      ;;
+  esac
+
+  if [[ "$push" != "false" && "$push" != "0" ]]; then
+    echo
+    echo "Verifying pushed images:"
+    case "$target" in
+      all|both|py|python) docker buildx imagetools inspect "$base_image:py" ;;
+    esac
+    case "$target" in
+      all|both|go) docker buildx imagetools inspect "$base_image:go" ;;
+    esac
+    echo
+    echo "Pushed:"
+    case "$target" in
+      all|both|py|python) echo "  $base_image:py" ;;
+    esac
+    case "$target" in
+      all|both|go) echo "  $base_image:go" ;;
+    esac
+  fi
+}
+
+main "$@"

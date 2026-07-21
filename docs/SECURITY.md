@@ -119,7 +119,7 @@ Recommended fix:
 - Prefer runtime secrets via `--env-file`, Docker secrets, or platform secret stores.
 - Use a Firebase service account with the narrowest possible permissions for workers.
 - Rotate Firebase service account keys and `CREDENTIAL_ENCRYPTION_KEY` if a baked image is ever exposed.
-- Publish immutable private tags and avoid using secret-bearing `latest` images.
+- Publish explicit private runtime tags such as `:py` and `:go`; do not publish secret-bearing floating aliases.
 
 ### High: Untrusted repositories can execute code during build/deploy
 

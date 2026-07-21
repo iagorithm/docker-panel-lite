@@ -40,7 +40,7 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 		"id":               a.settings.WorkerID,
 		"runtime":          "go",
 		"runtimeVersion":   runtime.Version(),
-		"workerVersion":    "dev",
+		"workerVersion":    WorkerVersion,
 		"features":         []string{"heartbeat", "claim", "docker-summary", "queue-polling", "job-leasing", "container-inventory", "container-actions", "git-sync", "compose-deploy", "dockerfile-deploy"},
 		"identitySource":   a.settings.WorkerIdentitySource,
 		"label":            a.settings.WorkerLabelOrDefault(),

@@ -22,7 +22,7 @@ const workerSetupDocs = [
     title: "3. Launch the worker",
     body: "Run the worker on the machine that should build images, start containers, read logs, and execute deployment jobs.",
     command:
-      "docker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  cjarn/docker-panel-lite-worker:latest",
+      "docker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  cjarn/docker-panel-lite-worker:py",
   },
   {
     title: "4. Copy the claim token",

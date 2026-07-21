@@ -41,7 +41,7 @@ the SHA-256 hash of the claim token.
 | --- | --- |
 | `services/worker/Dockerfile` | Portable multi-architecture runtime image with Docker, Compose, ngrok, Python dependencies, worker code, and optional baked configuration |
 | `scripts/publish-worker-image.sh` | Buildx builder setup, secret preparation, multi-platform build, push, verification, and actionable error output |
-| `run.sh` | `build`, `publish-worker`, and `verify-worker-image` entry points |
+| `run.sh` | `build`, `publish`, `verify`, and `run` entry points |
 | `docker-compose.yaml` | Runtime image, Docker socket, persistent data/repository mounts, and optional environment overrides |
 | `docker-compose.build.yaml` | Local development build override |
 | `services/worker/worker/config.py` | Baked environment loading, Firebase configuration resolution, host fingerprinting, and persistent worker identity |
@@ -104,15 +104,14 @@ It bootstraps the builder before starting the build.
 The script supports:
 
 - `WORKER_IMAGE` for the Docker Hub namespace and repository.
-- `WORKER_IMAGE_TAG` for an immutable or release tag.
 - `WORKER_IMAGE_PLATFORMS` for target platforms.
 - `WORKER_BUILDX_BUILDER` for a custom builder name.
 - `WORKER_BAKE_CONFIG` for optional embedded configuration.
 - `PUSH=false` for a single-platform local validation build.
 - `BUILDKIT_PROGRESS` for BuildKit output style.
 
-It publishes both the configured tag and `latest`, then runs
-`docker buildx imagetools inspect` to verify the remote manifest.
+It publishes the Python worker as `:py` and the Go worker as `:go`, then runs
+`docker buildx imagetools inspect` to verify the remote manifests.
 
 Several reliability fixes were required in this script:
 
@@ -130,12 +129,12 @@ Several reliability fixes were required in this script:
 The commands exposed through `run.sh` are:
 
 ```bash
-./run.sh build worker
-./run.sh publish-worker
-./run.sh verify-worker-image
+./run.sh build
+./run.sh publish
+./run.sh verify
 ```
 
-`build worker` only creates a local image. `publish-worker` is the command that
+`build` only creates a local image. `publish` is the command that
 pushes the multi-platform manifest and layers to Docker Hub.
 
 ## 3. Fallback Configuration Embedded in the Image
@@ -211,7 +210,7 @@ For example, a remote machine can override any or all embedded defaults without
 rebuilding the image:
 
 ```bash
-docker run --env-file /path/to/worker.env ... cjarn/docker-panel-lite-worker:latest
+docker run --env-file /path/to/worker.env ... cjarn/docker-panel-lite-worker:py
 ```
 
 When `--env-file` is omitted, the worker reads `/app/config/worker.env` from the
@@ -509,7 +508,7 @@ access and the required mounts:
 
 ```bash
 docker login
-docker pull cjarn/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:py
 
 docker run -d \
   --name docker-panel-lite-worker \
@@ -517,7 +516,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  cjarn/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:py
 ```
 
 After startup:
@@ -604,7 +603,7 @@ The implementation was validated with:
 - Python compilation checks for worker configuration and runtime modules.
 - Next.js/Docker web builds after adding claim and sharing actions and types.
 - Worker image builds through the Compose development override.
-- A local single-platform `publish-worker` test with `PUSH=false`.
+- A local single-platform `./run.sh publish` test with `PUSH=false`.
 - A multi-platform Buildx build reaching the Docker Hub push stage for both
   `amd64` and `arm64`.
 - BuildKit secret validation confirming that configuration values are not
@@ -617,18 +616,18 @@ A successful remote publication ends with:
 ```text
 Pushed:
   cjarn/docker-panel-lite-worker:<tag>
-  cjarn/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:py
 ```
 
 The remote manifest can be checked with:
 
 ```bash
-./run.sh verify-worker-image
+./run.sh verify
 ```
 
 ## 19. End-to-End Acceptance Checklist
 
-1. `./run.sh publish-worker` reports `baked config: yes` for the private image.
+1. `./run.sh publish` reports `baked config: yes` for the private image.
 2. Docker Hub contains both `linux/amd64` and `linux/arm64` manifests.
 3. A clean remote machine can pull and start the image.
 4. The worker starts without external Firebase environment variables.
@@ -663,5 +662,5 @@ The worker image must also be rebuilt and published because the worker now
 preserves `ownerEmail` and `sharedEmails` during heartbeat updates:
 
 ```bash
-./run.sh publish-worker
+./run.sh publish
 ```

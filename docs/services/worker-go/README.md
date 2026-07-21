@@ -41,13 +41,13 @@ go build ./worker
 Build with Docker:
 
 ```bash
-./run.sh build-go
+./run.sh build go
 ```
 
 Build and run the local app with both Python and Go workers:
 
 ```bash
-./run.sh up-go
+./run.sh run go
 ```
 
 Run only the Go worker service with Docker Compose:
@@ -56,10 +56,10 @@ Run only the Go worker service with Docker Compose:
 docker compose --profile go-worker up worker-go
 ```
 
-Use `run-local.sh` for the full local source stack:
+Use `run.sh` for the full local source stack:
 
 ```bash
-./run-local.sh
+./run.sh run
 ```
 
 The default `worker` service still runs the Python worker, and the local stack can run it beside `worker-go`. Keep using the Python worker for production deploy actions until the Go worker reaches full production parity.

@@ -173,7 +173,7 @@ services/worker-go/worker/
 | `tunnel_stop` | Complete | Implemented | Stops ngrok processes by repository prefix and clears public URL state. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
 | Compose profile | Complete | Implemented | `docker compose --profile go-worker` includes `worker-go`. |
-| Local Go container startup | Complete | Implemented | `./run.sh up-go` builds and starts `web`, `worker`, and `worker-go` together. |
+| Local Go container startup | Complete | Implemented | `./run.sh run go` builds and starts `web`, `worker`, and `worker-go` together. |
 
 ## Runtime Selection
 
@@ -188,7 +188,7 @@ WORKER_RUNTIME=go
 Recommended image variables:
 
 ```env
-WORKER_PYTHON_IMAGE=cjarn/docker-panel-lite-worker:python
+WORKER_IMAGE=cjarn/docker-panel-lite-worker:py
 WORKER_GO_IMAGE=cjarn/docker-panel-lite-worker:go
 WORKER_RUNTIME=python
 ```
@@ -203,9 +203,9 @@ worker:
 More explicit compose strategy:
 
 ```yaml
-worker-python:
+worker:
   profiles: ["python-worker"]
-  image: ${WORKER_PYTHON_IMAGE:-cjarn/docker-panel-lite-worker:python}
+  image: ${WORKER_IMAGE:-cjarn/docker-panel-lite-worker:py}
 
 worker-go:
   profiles: ["go-worker"]
@@ -214,28 +214,24 @@ worker-go:
 
 Recommended first version:
 
-- Keep `latest` pointing to Python.
+- Publish Python as `:py`.
 - Publish Go as `:go`.
-- Let users opt in with `WORKER_RUNTIME=go` or `WORKER_IMAGE=...:go`.
+- Let users select explicit runtime tags through `WORKER_IMAGE` and `WORKER_GO_IMAGE`.
 
 ## Image Tagging
 
 Recommended tags:
 
 ```text
-cjarn/docker-panel-lite-worker:python
-cjarn/docker-panel-lite-worker:python-<version>
+cjarn/docker-panel-lite-worker:py
 cjarn/docker-panel-lite-worker:go
-cjarn/docker-panel-lite-worker:go-<version>
-cjarn/docker-panel-lite-worker:latest
 ```
 
 Transition policy:
 
-1. `latest` remains Python until Go reaches feature parity.
-2. Go is opt-in.
-3. After parity and production testing, `latest` can move to Go.
-4. Keep Python tags available as rollback.
+1. `:py` remains the stable Python worker image.
+2. `:go` remains the explicit Go worker image.
+3. Keep both tags available so deployments can choose runtime explicitly.
 
 ## Shared Worker Contract
 
@@ -665,38 +661,27 @@ Implemented:
 - `worker-go` build target in `docker-compose.build.yaml`.
 - `WORKER_GO_IMAGE` in `.env.example`.
 - `services/worker-go/Dockerfile`.
-- `./run.sh up-go`, `./run.sh build-go`, and `./run.sh logs-go` for local Go worker development.
-- `./run-local.sh` for a one-command local app stack with both Python and Go workers.
+- `./run.sh run go`, `./run.sh build go`, and `./run.sh logs-go` for local Go worker development.
+- `./run.sh publish` publishes both `:py` and `:go`.
+- `./run.sh publish py` and `./run.sh publish go` publish one runtime image.
+- `./run.sh run` for a one-command local app stack with both Python and Go workers.
 
 Not implemented:
 
-- `run.sh` commands for build/publish by runtime.
-- Publish script support for Go-specific tags.
-- Runtime-specific `python` and `go` publish commands.
+- Immutable runtime-specific release tags in addition to `:py` and `:go`.
 
-Add commands:
+Runtime-specific publish commands:
 
 ```bash
-./run.sh build-worker-python
-./run.sh build-worker-go
-./run.sh publish-worker-python
-./run.sh publish-worker-go
-```
-
-Or add one command with runtime:
-
-```bash
-WORKER_RUNTIME=go ./run.sh publish-worker
-WORKER_RUNTIME=python ./run.sh publish-worker
+./run.sh publish go
+./run.sh publish py
 ```
 
 Publishing should create runtime-specific tags:
 
 ```text
 worker:go
-worker:go-<git-sha>
-worker:python
-worker:python-<git-sha>
+worker:py
 ```
 
 ## Testing Strategy
@@ -786,7 +771,7 @@ Recommended:
 - Should `worker_command` be implemented immediately or wait for command allowlists?
 - Should Go share the same worker data directory format as Python? Current implementation already shares `worker-id` and `worker-token` file names.
 - Should the worker image still support baked config, or should Go runtime require env/secrets only?
-- Should `latest` eventually point to Go, or should users always select explicit runtime tags?
+- Should deployments always select explicit runtime tags, or should an additional alias be introduced later?
 
 ## Immediate Next Implementation Steps
 

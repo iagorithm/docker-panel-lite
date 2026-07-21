@@ -13,7 +13,7 @@
   <path d="M145 153h52v18h-52zM151 135h14v14h-14zM169 135h14v14h-14zM187 135h14v14h-14z" fill="#fff"/>
   <path d="M140 173c10 19 54 22 69-3-9 4-14 2-18-2-8 8-37 9-51 5Z" fill="#fff"/>
   <text x="171" y="220" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#171918">Private registry</text>
-  <text x="171" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" fill="#6b7470">cjarn/worker:latest</text>
+  <text x="171" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" fill="#6b7470">cjarn/worker:py</text>
   <text x="600" y="102" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#aeb5b1">REMOTE HOST</text>
   <rect x="534" y="129" width="132" height="104" rx="18" fill="#6154d6"/>
   <path d="M600 149 637 170 600 191 563 170 600 149Zm-33 31 29 17v32l-29-17v-32Zm66 0v32l-29 17v-32l29-17Z" fill="#fff"/>

@@ -11,22 +11,29 @@ For the complete new-machine setup and claim procedure, see
 Set the image name in `.env`:
 
 ```env
-WORKER_IMAGE=cjarn/docker-panel-lite-worker:latest
-WORKER_IMAGE_TAG=latest
+WORKER_IMAGE=cjarn/docker-panel-lite-worker:py
+WORKER_GO_IMAGE=cjarn/docker-panel-lite-worker:go
 WORKER_IMAGE_PLATFORMS=linux/amd64,linux/arm64
 ```
 
-Login and publish:
+Login and publish both runtime images:
 
 ```bash
 docker login
-./run.sh publish-worker
+./run.sh publish
+```
+
+This pushes:
+
+```text
+cjarn/docker-panel-lite-worker:py
+cjarn/docker-panel-lite-worker:go
 ```
 
 If Docker Hub rejects the push with `push access denied` or `insufficient_scope`, the logged-in user cannot write to the namespace in `WORKER_IMAGE`. Either create/grant access to that repository, or publish under a namespace you own:
 
 ```bash
-WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:latest ./run.sh publish-worker
+WORKER_IMAGE=<your-dockerhub-user>/docker-panel-lite-worker:py ./run.sh publish
 ```
 
 To publish a private image that already includes the worker Firebase configuration, set:
@@ -37,10 +44,11 @@ WORKER_BAKE_CONFIG=true
 
 This embeds values such as `FIREBASE_DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CREDENTIAL_ENCRYPTION_KEY`, `WORKER_WORKSPACE_ID`, and ngrok defaults into the image. Use it only for a private Docker Hub repository.
 
-To publish an immutable version:
+To publish only one runtime:
 
 ```bash
-WORKER_IMAGE_TAG=2026-07-20 ./run.sh publish-worker
+./run.sh publish py
+./run.sh publish go
 ```
 
 ## Run On Another Machine
@@ -54,14 +62,13 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  cjarn/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:py
 ```
 
 If you prefer runtime configuration instead of a baked image, copy `.env.example` to `.env`, configure Firebase and encryption values, then start only the worker:
 
 ```bash
-./run.sh pull worker
-./run.sh up worker
+./run.sh run published worker
 ```
 
 When the worker starts, it prints a claim token in its logs:
@@ -88,7 +95,7 @@ Start the complete web and worker stack from local source without pulling the
 published worker image:
 
 ```bash
-./run-local.sh
+./run.sh run
 ```
 
 The script combines `docker-compose.yaml` with `docker-compose.build.yaml`, tags
@@ -98,7 +105,7 @@ them in the background with the configured persistent mounts.
 To build manually with the same Compose override:
 
 ```bash
-./run.sh build worker
+./run.sh build
 docker compose --env-file .env -f docker-compose.yaml -f docker-compose.build.yaml up -d worker
 ```
 https://app.docker.com/settings
