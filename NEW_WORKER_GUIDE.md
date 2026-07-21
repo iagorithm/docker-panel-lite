@@ -33,13 +33,13 @@ docker login
 Pull the worker image:
 
 ```bash
-docker pull iagorithm/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:latest
 ```
 
 If Docker reports `pull access denied`, verify that:
 
 - The Docker Hub user has access to the private repository.
-- The image exists under `iagorithm/docker-panel-lite-worker`.
+- The image exists under `cjarn/docker-panel-lite-worker`.
 - `docker login` was completed on this machine.
 
 ## 2. Create Persistent Directories
@@ -68,7 +68,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  iagorithm/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:latest
 ```
 
 No Firebase environment variables are required when the image was published
@@ -149,7 +149,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  iagorithm/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:latest
 ```
 
 Common optional overrides are:
@@ -185,7 +185,7 @@ returns online.
 Pull the new image:
 
 ```bash
-docker pull iagorithm/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:latest
 ```
 
 Remove only the container, preserving the mounted directories:

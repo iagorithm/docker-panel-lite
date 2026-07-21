@@ -474,7 +474,7 @@ access and the required mounts:
 
 ```bash
 docker login
-docker pull iagorithm/docker-panel-lite-worker:latest
+docker pull cjarn/docker-panel-lite-worker:latest
 
 docker run -d \
   --name docker-panel-lite-worker \
@@ -482,7 +482,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  iagorithm/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:latest
 ```
 
 After startup:
@@ -581,8 +581,8 @@ A successful remote publication ends with:
 
 ```text
 Pushed:
-  iagorithm/docker-panel-lite-worker:<tag>
-  iagorithm/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:<tag>
+  cjarn/docker-panel-lite-worker:latest
 ```
 
 The remote manifest can be checked with:

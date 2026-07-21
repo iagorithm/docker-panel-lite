@@ -101,7 +101,7 @@ env_value() {
 worker_image_ref() {
   local image tag
   image="$(env_value WORKER_IMAGE)"
-  image="${image:-iagorithm/docker-panel-lite-worker:latest}"
+  image="${image:-cjarn/docker-panel-lite-worker:latest}"
   tag="$(env_value WORKER_IMAGE_TAG)"
   if [[ "$image" == *:* ]]; then
     local base="${image%:*}"

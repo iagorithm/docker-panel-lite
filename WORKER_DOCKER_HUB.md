@@ -10,7 +10,7 @@ For the complete new-machine setup and claim procedure, see
 Set the image name in `.env`:
 
 ```env
-WORKER_IMAGE=iagorithm/docker-panel-lite-worker:latest
+WORKER_IMAGE=cjarn/docker-panel-lite-worker:latest
 WORKER_IMAGE_TAG=latest
 WORKER_IMAGE_PLATFORMS=linux/amd64,linux/arm64
 ```
@@ -53,7 +53,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/repos:/app/clones" \
   -v "$PWD/data:/app/data" \
-  iagorithm/docker-panel-lite-worker:latest
+  cjarn/docker-panel-lite-worker:latest
 ```
 
 If you prefer runtime configuration instead of a baked image, copy `.env.example` to `.env`, configure Firebase and encryption values, then start only the worker:

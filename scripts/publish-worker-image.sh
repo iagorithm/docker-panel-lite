@@ -32,7 +32,7 @@ env_value() {
 }
 
 IMAGE="$(env_value WORKER_IMAGE)"
-IMAGE="${IMAGE:-iagorithm/docker-panel-lite-worker}"
+IMAGE="${IMAGE:-cjarn/docker-panel-lite-worker}"
 TAG="$(env_value WORKER_IMAGE_TAG)"
 TAG="${TAG:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 PLATFORMS="$(env_value WORKER_IMAGE_PLATFORMS)"
