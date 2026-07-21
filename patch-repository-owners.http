@@ -1,0 +1,35 @@
+@databaseUrl = https://spark-driver-app-default-rtdb.firebaseio.com
+@workspaceId = default
+@firebaseIdToken = REPLACE_WITH_FIREBASE_ID_TOKEN
+@ownerEmail = christ.ibarrac@gmail.com
+@ownerUid = Gzth2NWEh7dlqx49AKEJ2JLL6Wo1
+
+### Assign the same owner to every current repository
+PATCH {{databaseUrl}}/workspaces/{{workspaceId}}/repositories.json?auth={{firebaseIdToken}}
+Content-Type: application/json
+
+{
+  "devployments-content-delivery-service/ownerEmail": "{{ownerEmail}}",
+  "devployments-content-delivery-service/ownerUid": "{{ownerUid}}",
+  "devployments-content-delivery-service/createdBy": "{{ownerUid}}",
+
+  "github-content-delivery-service/ownerEmail": "{{ownerEmail}}",
+  "github-content-delivery-service/ownerUid": "{{ownerUid}}",
+  "github-content-delivery-service/createdBy": "{{ownerUid}}",
+
+  "github-crm-sales/ownerEmail": "{{ownerEmail}}",
+  "github-crm-sales/ownerUid": "{{ownerUid}}",
+  "github-crm-sales/createdBy": "{{ownerUid}}",
+
+  "github-exceluma-agents/ownerEmail": "{{ownerEmail}}",
+  "github-exceluma-agents/ownerUid": "{{ownerUid}}",
+  "github-exceluma-agents/createdBy": "{{ownerUid}}",
+
+  "github-summary-youtube/ownerEmail": "{{ownerEmail}}",
+  "github-summary-youtube/ownerUid": "{{ownerUid}}",
+  "github-summary-youtube/createdBy": "{{ownerUid}}"
+}
+
+### Verify that every repository still exists after the multipath PATCH
+GET {{databaseUrl}}/workspaces/{{workspaceId}}/repositories.json?auth={{firebaseIdToken}}&shallow=true
+Accept: application/json
