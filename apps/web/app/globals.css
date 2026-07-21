@@ -1805,6 +1805,54 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
 .credentials-panel .compact-list:empty {
   border-top: 0;
 }
+.credential-row { flex-wrap: wrap; }
+.credential-access-label {
+  color: var(--ui-text-secondary);
+  font-size: 0.64rem;
+  font-weight: 650;
+}
+.credential-access-settings { min-width: 0; }
+.credential-access-settings > summary {
+  display: inline-flex;
+  min-height: 1.7rem;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.2rem 0.35rem;
+  color: var(--ui-text-secondary);
+  background: transparent;
+  border-radius: 0.36rem;
+  cursor: pointer;
+  list-style: none;
+}
+.credential-access-settings > summary:hover { color: var(--ui-text); background: var(--ui-surface-hover); }
+.credential-access-settings > summary::-webkit-details-marker { display: none; }
+.credential-access-settings > summary .ui-icon { width: 0.76rem; height: 0.76rem; }
+.credential-access-settings > summary span { font-size: 0.64rem; font-weight: 650; }
+.credential-access-settings[open] { order: 10; flex: 1 0 100%; }
+.credential-sharing-form {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.32rem;
+  width: 100%;
+  padding: 0.45rem 0 0.15rem;
+}
+.credential-sharing-form.has-shared-emails { grid-template-columns: minmax(7rem, 0.55fr) minmax(10rem, 1fr) auto; }
+.credential-sharing-form label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.22rem;
+  color: var(--ui-text-tertiary);
+  font-size: 0.62rem;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.credential-sharing-form select,
+.credential-sharing-form input { min-height: 1.82rem; padding: 0.28rem 0.42rem; font-size: 0.66rem; letter-spacing: 0; text-transform: none; }
+.credential-sharing-form .icon-button { width: 1.82rem; min-width: 1.82rem; min-height: 1.82rem; border-radius: 0.4rem; }
+.credential-sharing-form .ui-icon { width: 0.86rem; height: 0.86rem; }
 .panel-title-row {
   padding-bottom: 0.75rem;
 }
@@ -2496,8 +2544,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .logs-monitor-console { min-height: 24rem; }
   .worker-details { grid-template-columns: 1fr; }
   .worker-sharing-form,
-  .worker-sharing-form.has-shared-emails { grid-template-columns: 1fr; align-items: stretch; }
+  .worker-sharing-form.has-shared-emails,
+  .credential-sharing-form,
+  .credential-sharing-form.has-shared-emails { grid-template-columns: 1fr; align-items: stretch; }
   .worker-sharing-form .icon-button { justify-self: end; }
+  .credential-sharing-form .icon-button { justify-self: end; }
   .workers-panel-header { align-items: stretch; flex-direction: column; gap: 0.55rem; }
   .worker-claim-control { width: 100%; min-width: 0; align-items: stretch; }
   .worker-claim-form input { width: 100%; }
