@@ -15,6 +15,7 @@ import {
 } from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
 import { encryptSecret } from "@/lib/secrets";
+import type { Repository } from "@/lib/types";
 import {
   canAccessRepository,
   canManageRepository,
@@ -395,7 +396,7 @@ export async function saveRepository(formData: FormData) {
   const repositoryId = input.repositoryId || input.alias;
   const now = Date.now();
   const currentRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
-  const current = (await currentRef.get()).val() as RepositoryAccessRecord | null;
+  const current = (await currentRef.get()).val() as (Repository & RepositoryAccessRecord) | null;
   const currentOwnerUid = current ? repositoryOwnerUid(current) : "";
   if (current && currentOwnerUid && !canManageRepository(current, user)) throw new Error("Repository is owned by another user");
   if (current && !currentOwnerUid) throw new Error("Legacy repository has no owner. Remove it before registering it again");

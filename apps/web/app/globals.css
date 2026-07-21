@@ -1722,6 +1722,27 @@ details[open] > summary { border-bottom: 1px solid var(--ui-border); }
 .repo-resource-row .inline-editor .form-actions {
   gap: 0.38rem;
 }
+.repository-access-note {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.14rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--ui-text-secondary);
+  background: var(--ui-surface-hover);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.42rem;
+}
+.repository-access-note strong {
+  color: var(--ui-text);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+.repository-access-note small {
+  color: var(--ui-text-tertiary);
+  font-size: 0.62rem;
+}
 .repository-delete-confirm {
   grid-column: 1 / -1;
   display: grid;
