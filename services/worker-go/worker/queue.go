@@ -19,8 +19,10 @@ type Runner struct {
 	settings  Settings
 	heartbeat *Agent
 
-	mu     sync.Mutex
-	active map[string]bool
+	mu        sync.Mutex
+	active    map[string]bool
+	accepting bool
+	jobs      sync.WaitGroup
 }
 
 type Job map[string]interface{}
@@ -31,6 +33,7 @@ func NewRunner(client *Client, settings Settings, agent *Agent) *Runner {
 		settings:  settings,
 		heartbeat: agent,
 		active:    map[string]bool{},
+		accepting: true,
 	}
 }
 
@@ -38,6 +41,16 @@ func (r *Runner) ActiveCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.active)
+}
+
+func (r *Runner) StopAccepting() {
+	r.mu.Lock()
+	r.accepting = false
+	r.mu.Unlock()
+}
+
+func (r *Runner) Wait() {
+	r.jobs.Wait()
 }
 
 func (r *Runner) Run(ctx context.Context) {
@@ -90,20 +103,28 @@ func (r *Runner) scan(ctx context.Context) {
 func (r *Runner) capacity() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if !r.accepting {
+		return 0
+	}
 	return r.settings.MaxConcurrency - len(r.active)
 }
 
 func (r *Runner) markActive(jobID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if !r.accepting {
+		return false
+	}
 	if r.active[jobID] {
 		return false
 	}
 	r.active[jobID] = true
+	r.jobs.Add(1)
 	return true
 }
 
 func (r *Runner) clearActive(jobID string) {
+	defer r.jobs.Done()
 	r.mu.Lock()
 	delete(r.active, jobID)
 	active := len(r.active)

@@ -344,7 +344,7 @@ func startPublicTunnel(ctx context.Context, client *Client, repository map[strin
 	if err != nil {
 		return nil, err
 	}
-	targets, err := core.PublicTunnelTargets(project, stringValue(repository["mode"]), strings.TrimSpace(onlyService), intValueDefault(repository["internalPort"], 3000), repositoryPublicTunnelPorts(repository))
+	targets, err := core.PublicTunnelTargets(project, stringValue(repository["mode"]), strings.TrimSpace(onlyService), intValueDefault(repository["internalPort"], 3000), repositoryPublicTunnelPorts(repository), settings.Hostname)
 	if err != nil {
 		return nil, err
 	}

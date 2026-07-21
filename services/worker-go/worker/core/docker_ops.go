@@ -286,7 +286,7 @@ func RunWorkerCommandContext(ctx context.Context, command string, workdir string
 	return CommandResult{Message: "Command completed", Output: tailText(output, 120000), ExitCode: 0}, nil
 }
 
-func PublicTunnelTargets(project string, mode string, service string, fallbackPort int, servicePorts map[string]int) (map[string]string, error) {
+func PublicTunnelTargets(project string, mode string, service string, fallbackPort int, servicePorts map[string]int, workerHostname string) (map[string]string, error) {
 	if fallbackPort <= 0 || fallbackPort > 65535 {
 		fallbackPort = 3000
 	}
@@ -319,7 +319,7 @@ func PublicTunnelTargets(project string, mode string, service string, fallbackPo
 			if configured := servicePorts[serviceName]; configured > 0 {
 				port = configured
 			}
-			target, err := containerTunnelTarget(id, port)
+			target, err := containerTunnelTarget(id, port, workerHostname)
 			if err == nil && target != "" {
 				targets[serviceName] = target
 			}
@@ -333,7 +333,7 @@ func PublicTunnelTargets(project string, mode string, service string, fallbackPo
 		}
 		return nil, fmt.Errorf("no running compose services found for public tunnel '%s'%s", project, suffix)
 	}
-	target, err := containerTunnelTarget(project, fallbackPort)
+	target, err := containerTunnelTarget(project, fallbackPort, workerHostname)
 	if err != nil || target == "" {
 		return nil, fmt.Errorf("no running container found for public tunnel '%s'", project)
 	}
@@ -344,7 +344,7 @@ func PublicTunnelTargets(project string, mode string, service string, fallbackPo
 	return map[string]string{serviceName: target}, nil
 }
 
-func containerTunnelTarget(container string, fallbackPort int) (string, error) {
+func containerTunnelTarget(container string, fallbackPort int, workerHostname string) (string, error) {
 	inspect, err := inspectContainer(container)
 	if err != nil {
 		return "", err
@@ -356,10 +356,37 @@ func containerTunnelTarget(container string, fallbackPort int) (string, error) {
 	if target := hostPortTarget(inspect, internalPort); target != "" {
 		return target, nil
 	}
+	connectWorkerToContainerNetworks(inspect, workerHostname)
 	if ip := containerIPAddress(inspect); ip != "" {
 		return fmt.Sprintf("http://%s:%d", ip, internalPort), nil
 	}
 	return "", fmt.Errorf("container has no reachable tunnel target")
+}
+
+func connectWorkerToContainerNetworks(targetInspect map[string]interface{}, workerHostname string) {
+	workerHostname = strings.TrimSpace(workerHostname)
+	if workerHostname == "" {
+		return
+	}
+	workerInspect, err := inspectContainer(workerHostname)
+	if err != nil {
+		return
+	}
+	targetNetworkSettings, _ := targetInspect["NetworkSettings"].(map[string]interface{})
+	workerNetworkSettings, _ := workerInspect["NetworkSettings"].(map[string]interface{})
+	targetNetworks := mapValue(targetNetworkSettings["Networks"])
+	workerNetworks := mapValue(workerNetworkSettings["Networks"])
+	for networkName := range targetNetworks {
+		if strings.TrimSpace(networkName) == "" {
+			continue
+		}
+		if _, connected := workerNetworks[networkName]; connected {
+			continue
+		}
+		if _, err := commandOutput(15*time.Second, "docker", "network", "connect", networkName, workerHostname); err == nil {
+			workerNetworks[networkName] = map[string]interface{}{}
+		}
+	}
 }
 
 func IsWorkerContainerName(name string) bool {

@@ -78,6 +78,9 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 		"ownerEmail":       stringValue(existing["ownerEmail"]),
 		"sharedEmails":     existingSharedEmails(existing["sharedEmails"]),
 	}
+	if status == "stopping" {
+		payload["stoppingAt"] = nowMillis()
+	}
 	return a.client.Put(ctx, path, payload)
 }
 

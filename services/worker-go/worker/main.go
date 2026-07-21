@@ -67,11 +67,19 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
+			runner.StopAccepting()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-			defer cancel()
-			if err := agent.Send(shutdownCtx, "offline", runner.ActiveCount()); err != nil {
+			if err := agent.Send(shutdownCtx, "stopping", runner.ActiveCount()); err != nil {
+				log.Printf("stopping heartbeat failed: %v", err)
+			}
+			cancel()
+			log.Printf("Go worker %s waiting for %d active job(s)", settings.WorkerID, runner.ActiveCount())
+			runner.Wait()
+			offlineCtx, offlineCancel := context.WithTimeout(context.Background(), 8*time.Second)
+			if err := agent.Send(offlineCtx, "offline", 0); err != nil {
 				log.Printf("offline heartbeat failed: %v", err)
 			}
+			offlineCancel()
 			log.Printf("Go worker %s stopped", settings.WorkerID)
 			return
 		case <-ticker.C:
