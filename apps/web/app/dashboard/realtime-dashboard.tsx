@@ -562,7 +562,7 @@ export function RealtimeDashboard(props: Props) {
       const timestamp = Date.now();
       if (timestamp - (recentlyReported.get(key) || 0) < 30_000) return;
       recentlyReported.set(key, timestamp);
-      void recordUiAppLog({ action: "ui_runtime", source, message: normalized, path: window.location.pathname }).catch(() => undefined);
+      void recordUiAppLog({ action: "ui_runtime", source, functionName: source, message: normalized, path: window.location.pathname }).catch(() => undefined);
     };
     const onError = (event: ErrorEvent) => report(event.error instanceof Error ? event.error.message : event.message, "window.error");
     const onUnhandledRejection = (event: PromiseRejectionEvent) => report(event.reason instanceof Error ? event.reason.message : String(event.reason), "window.unhandledrejection");

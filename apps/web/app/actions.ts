@@ -44,9 +44,9 @@ function sanitizeAppLogMessage(value: unknown) {
     .slice(0, 2000);
 }
 
-async function writeUiAppLog(input: { workspaceId: string; user: { uid: string; email?: string }; action: string; source: string; message: unknown; context?: Record<string, unknown> }) {
+async function writeUiAppLog(input: { workspaceId: string; user: { uid: string; email?: string }; action: string; source: string; functionName?: string; message: unknown; context?: Record<string, unknown> }) {
   const ref = adminDatabase.ref(`workspaces/${input.workspaceId}/app_logs`).push();
-  await ref.set({ id: ref.key, actorType: "ui", actorId: input.user.uid, actorEmail: input.user.email || "", action: String(input.action || "unknown").slice(0, 120), source: String(input.source || "ui").slice(0, 160), severity: "error", message: sanitizeAppLogMessage(input.message), context: input.context || {}, createdAt: Date.now() });
+  await ref.set({ id: ref.key, actorType: "ui", actorId: input.user.uid, actorEmail: input.user.email || "", runtime: "web", functionName: String(input.functionName || input.source || "unknown").slice(0, 240), action: String(input.action || "unknown").slice(0, 120), source: String(input.source || "ui").slice(0, 160), severity: "error", message: sanitizeAppLogMessage(input.message), context: input.context || {}, createdAt: Date.now() });
 }
 
 const repositorySchema = z.object({
@@ -158,6 +158,7 @@ export type DeploymentQueueState = {
 const uiAppLogSchema = z.object({
   action: z.string().trim().min(1).max(120).default("ui_runtime"),
   source: z.string().trim().min(1).max(160).default("browser"),
+  functionName: z.string().trim().max(240).default(""),
   message: z.string().trim().min(1).max(4000),
   path: z.string().trim().max(500).default(""),
   repositoryId: z.string().trim().max(200).default(""),
@@ -166,7 +167,7 @@ const uiAppLogSchema = z.object({
 export async function recordUiAppLog(payload: unknown) {
   const user = await requireSession();
   const input = uiAppLogSchema.parse(payload);
-  await writeUiAppLog({ workspaceId: user.workspaceId, user, action: input.action, source: input.source, message: input.message, context: { path: input.path, repositoryId: input.repositoryId } });
+  await writeUiAppLog({ workspaceId: user.workspaceId, user, action: input.action, source: input.source, functionName: input.functionName, message: input.message, context: { path: input.path, repositoryId: input.repositoryId } });
 }
 
 function formObject(formData: FormData) {
@@ -466,6 +467,8 @@ async function recordFailedDeployment(input: {
       id: appLogRef.key,
       actorType: "ui",
       actorId: input.requestedBy,
+      runtime: "web",
+      functionName: "recordFailedDeployment",
       action: input.action,
       source: "server_action.preflight",
       severity: "error",
@@ -623,7 +626,7 @@ export async function saveRepositoryWithState(_previousState: RepositorySaveStat
   } catch (error) {
     console.error("saveRepository failed", error);
     const user = await requireSession();
-    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: "save_repository", source: "server_action", message: error, context: { repositoryId: String(formData.get("repositoryId") || formData.get("alias") || "") } }).catch(console.error);
+    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: "save_repository", source: "server_action", functionName: "saveRepositoryWithState", message: error, context: { repositoryId: String(formData.get("repositoryId") || formData.get("alias") || "") } }).catch(console.error);
     if (error instanceof z.ZodError) {
       return { status: "error", message: error.issues[0]?.message || "Check the repository fields and try again." };
     }
@@ -946,7 +949,7 @@ export async function enqueueDeploymentWithState(
   } catch (error) {
     console.error("enqueueDeployment failed", error);
     const user = await requireSession();
-    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: String(formData.get("action") || "deployment"), source: "server_action", message: error, context: { repositoryId: String(formData.get("repositoryId") || ""), targetWorkerId: String(formData.get("targetWorkerId") || "") } }).catch(console.error);
+    await writeUiAppLog({ workspaceId: user.workspaceId, user, action: String(formData.get("action") || "deployment"), source: "server_action", functionName: "enqueueDeploymentWithState", message: error, context: { repositoryId: String(formData.get("repositoryId") || ""), targetWorkerId: String(formData.get("targetWorkerId") || "") } }).catch(console.error);
     return { status: "error", message: error instanceof Error ? error.message : "Deployment could not be created." };
   }
 }

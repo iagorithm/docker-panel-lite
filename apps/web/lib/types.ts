@@ -102,6 +102,8 @@ export type AppLog = {
   actorId: string;
   actorEmail?: string;
   actorLabel?: string;
+  runtime?: "worker-python" | "worker-go" | "web";
+  functionName?: string;
   action: string;
   source: string;
   severity: "error";

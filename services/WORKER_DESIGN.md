@@ -781,6 +781,10 @@ Expected behavior:
   grouped across runtimes (`deploy`, `build`, `sync`, tunnels, containers, and commands).
 - Include worker identity for worker events and user identity for UI/backend
   events, plus repository/container/job identifiers when available.
+- Store `runtime`, `functionName`, `action`, and `message` as separate fields:
+  runtime identifies whether the failure occurred in Python worker, Go worker, or
+  web; function identifies the failing code location; action preserves the user/job
+  intent; message contains the sanitized failure detail.
 - Error-reporting failures must never crash the worker or recursively report.
 - Administrators may drain up to 1000 recent `app_logs` records through the web
   backend. A drain returns them as `app-logs.logs` and deletes only the returned

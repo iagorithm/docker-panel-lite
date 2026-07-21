@@ -94,12 +94,19 @@ class Worker:
     def _record_app_error(self, action: str, error: object, *, source: str, job: dict | None = None) -> None:
         try:
             message = re.sub(r"([?&](?:access_token|token|key)=)[^&\s]+", r"\1[REDACTED]", str(error) or "Unknown worker error", flags=re.IGNORECASE)[:2000]
+            function_name = source
+            error_traceback = getattr(error, "__traceback__", None)
+            if error_traceback:
+                frame = traceback.extract_tb(error_traceback)[-1]
+                function_name = f"{os.path.basename(frame.filename)}:{frame.name}:{frame.lineno}"
             log_ref = reference(f"workspaces/{self.settings.workspace_id}/app_logs").push()
             log_ref.set({
                 "id": log_ref.key,
                 "actorType": "worker",
                 "actorId": self.settings.worker_id,
                 "actorLabel": self.worker_label or "",
+                "runtime": "worker-python",
+                "functionName": function_name[:240],
                 "action": str(action or "worker_runtime")[:120],
                 "source": str(source or "worker")[:160],
                 "severity": "error",
