@@ -640,7 +640,8 @@ export async function enqueueDeployment(formData: FormData) {
   ).val();
   if (!repository) throw new Error("Repository not found");
   const createdAt = Date.now();
-  if (!(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
+  const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
+  if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: "Repository credential is not available to this user" });
     return;
   }
