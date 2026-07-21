@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Docker Control Panel",
+  title: "Docker Control Panel v1.0.0",
   description: "Realtime Docker deployment control panel",
 };
 
