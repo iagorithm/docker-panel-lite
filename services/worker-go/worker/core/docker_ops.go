@@ -3,7 +3,9 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -122,6 +124,78 @@ func ContainerAction(action string, candidates []string) (string, *string, error
 	}
 }
 
+func WriteEnvFile(repoPath string, environment map[string]string) error {
+	lines := make([]string, 0, len(environment))
+	for key, value := range environment {
+		if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(key) {
+			continue
+		}
+		lines = append(lines, formatEnvLine(key, value))
+	}
+	content := strings.Join(lines, "\n")
+	if content != "" {
+		content += "\n"
+	}
+	return os.WriteFile(filepath.Join(repoPath, ".env"), []byte(content), 0600)
+}
+
+func RunCompose(project string, repoPath string, composeFile string, environment map[string]string, down bool) (string, error) {
+	if err := WriteEnvFile(repoPath, environment); err != nil {
+		return "", err
+	}
+	args := []string{"compose", "-p", project, "-f", composeFile}
+	if down {
+		args = append(args, "down")
+	} else {
+		args = append(args, "up", "-d", "--build")
+	}
+	output, err := dockerOutput(900*time.Second, repoPath, environment, args...)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(output) != "" {
+		return strings.TrimSpace(output), nil
+	}
+	if down {
+		return "Stack stopped", nil
+	}
+	return "Stack deployed", nil
+}
+
+func RunDockerfile(project string, repoPath string, dockerfile string, environment map[string]string, ports []string) (string, error) {
+	if err := WriteEnvFile(repoPath, environment); err != nil {
+		return "", err
+	}
+	imageTag := project + ":managed"
+	if _, err := dockerOutput(900*time.Second, repoPath, environment, "build", "-t", imageTag, "-f", dockerfile, "."); err != nil {
+		return "", err
+	}
+	_, _ = dockerOutput(60*time.Second, repoPath, environment, "rm", "-f", project)
+	args := []string{"run", "-d", "--name", project, "--env-file", filepath.Join(repoPath, ".env")}
+	for _, port := range ports {
+		if strings.TrimSpace(port) != "" {
+			args = append(args, "-p", strings.TrimSpace(port))
+		}
+	}
+	args = append(args, imageTag)
+	output, err := dockerOutput(120*time.Second, repoPath, environment, args...)
+	if err != nil {
+		return "", err
+	}
+	containerID := strings.TrimSpace(output)
+	if len(containerID) > 12 {
+		containerID = containerID[:12]
+	}
+	return "Container " + containerID + " deployed", nil
+}
+
+func StopDockerfileContainer(project string) (string, error) {
+	if _, err := dockerOutput(60*time.Second, "", nil, "rm", "-f", project); err != nil {
+		return "", err
+	}
+	return "Container stopped", nil
+}
+
 func IsWorkerContainerName(name string) bool {
 	normalized := normalizedName(name)
 	if normalized == "worker" {
@@ -140,6 +214,63 @@ func commandOutput(timeout time.Duration, name string, args ...string) (string, 
 	defer timer.Stop()
 	output, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(output)), err
+}
+
+func dockerOutput(timeout time.Duration, workdir string, environment map[string]string, args ...string) (string, error) {
+	cmd := exec.Command("docker", args...)
+	if strings.TrimSpace(workdir) != "" {
+		cmd.Dir = workdir
+	}
+	if len(environment) > 0 {
+		env := os.Environ()
+		for key, value := range environment {
+			env = append(env, key+"="+value)
+		}
+		cmd.Env = env
+	}
+	timer := time.AfterFunc(timeout, func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	defer timer.Stop()
+	output, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(output))
+	if err != nil {
+		return "", fmt.Errorf("%s", compactProcessError(text))
+	}
+	return text, nil
+}
+
+func compactProcessError(output string) string {
+	text := strings.TrimSpace(output)
+	if text == "" {
+		return "docker command failed"
+	}
+	lines := []string{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+		if len(lines) >= 12 {
+			break
+		}
+	}
+	return truncate(strings.Join(lines, "\n"), 2000)
+}
+
+func formatEnvLine(key string, value string) string {
+	text := strings.ReplaceAll(value, "\x00", "")
+	if regexp.MustCompile(`^[A-Za-z0-9_./:@%+=,-]*$`).MatchString(text) {
+		return key + "=" + text
+	}
+	escaped := strings.ReplaceAll(text, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "\\'")
+	escaped = strings.ReplaceAll(escaped, "\r\n", "\n")
+	escaped = strings.ReplaceAll(escaped, "\r", "\n")
+	escaped = strings.ReplaceAll(escaped, "\n", "\\n")
+	return key + "='" + escaped + "'"
 }
 
 func resolveContainer(candidates []string) (string, string, error) {

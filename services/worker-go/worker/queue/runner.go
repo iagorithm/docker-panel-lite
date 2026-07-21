@@ -12,6 +12,7 @@ import (
 
 	"docker-panel-lite-worker-go/worker/config"
 	"docker-panel-lite-worker-go/worker/core"
+	"docker-panel-lite-worker-go/worker/executor"
 	"docker-panel-lite-worker-go/worker/firebase_runtime"
 	"docker-panel-lite-worker-go/worker/heartbeat"
 )
@@ -256,7 +257,27 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 		}
 		return message, nil
 	default:
-		return "", fmt.Errorf("Go worker does not implement action yet: %s", action)
+		repositoryID := stringValue(job["repositoryId"])
+		if repositoryID == "" {
+			return "", fmt.Errorf("Go worker does not implement action yet: %s", action)
+		}
+		repository := map[string]interface{}{}
+		if err := r.client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s", stringValue(job["workspaceId"]), repositoryID), &repository); err != nil {
+			return "", err
+		}
+		if len(repository) == 0 {
+			return "", fmt.Errorf("repository no longer exists")
+		}
+		result, err := executor.Execute(ctx, r.client, job, repository, r.settings)
+		if err != nil {
+			return "", err
+		}
+		if len(result.Updates) > 0 {
+			if err := r.client.Patch(ctx, fmt.Sprintf("workspaces/%s/repositories/%s", stringValue(job["workspaceId"]), repositoryID), result.Updates); err != nil {
+				return "", err
+			}
+		}
+		return result.Message, nil
 	}
 }
 
