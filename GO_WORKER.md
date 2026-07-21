@@ -2,7 +2,44 @@
 
 Last updated: 2026-07-21
 
-This document describes how to add a Go implementation of the Docker Panel Lite worker while keeping the current Python worker available. The goal is to support both runtimes and let deployments choose which worker image to run.
+This document describes the Go implementation of the Docker Panel Lite worker while keeping the current Python worker available. The goal is to support both runtimes and let deployments choose which worker image to run.
+
+## Current Status
+
+The Go worker is **not yet a complete replacement** for the Python worker.
+
+Current Go implementation in `services/worker-go` supports:
+
+- Configuration loading compatible with the Python worker environment.
+- Firebase Realtime Database REST client using service-account OAuth.
+- Stable worker identity.
+- Persistent worker claim token.
+- SHA-256 worker token hash.
+- Online/offline heartbeat.
+- Preservation of owner and sharing metadata during heartbeat.
+- Runtime metadata: `runtime: "go"`, Go version, worker version placeholder, and feature list.
+- Docker availability summary through Docker CLI.
+- Docker image build scaffold.
+- Docker Compose profile activation through `worker-go`.
+
+Current Go implementation does **not** support yet:
+
+- Queue polling or realtime queue listeners.
+- Job leasing.
+- Lease renewal.
+- Cancellation.
+- Repository locks.
+- Container inventory publication.
+- Container actions.
+- Git clone/pull.
+- Credential decryption.
+- Compose deploys.
+- Dockerfile deploys.
+- Public URL/tunnel actions.
+- Worker commands.
+- Container exec commands.
+
+Production deploy actions should continue to use the Python worker until the Go worker reaches protocol and executor parity.
 
 ## Goal
 
@@ -53,8 +90,71 @@ services/
       inventory/
     Dockerfile
     go.mod
-    go.sum
 ```
+
+Actual implemented Go layout today:
+
+```text
+services/worker-go/
+  cmd/worker/main.go
+  internal/config/config.go
+  internal/docker/summary.go
+  internal/firebase/client.go
+  internal/heartbeat/heartbeat.go
+  internal/identity/identity.go
+  Dockerfile
+  README.md
+  go.mod
+```
+
+Planned but not implemented yet:
+
+```text
+services/worker-go/internal/
+  queue/
+  executor/
+  git/
+  secrets/
+  ngrok/
+  inventory/
+```
+
+## Python vs Go Parity Matrix
+
+| Capability | Python worker | Go worker | Notes |
+| --- | --- | --- | --- |
+| Config loading | Complete | Implemented | Go reads env and optional worker config file. |
+| Worker ID persistence | Complete | Implemented | Go persists `worker-id` in data dir. |
+| Worker token persistence | Complete | Implemented | Go persists `worker-token` in data dir. |
+| Claim token hash | Complete | Implemented | Go writes SHA-256 hash in heartbeat. |
+| Firebase client | Complete | Implemented | Go uses REST + service-account OAuth. |
+| Online/offline heartbeat | Complete | Implemented | Go sends heartbeat loop and shutdown offline status. |
+| Preserve ownership/sharing | Complete | Implemented | Go reads current agent record before writing heartbeat. |
+| Docker summary | Complete | Implemented | Go uses Docker CLI summary, not Docker SDK yet. |
+| Container inventory | Complete | Missing | Needed for dashboard container list parity. |
+| Queue polling/listening | Complete | Missing | Python listens to queue shards and also scans. |
+| Job leasing | Complete | Missing | Needed before Go can process work safely. |
+| Lease renewal | Complete | Missing | Needed for long-running deploys. |
+| Repository lock | Complete | Missing | Needed to prevent concurrent deploys per repo. |
+| Cancellation | Complete | Missing | Needed for dashboard cancellation behavior. |
+| `inventory_refresh` | Complete | Missing | Depends on inventory implementation. |
+| `container_logs` | Complete | Missing | Depends on Docker container lookup. |
+| `container_start` | Complete | Missing | Depends on Docker actions. |
+| `container_stop` | Complete | Missing | Depends on Docker actions and worker protection. |
+| `container_restart` | Complete | Missing | Depends on Docker actions. |
+| `container_delete` | Complete | Missing | Depends on Docker actions and worker protection. |
+| `container_exec` | Complete | Missing | Should wait for command hardening/allowlists. |
+| `worker_command` | Complete | Missing | Should wait for command hardening/allowlists. |
+| AES-GCM secret decrypt | Complete | Missing | Needed for private Git credentials and ngrok tokens. |
+| Git clone/pull | Complete | Missing | Needed for sync/deploy. |
+| `discover_branches` | Complete | Missing | Needs Git remote branch listing. |
+| `read_compose` | Complete | Missing | Needs repo sync and compose path validation. |
+| Compose deploy | Complete | Missing | Needs Docker CLI Compose flow. |
+| Dockerfile deploy | Complete | Missing | Needs Docker build/run flow. |
+| `tunnel_start` | Complete | Missing | Needs ngrok process manager and target discovery. |
+| `tunnel_stop` | Complete | Missing | Needs ngrok process manager. |
+| Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
+| Compose profile | Complete | Implemented | `docker compose --profile go-worker` includes `worker-go`. |
 
 ## Runtime Selection
 
@@ -291,6 +391,8 @@ NGROK_REGION=
 
 ### Phase 0: Contract and Test Fixtures
 
+Status: not implemented.
+
 Deliverables:
 
 - Create `docs/WORKER_RUNTIME_CONTRACT.md`.
@@ -306,7 +408,7 @@ Acceptance criteria:
 
 ### Phase 1: Minimal Go Worker
 
-Status: partially implemented in `services/worker-go`.
+Status: implemented in `services/worker-go`.
 
 Deliverables:
 
@@ -323,12 +425,16 @@ Deliverables:
 
 Acceptance criteria:
 
-- Go worker appears in dashboard.
-- Go worker can be claimed with the existing worker token flow.
-- Go worker preserves ownership and sharing on heartbeat.
-- Go worker marks itself offline on shutdown.
+- Go worker appears in dashboard. Done.
+- Go worker can be claimed with the existing worker token flow. Done.
+- Go worker preserves ownership and sharing on heartbeat. Done.
+- Go worker marks itself offline on shutdown. Done.
+- Go worker reports Docker summary. Done.
+- Dashboard displays Go runtime correctly. Done.
 
 ### Phase 2: Queue Leasing
+
+Status: not implemented.
 
 Deliverables:
 
@@ -348,6 +454,8 @@ Acceptance criteria:
 - Expired leases can be recovered safely.
 
 ### Phase 3: Container Inventory and Basic Container Actions
+
+Status: not implemented.
 
 Deliverables:
 
@@ -369,6 +477,8 @@ Acceptance criteria:
 
 ### Phase 4: Git and Credential Decryption
 
+Status: not implemented.
+
 Deliverables:
 
 - AES-256-GCM secret decryptor compatible with `apps/web/lib/secrets.ts`.
@@ -384,6 +494,8 @@ Acceptance criteria:
 - `read_compose` returns compose content with the same limits as Python.
 
 ### Phase 5: Docker Compose and Dockerfile Deployments
+
+Status: not implemented.
 
 Deliverables:
 
@@ -404,6 +516,8 @@ Acceptance criteria:
 
 ### Phase 6: Public URLs
 
+Status: not implemented.
+
 Deliverables:
 
 - Ngrok process manager.
@@ -420,6 +534,8 @@ Acceptance criteria:
 - Stopping tunnels clears repository public URL state.
 
 ### Phase 7: Worker and Container Commands
+
+Status: not implemented.
 
 Deliverables:
 
@@ -442,7 +558,14 @@ This phase should be gated behind the future command hardening work from `SECURI
 
 ## Go Technology Choices
 
-Suggested packages:
+Current implementation:
+
+- Firebase: standard-library REST client with service-account OAuth.
+- Docker summary: Docker CLI through `os/exec`.
+- Crypto: standard library.
+- No external Go modules currently.
+
+Suggested future packages:
 
 - Firebase/Auth/Database: official Google/Firebase Admin Go SDK where possible.
 - Docker: `github.com/docker/docker/client`.
@@ -491,7 +614,9 @@ CMD ["docker-panel-worker"]
 
 ## Dashboard Changes
 
-Add runtime metadata display in the worker card:
+Status: implemented.
+
+The dashboard now displays runtime metadata in the worker card:
 
 - Runtime: Python or Go.
 - Version.
@@ -509,9 +634,24 @@ Heartbeat additions:
 }
 ```
 
-The dashboard should not branch behavior by runtime unless a feature is missing.
+The dashboard should not branch behavior by runtime unless a feature is missing. Once the Go worker starts processing jobs, the dashboard may use `features` to disable actions that are not available for a specific worker.
 
 ## Build and Publish Changes
+
+Status: partially implemented.
+
+Implemented:
+
+- `worker-go` service in `docker-compose.yaml` under the `go-worker` profile.
+- `worker-go` build target in `docker-compose.build.yaml`.
+- `WORKER_GO_IMAGE` in `.env.example`.
+- `services/worker-go/Dockerfile`.
+
+Not implemented:
+
+- `run.sh` commands for build/publish by runtime.
+- Publish script support for Go-specific tags.
+- Runtime-specific `python` and `go` publish commands.
 
 Add commands:
 
@@ -607,26 +747,39 @@ Recommended:
 
 ## Rollout Plan
 
-1. Build Go worker heartbeat only.
-2. Run Go worker in a dev workspace with no production credentials.
-3. Claim Go worker from dashboard.
-4. Enable inventory refresh.
-5. Enable logs and basic container actions.
-6. Enable Git sync and branch discovery.
-7. Enable Compose/Dockerfile deployments.
-8. Enable tunnels.
-9. Run Python and Go workers side by side in separate pools.
-10. Move one low-risk project to Go.
-11. Promote Go to beta.
-12. Promote Go to default only after parity and operational confidence.
+1. Build Go worker heartbeat only. Done.
+2. Run Go worker in a dev workspace with no production credentials. Pending.
+3. Claim Go worker from dashboard. Supported by code, needs environment test.
+4. Enable inventory refresh. Pending.
+5. Enable logs and basic container actions. Pending.
+6. Enable Git sync and branch discovery. Pending.
+7. Enable Compose/Dockerfile deployments. Pending.
+8. Enable tunnels. Pending.
+9. Run Python and Go workers side by side in separate pools. Pending.
+10. Move one low-risk project to Go. Pending.
+11. Promote Go to beta. Pending.
+12. Promote Go to default only after parity and operational confidence. Pending.
 
 ## Open Questions
 
-- Should Go use Firebase realtime listeners or polling first?
+- Should Go use Firebase realtime listeners or polling first? Current recommendation: implement polling first for correctness, add realtime listener later for latency.
 - Should `worker_command` be implemented immediately or wait for command allowlists?
-- Should Go share the same worker data directory format as Python?
+- Should Go share the same worker data directory format as Python? Current implementation already shares `worker-id` and `worker-token` file names.
 - Should the worker image still support baked config, or should Go runtime require env/secrets only?
 - Should `latest` eventually point to Go, or should users always select explicit runtime tags?
+
+## Immediate Next Implementation Steps
+
+1. Add queue polling for `queues/{poolId}/{shardId}`.
+2. Add Firebase transaction support or conditional REST writes for safe job leasing.
+3. Mirror job updates into `jobs/{jobId}` and `workspaces/{workspaceId}/deployments/{jobId}`.
+4. Implement lease renewal and cancellation detection.
+5. Implement container inventory publication.
+6. Implement `inventory_refresh` and `container_logs`.
+7. Add worker container protection before enabling stop/delete/exec.
+8. Add AES-GCM decrypt compatibility.
+9. Add Git clone/pull and branch discovery.
+10. Add Compose and Dockerfile deploy parity.
 
 ## Success Criteria
 
