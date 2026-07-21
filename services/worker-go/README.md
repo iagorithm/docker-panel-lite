@@ -14,13 +14,14 @@ Current implementation status:
 - Polls Firebase queue shards and leases jobs with conditional REST writes.
 - Publishes container inventory to the dashboard.
 - Handles `inventory_refresh`, `container_logs`, `container_start`, `container_stop`, `container_restart`, and `container_delete`.
+- Handles `discover_branches`, `sync`, `read_compose`, `deploy`, `build`, and `stop` for repository jobs.
+- Decrypts Firebase-stored Git credentials with the same AES-256-GCM format as the app.
 
 Not implemented yet:
 
-- Repository sync/deploy.
 - Public tunnels.
 - Worker/container command execution.
-- Compose and Dockerfile deployments.
+- Compose environment override files are not yet as complete as the Python worker's generated override.
 
 Run locally:
 

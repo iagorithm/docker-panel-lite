@@ -26,6 +26,11 @@ Current Go implementation in `services/worker-go` supports:
 - Container inventory publication.
 - Container start, stop, restart, delete, and logs actions.
 - `inventory_refresh` jobs.
+- AES-GCM credential decryption.
+- Git branch discovery, clone, pull, and sync.
+- `read_compose`.
+- Basic Compose deploy/stop through Docker CLI.
+- Basic Dockerfile build/run/stop through Docker CLI.
 - Docker image build scaffold.
 - Docker Compose profile activation through `worker-go`.
 
@@ -33,10 +38,6 @@ Current Go implementation does **not** support yet:
 
 - Firebase realtime queue listeners. The Go worker currently uses polling.
 - Active command cancellation/interruption. It observes cancellation before execution and at completion.
-- Git clone/pull.
-- Credential decryption.
-- Compose deploys.
-- Dockerfile deploys.
 - Public URL/tunnel actions.
 - Worker commands.
 - Container exec commands.
@@ -121,6 +122,10 @@ services/worker-go/
   worker/heartbeat/heartbeat.go
   worker/identity/identity.go
   worker/queue/runner.go
+  worker/executor/executor.go
+  worker/secrets/secrets.go
+  worker/core/git.go
+  worker/core/utils.go
   Dockerfile
   README.md
   go.mod
@@ -130,13 +135,7 @@ Planned but not implemented yet:
 
 ```text
 services/worker-go/worker/
-  executor/
-  secrets/
-
-services/worker-go/worker/core/
-  git.go
   ngrok.go
-  utils.go
 ```
 
 ## Python vs Go Parity Matrix
@@ -165,12 +164,12 @@ services/worker-go/worker/core/
 | `container_delete` | Complete | Implemented | Uses Docker CLI and worker protection. |
 | `container_exec` | Complete | Missing | Should wait for command hardening/allowlists. |
 | `worker_command` | Complete | Missing | Should wait for command hardening/allowlists. |
-| AES-GCM secret decrypt | Complete | Missing | Needed for private Git credentials and ngrok tokens. |
-| Git clone/pull | Complete | Missing | Needed for sync/deploy. |
-| `discover_branches` | Complete | Missing | Needs Git remote branch listing. |
-| `read_compose` | Complete | Missing | Needs repo sync and compose path validation. |
-| Compose deploy | Complete | Missing | Needs Docker CLI Compose flow. |
-| Dockerfile deploy | Complete | Missing | Needs Docker build/run flow. |
+| AES-GCM secret decrypt | Complete | Implemented | Compatible with app credential format. |
+| Git clone/pull | Complete | Implemented | Uses Git CLI with token redaction. |
+| `discover_branches` | Complete | Implemented | Uses `git ls-remote`. |
+| `read_compose` | Complete | Implemented | Syncs repo and stores compose content up to 1 MB. |
+| Compose deploy | Complete | Partial | Runs `docker compose up -d --build`; generated override parity still pending. |
+| Dockerfile deploy | Complete | Partial | Builds image and runs container; advanced Docker SDK parity still pending. |
 | `tunnel_start` | Complete | Missing | Needs ngrok process manager and target discovery. |
 | `tunnel_stop` | Complete | Missing | Needs ngrok process manager. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
@@ -412,7 +411,7 @@ NGROK_REGION=
 
 ### Phase 0: Contract and Test Fixtures
 
-Status: not implemented.
+Status: implemented for branch discovery, credential decrypt, clone, pull, sync, and `read_compose`.
 
 Deliverables:
 
@@ -502,11 +501,11 @@ Status: not implemented.
 
 Deliverables:
 
-- AES-256-GCM secret decryptor compatible with `apps/web/lib/secrets.ts`.
-- Git credential injection with output redaction.
-- Clone/pull logic.
-- Branch discovery.
-- `read_compose`.
+- AES-256-GCM secret decryptor compatible with `apps/web/lib/secrets.ts`. Done.
+- Git credential injection with output redaction. Done.
+- Clone/pull logic. Done.
+- Branch discovery. Done.
+- `read_compose`. Done.
 
 Acceptance criteria:
 
@@ -516,24 +515,24 @@ Acceptance criteria:
 
 ### Phase 5: Docker Compose and Dockerfile Deployments
 
-Status: not implemented.
+Status: partially implemented.
 
 Deliverables:
 
-- Compose file path validation.
-- Dockerfile path validation.
-- `.env` file writer.
-- Docker Compose deploy/stop.
-- Dockerfile image build.
-- Managed container run/replace.
-- Environment variable handling.
+- Compose file path validation. Done.
+- Dockerfile path validation. Done.
+- `.env` file writer. Done.
+- Docker Compose deploy/stop. Done.
+- Dockerfile image build. Done.
+- Managed container run/replace. Done.
+- Environment variable handling. Partial. Go writes `.env` and process env, but does not yet generate the Python worker's Compose override file.
 
 Acceptance criteria:
 
-- Existing repositories deploy with Go worker.
-- Compose and Dockerfile modes work.
-- Path traversal outside clone directory is blocked.
-- Environment format is compatible with Python worker behavior.
+- Existing repositories deploy with Go worker. Needs live repository validation.
+- Compose and Dockerfile modes work. Implemented, needs live repository validation.
+- Path traversal outside clone directory is blocked. Done.
+- Environment format is compatible with Python worker behavior. Partial.
 
 ### Phase 6: Public URLs
 
@@ -775,8 +774,8 @@ Recommended:
 3. Claim Go worker from dashboard. Supported by code, needs environment test.
 4. Enable inventory refresh. Implemented, needs live workspace validation.
 5. Enable logs and basic container actions. Implemented, needs live workspace validation.
-6. Enable Git sync and branch discovery. Pending.
-7. Enable Compose/Dockerfile deployments. Pending.
+6. Enable Git sync and branch discovery. Implemented, needs live repository validation.
+7. Enable Compose/Dockerfile deployments. Partially implemented, needs live repository validation and Compose override parity.
 8. Enable tunnels. Pending.
 9. Run Python and Go workers side by side in separate pools. Pending.
 10. Move one low-risk project to Go. Pending.
@@ -794,15 +793,15 @@ Recommended:
 ## Immediate Next Implementation Steps
 
 1. Add live workspace validation for Go queue leasing and container actions.
-2. Add active cancellation/interruption for long Docker commands.
-3. Add AES-GCM decrypt compatibility.
-4. Add Git clone/pull and branch discovery.
-5. Add `read_compose`.
-6. Add Compose deploy parity.
-7. Add Dockerfile deploy parity.
-8. Add ngrok tunnel start/stop parity.
-9. Add command allowlists before enabling `worker_command` and `container_exec`.
-10. Add contract fixtures shared by Python and Go.
+2. Add live repository validation for Git, Compose, and Dockerfile jobs.
+3. Add Compose environment override parity with the Python worker.
+4. Add active cancellation/interruption for long Docker commands.
+5. Add ngrok tunnel start/stop parity.
+6. Add deploy log streaming and richer progress updates.
+7. Add command allowlists before enabling `worker_command` and `container_exec`.
+8. Add contract fixtures shared by Python and Go.
+9. Add integration tests for encrypted credentials and private repos.
+10. Add safer cleanup/rollback behavior for failed Dockerfile deploys.
 
 ## Success Criteria
 
