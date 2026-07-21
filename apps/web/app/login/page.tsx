@@ -69,19 +69,20 @@ export default async function LoginPage() {
               <main>
                 <div className="live-demo-status">
                   <span className="live-pulse" />
-                  <strong>worker-default-01 online</strong>
-                  <small>2 available slots</small>
+                  <strong>mexica-worker online</strong>
+                  <small>private - Docker ready</small>
                 </div>
                 <div className="live-demo-flow">
                   <span>Claim worker</span>
+                  <span>Add credential</span>
                   <span>Sync repository</span>
-                  <span>Build service</span>
-                  <span>Open public URL</span>
+                  <span>Deploy container</span>
                 </div>
                 <div className="live-demo-terminal">
-                  <code>job queued</code>
-                  <code>compose build complete</code>
-                  <code>service live on preview.ngrok.app</code>
+                  <code>credential github-main attached</code>
+                  <code>repo synced: main / compose.yml</code>
+                  <code>deploy lease acquired by mexica-worker</code>
+                  <code>container web-3000 healthy - public URL ready</code>
                 </div>
               </main>
             </div>
@@ -191,9 +192,12 @@ export default async function LoginPage() {
             <div className="screen-toolbar"><span /><span /><span /></div>
             <div className="screen-terminal">
               <b>Deployment activity</b>
-              <code>sync repository {"->"} worker-default-01</code>
-              <code>build compose.yml {"->"} service web:3000</code>
-              <code>public tunnel {"->"} https://preview.ngrok.app</code>
+              <code><span>claim</span> mexica-worker connected - Private</code>
+              <code><span>credential</span> github-main shared with operators</code>
+              <code><span>sync</span> cardanfx/api {"->"} branch main</code>
+              <code><span>deploy</span> compose web:3000 on mexica-worker</code>
+              <code><span>logs</span> container healthy - restart and commands ready</code>
+              <code><span>url</span> preview tunnel published</code>
             </div>
             <p>Watch releases move from queued work to running services with the signals operators actually need.</p>
           </article>
