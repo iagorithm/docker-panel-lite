@@ -175,6 +175,11 @@ export type ManagedContainer = {
   status: string;
   project: string;
   composeService?: string;
+  publicUrl?: string;
+  publicUrls?: Record<string, string>;
+  publicTunnelStatus?: string;
+  publicTunnelTarget?: string;
+  publicTunnelUpdatedAt?: number;
   ports: string[];
   workerId?: string;
   workerLabel?: string;

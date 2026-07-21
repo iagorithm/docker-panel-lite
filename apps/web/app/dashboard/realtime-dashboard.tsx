@@ -661,7 +661,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   }
   function containerPublicLinks(container: ManagedContainer): Array<[string, string]> {
     const repository = containerRepository(container);
-    if (!repository) return [];
+    if (!repository) return Object.entries(container.publicUrls || (container.publicUrl ? { container: container.publicUrl } : {})).filter((entry): entry is [string, string] => Boolean(entry[1]));
     const service = container.composeService || repository.service || "app";
     const urls = repository.publicUrls || {};
     const domains = repository.publicTunnelDomains || {};
@@ -690,7 +690,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     return deployments.some((job) => job.containerId === container.id && job.action === action && isBusyContainerJob(job, now, onlineWorkerIds));
   }
   function isContainerTunnelBusy(container: ManagedContainer) {
-    return deployments.some((job) => job.containerId === container.id && job.action === "tunnel_start" && isActiveJob(job, now, 35_000));
+    return deployments.some((job) => job.containerId === container.id && ["tunnel_start", "container_tunnel_start"].includes(job.action) && isActiveJob(job, now, 35_000));
   }
   const groupedContainers = useMemo(() => {
     const groups = new Map<string, ManagedContainer[]>();
@@ -782,7 +782,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     const dockerId = container.dockerId || container.id;
     const dockerIdShort = dockerId.length > 12 ? dockerId.slice(0, 12) : dockerId;
     const publicLinks = workerContainer ? [] : containerPublicLinks(container);
-    const canRegenerateTunnel = displayStatus === "running" && workerOnline && !workerContainer && Boolean(containerRepository(container));
+    const canRegenerateTunnel = displayStatus === "running" && workerOnline && !workerContainer;
     return (
       <article className="resource-row" key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}

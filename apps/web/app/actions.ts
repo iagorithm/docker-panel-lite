@@ -34,7 +34,7 @@ const defaultComposeFile = "compose.yml";
 const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60_000;
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
-type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec";
+type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec" | "container_tunnel_start";
 type JobAction = RepositoryAction | ContainerJobAction;
 
 function sanitizeAppLogMessage(value: unknown) {
@@ -1120,15 +1120,15 @@ export async function enqueueContainerTunnelRefresh(formData: FormData) {
     return Boolean(alias && (alias === containerProject || alias === containerName));
   });
   if (!match) {
-    await recordFailedDeployment({
-      workspaceId: user.workspaceId,
-      repositoryId: "container-tunnel",
-      containerId,
-      containerRef: target.containerRef,
-      action: "tunnel_start",
-      targetWorkerId: target.targetWorkerId,
-      requestedBy: user.uid,
-      message: "No repository registration matches this container",
+    const jobRef = adminDatabase.ref("jobs").push();
+    const jobId = jobRef.key!;
+    const shardId = shardFor(`container-tunnel:${containerId}:${createdAt}`);
+    const internalPort = Number(String((Array.isArray(container.ports) ? container.ports[0] : "") || "").match(/->(\d+)/)?.[1] || 3000);
+    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId: "", containerId, containerRef: target.containerRef, action: "container_tunnel_start", internalPort, tunnelReset: true, poolId: target.poolId, shardId, targetWorkerId: target.targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+    await adminDatabase.ref().update({
+      [`jobs/${jobId}`]: job,
+      [`queues/${target.poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId: target.targetWorkerId },
+      [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job,
     });
     return;
   }

@@ -513,6 +513,44 @@ def _stop_public_tunnel(repository: dict, settings: Settings) -> dict:
     }
 
 
+def execute_container_tunnel(job: dict, settings: Settings) -> tuple[str, dict]:
+    client = docker_ops.connect()
+    last_error = None
+    for candidate in _container_lookup_candidates(job):
+        try:
+            container = client.containers.get(candidate)
+            break
+        except NotFound as error:
+            last_error = error
+    else:
+        raise last_error or ValueError("Container reference is missing")
+    if _is_worker_container_object(container):
+        raise ValueError("Worker containers cannot be exposed publicly")
+    if container.status != "running":
+        raise ValueError("Container must be running to create a public URL")
+    fallback_port = max(1, min(65535, int(job.get("internalPort") or 3000)))
+    target = _container_tunnel_target(container, fallback_port)
+    if not target:
+        raise RuntimeError(
+            f"Could not resolve a tunnel target for local container '{container.name}'. "
+            "Publish a port or expose a reachable internal port."
+        )
+    tunnel_key = _safe_name(f"container-{settings.worker_id}-{container.name}")
+    service = _ngrok_service(settings)
+    if job.get("tunnelReset"):
+        service.stop(tunnel_key)
+    tunnel = service.start(tunnel_key, target)
+    return f"Public URL ready for local container '{container.name}'", {
+        "publicUrl": tunnel.url,
+        "publicUrls": {"container": tunnel.url},
+        "publicTunnelStatus": "online",
+        "publicTunnelTarget": tunnel.target,
+        "publicTunnelWorkerId": settings.worker_id,
+        "publicTunnelWorkerLabel": settings.worker_label,
+        "publicTunnelUpdatedAt": _now(),
+    }
+
+
 def _repository_file(
     path: Path,
     raw_value: str,

@@ -15,7 +15,7 @@ import traceback
 
 from worker.config import Settings
 from worker.core import docker_ops
-from worker.executor import container_inventory, execute, execute_container, execute_container_command, execute_worker_command
+from worker.executor import container_inventory, execute, execute_container, execute_container_command, execute_container_tunnel, execute_worker_command
 from worker.firebase_runtime import initialize, reference
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -63,6 +63,7 @@ def job_action_label(action: str) -> str:
         "container_delete": "delete container",
         "container_logs": "load container logs",
         "container_exec": "run container command",
+        "container_tunnel_start": "open public URL for local container",
         "worker_command": "run worker command",
         "tunnel_start": "open public URL",
         "tunnel_stop": "close public URL",
@@ -504,6 +505,10 @@ class Worker:
                 self._publish(job, {"commandOutput": command_output, "commandExitCode": exit_code})
                 if exit_code:
                     raise RuntimeError(message)
+            elif job["action"] == "container_tunnel_start":
+                LOG.info("Job %s running: create public URL for %s", job_id, job_subject(job))
+                message, container_updates = execute_container_tunnel(job, self.settings)
+                reference(f"workspaces/{job['workspaceId']}/containers/{job['containerId']}").update(container_updates)
             elif job["action"].startswith("container_"):
                 LOG.info("Job %s running: %s on %s", job_id, job_action_label(job["action"]), job_subject(job))
                 message, log_tail = execute_container(job)
