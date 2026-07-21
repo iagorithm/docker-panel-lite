@@ -582,6 +582,10 @@ a:hover { text-decoration-color: var(--ui-text); }
   font-size: 0.72rem;
 }
 .resource-panel { padding: 0; overflow: visible; background: rgba(255, 255, 255, 0.5); border-color: var(--ui-border-strong); border-radius: var(--ui-radius-sm); }
+.repositories-workspace .resource-panel {
+  container-name: repositories-table;
+  container-type: inline-size;
+}
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1rem 0.75rem; }
 .panel > .section-title { padding: 0 0 0.75rem; }
 .resource-panel > .section-title { padding: 1rem 1rem 0.75rem; }
@@ -2179,6 +2183,97 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   height: 100%;
 }
 .error { margin: 0; color: var(--ui-text); background: var(--ui-surface-subtle); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); padding: 0.65rem 0.75rem; font-size: 0.78rem; }
+
+@container repositories-table (max-width: 82rem) {
+  .repo-resource-row {
+    grid-template-columns: minmax(12rem, 0.72fr) minmax(15rem, 1fr);
+    gap: 0.72rem 1rem;
+    min-height: 0;
+  }
+  .repo-resource-row > .row-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.24rem;
+    padding-left: 2.75rem;
+  }
+  .repo-resource-row .inline-editor .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container repositories-table (max-width: 54rem) {
+  .repo-resource-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.58rem;
+    padding-block: 0.82rem;
+  }
+  .repo-resource-row .resource-metadata,
+  .repo-resource-row > .row-actions {
+    margin-left: 2.75rem;
+  }
+  .repo-resource-row > .row-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+  .repo-resource-row .resource-metadata > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .repo-resource-row .inline-editor,
+  .repo-resource-row .compose-viewer,
+  .repo-resource-row .repository-delete-confirm {
+    margin-left: 0;
+  }
+  .repo-resource-row .repository-delete-confirm {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@container repositories-table (max-width: 34rem) {
+  .repo-resource-row {
+    padding: 0.72rem;
+  }
+  .repo-resource-row .resource-metadata,
+  .repo-resource-row > .row-actions {
+    margin-left: 0;
+  }
+  .repo-resource-row > .row-actions {
+    width: 100%;
+    gap: 0.12rem;
+  }
+  .repo-resource-row .worker-target-select {
+    width: 100%;
+    min-width: 0;
+    flex: 1 0 100%;
+    margin-bottom: 0.12rem;
+  }
+  .repositories-workspace .repo-resource-row .row-actions .icon-button {
+    width: 2.16rem;
+    max-width: 2.16rem;
+    min-width: 2.16rem;
+    min-height: 2.16rem;
+  }
+  .repositories-workspace .repo-resource-row .row-actions .ui-icon,
+  .repositories-workspace .repo-resource-row .row-actions .button-spinner {
+    width: 1.02rem;
+    height: 1.02rem;
+  }
+  .repo-resource-row .inline-editor .form-grid,
+  .repo-resource-row .repository-delete-confirm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .repo-resource-row .repository-delete-confirm .danger {
+    justify-self: end;
+  }
+  .repo-resource-row .settings-tabs {
+    padding-inline: 0.35rem;
+  }
+  .repo-resource-row .settings-tabs button {
+    padding-inline: 0.48rem;
+  }
+}
 
 @media (max-width: 1100px) {
   .content-grid { grid-template-columns: 1fr; }
