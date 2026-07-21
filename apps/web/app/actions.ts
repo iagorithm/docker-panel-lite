@@ -989,6 +989,10 @@ export async function claimWorker(formData: FormData) {
     if (!match) return { ok: false, message: "Worker token was not found in this workspace." };
     const [workerId, matchedWorker] = match;
     const workerLabel = String(matchedWorker.label || matchedWorker.hostname || workerId);
+    const matchedOwner = String(matchedWorker.ownerUid || "").trim();
+    if (matchedOwner && matchedOwner !== user.uid) {
+      return { ok: false, message: "This worker has already been claimed by another user." };
+    }
     const now = Date.now();
     const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`);
     const transaction = await agentRef.transaction((current) => {
@@ -1013,7 +1017,8 @@ export async function claimWorker(formData: FormData) {
       };
     });
     if (!transaction.committed) {
-      const current = transaction.snapshot.val() as WorkerAccessRecord | null;
+      const currentSnapshot = await agentRef.get();
+      const current = currentSnapshot.val() as WorkerAccessRecord | null;
       const currentOwner = String(current?.ownerUid || "").trim();
       if (currentOwner && currentOwner !== user.uid) {
         return { ok: false, message: "This worker has already been claimed by another user." };
