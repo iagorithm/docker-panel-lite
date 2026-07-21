@@ -47,6 +47,48 @@ export default async function LoginPage() {
         </div>
       </section>
 
+      <section className="landing-live-demo" aria-label="Live product tour">
+        <div className="live-demo-copy">
+          <p className="eyebrow">Live product tour</p>
+          <h2>Watch the workspace come online in seconds.</h2>
+          <p>
+            A lightweight animated walkthrough shows the moment a worker is claimed,
+            a repository launches, and the service becomes reachable.
+          </p>
+        </div>
+        <div className="live-demo-stage" aria-hidden="true">
+          <div className="live-demo-browser">
+            <div className="live-demo-topbar"><span /><span /><span /><strong>deployment.run</strong></div>
+            <div className="live-demo-grid">
+              <aside>
+                <b>Control</b>
+                <span className="is-active">Workers</span>
+                <span>Repositories</span>
+                <span>Credentials</span>
+              </aside>
+              <main>
+                <div className="live-demo-status">
+                  <span className="live-pulse" />
+                  <strong>worker-default-01 online</strong>
+                  <small>2 available slots</small>
+                </div>
+                <div className="live-demo-flow">
+                  <span>Claim worker</span>
+                  <span>Sync repository</span>
+                  <span>Build service</span>
+                  <span>Open public URL</span>
+                </div>
+                <div className="live-demo-terminal">
+                  <code>job queued</code>
+                  <code>compose build complete</code>
+                  <code>service live on preview.ngrok.app</code>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="landing-signal-strip" aria-label="Operational signals">
         <article>
           <strong>Workers</strong>
