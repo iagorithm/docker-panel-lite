@@ -6,19 +6,19 @@ import (
 	"runtime"
 	"time"
 
-	"docker-panel-lite-worker-go/internal/config"
-	"docker-panel-lite-worker-go/internal/docker"
-	"docker-panel-lite-worker-go/internal/firebase"
+	"docker-panel-lite-worker-go/worker/config"
+	"docker-panel-lite-worker-go/worker/core"
+	"docker-panel-lite-worker-go/worker/firebase_runtime"
 )
 
 type Agent struct {
-	client          *firebase.Client
+	client          *firebase_runtime.Client
 	settings        config.Settings
 	workerTokenHash string
 	startedAt       int64
 }
 
-func New(client *firebase.Client, settings config.Settings, workerTokenHash string) *Agent {
+func New(client *firebase_runtime.Client, settings config.Settings, workerTokenHash string) *Agent {
 	return &Agent{
 		client:          client,
 		settings:        settings,
@@ -65,7 +65,7 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 		"ngrokRegion":      a.settings.NgrokRegion,
 		"leaseSeconds":     a.settings.LeaseSeconds,
 		"pollSeconds":      a.settings.PollSeconds,
-		"docker":           docker.SummaryNow(),
+		"docker":           core.DockerSummaryNow(),
 		"sharing":          sharing,
 		"shared":           sharing == "shared" || sharing == "public",
 		"public":           sharing == "public",

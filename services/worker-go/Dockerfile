@@ -4,7 +4,7 @@ WORKDIR /src
 COPY services/worker-go/go.mod ./go.mod
 RUN go mod download
 COPY services/worker-go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/docker-panel-worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/docker-panel-worker ./worker
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates git docker-cli docker-cli-compose curl

@@ -1,4 +1,4 @@
-package docker
+package core
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 
 type Summary map[string]interface{}
 
-func SummaryNow() Summary {
+func DockerSummaryNow() Summary {
 	versionRaw, versionErr := commandOutput(2*time.Second, "docker", "version", "--format", "{{json .Server}}")
 	infoRaw, infoErr := commandOutput(2*time.Second, "docker", "info", "--format", "{{json .}}")
 	if versionErr != nil || infoErr != nil {

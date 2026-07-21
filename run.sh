@@ -14,11 +14,14 @@ Usage:
 
 Commands:
   up                  Pull and start the worker
+  up-go               Build and start the web app with the local Go worker
   down                Stop and remove the stack containers
   restart             Restart the stack
   ps                  Show service status
   logs [services...]  Follow logs, optionally for selected services
   build               Build the worker image locally
+  build-go            Build the Go worker image locally
+  logs-go             Follow Go worker logs
   publish-worker      Build and push the worker image to Docker Hub
   verify-worker-image Inspect the worker image published on Docker Hub
   pull                Pull service images
@@ -132,6 +135,14 @@ main() {
       compose up -d "$@"
       compose ps
       ;;
+    up-go)
+      require_env_file
+      require_docker
+      warn_missing_values
+      prepare_runtime_dirs
+      compose up -d --build web worker-go "$@"
+      compose ps
+      ;;
     down)
       require_env_file
       require_docker
@@ -155,11 +166,22 @@ main() {
       require_docker
       compose logs -f "$@"
       ;;
+    logs-go)
+      require_env_file
+      require_docker
+      compose logs -f worker-go "$@"
+      ;;
     build)
       require_env_file
       require_docker
       warn_missing_values
       compose_build build "$@"
+      ;;
+    build-go)
+      require_env_file
+      require_docker
+      warn_missing_values
+      compose build worker-go "$@"
       ;;
     publish-worker)
       require_env_file

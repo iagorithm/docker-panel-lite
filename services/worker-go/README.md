@@ -24,14 +24,14 @@ Run locally:
 
 ```bash
 cd services/worker-go
-go run ./cmd/worker
+go run ./worker
 ```
 
 Build:
 
 ```bash
 cd services/worker-go
-go build ./cmd/worker
+go build ./worker
 ```
 
 Build with Docker:
@@ -40,10 +40,22 @@ Build with Docker:
 docker compose -f docker-compose.build.yaml build worker-go
 ```
 
-Run only the Go worker with Docker Compose:
+Build and run the local Go worker container with the app:
+
+```bash
+./run.sh up-go
+```
+
+Run only the Go worker service with Docker Compose:
 
 ```bash
 docker compose --profile go-worker up worker-go
+```
+
+Use `run-local.sh` with the Go runtime:
+
+```bash
+WORKER_RUNTIME=go ./run-local.sh
 ```
 
 The default `worker` service still runs the Python worker. Keep using the Python worker for production deploy actions until the Go worker implements queue leasing and executors.

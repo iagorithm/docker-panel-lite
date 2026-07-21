@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"docker-panel-lite-worker-go/internal/config"
-	"docker-panel-lite-worker-go/internal/firebase"
-	"docker-panel-lite-worker-go/internal/heartbeat"
-	"docker-panel-lite-worker-go/internal/identity"
+	"docker-panel-lite-worker-go/worker/config"
+	"docker-panel-lite-worker-go/worker/firebase_runtime"
+	"docker-panel-lite-worker-go/worker/heartbeat"
+	"docker-panel-lite-worker-go/worker/identity"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 	}
 	workerTokenHash := identity.SHA256Hex(workerToken)
 
-	client, err := firebase.New(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON)
+	client, err := firebase_runtime.New(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON)
 	if err != nil {
 		log.Fatalf("initialize firebase client: %v", err)
 	}

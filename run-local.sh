@@ -7,6 +7,7 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.yaml"
 COMPOSE_BUILD_FILE="$ROOT_DIR/docker-compose.build.yaml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker-panel-lite}"
 LOCAL_WORKER_IMAGE="${LOCAL_WORKER_IMAGE:-docker-panel-lite-worker:local}"
+LOCAL_WORKER_GO_IMAGE="${LOCAL_WORKER_GO_IMAGE:-docker-panel-lite-worker-go:local}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing environment file: $ENV_FILE" >&2
@@ -26,8 +27,9 @@ fi
 
 mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data"
 
-# Override a Docker Hub image configured in .env with an explicitly local tag.
+# Override Docker Hub images configured in .env with explicitly local tags.
 export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
+export WORKER_GO_IMAGE="$LOCAL_WORKER_GO_IMAGE"
 
 compose=(
   docker compose
@@ -41,9 +43,15 @@ echo "Building and starting the local Docker Panel stack..."
 echo "  environment: $ENV_FILE"
 echo "  project: $PROJECT_NAME"
 echo "  source: local web and worker builds"
-echo "  worker image: $LOCAL_WORKER_IMAGE"
+echo "  worker runtime: ${WORKER_RUNTIME:-python}"
+if [[ "${WORKER_RUNTIME:-python}" == "go" ]]; then
+  echo "  worker image: $LOCAL_WORKER_GO_IMAGE"
+  "${compose[@]}" up -d --build --pull never web worker-go "$@"
+else
+  echo "  worker image: $LOCAL_WORKER_IMAGE"
+  "${compose[@]}" up -d --build --pull never "$@"
+fi
 
-"${compose[@]}" up -d --build --pull never "$@"
 
 echo
 "${compose[@]}" ps

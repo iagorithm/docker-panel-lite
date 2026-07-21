@@ -73,20 +73,36 @@ The main risk is not compiling the worker. The hard part is protocol parity with
 ```text
 services/
   worker/                  # Existing Python worker
+    worker/
+      config.py
+      firebase_runtime.py
+      executor.py
+      secrets.py
+      main.py
+      core/
+        docker_ops.py
+        git.py
+        ngrok.py
+        utils.py
   worker-go/               # New Go worker
-    cmd/
-      worker/
-        main.go
-    internal/
+    worker/
+      main.go
       config/
-      firebase/
-      queue/
-      executor/
-      docker/
-      git/
-      secrets/
-      ngrok/
+        config.go
+      firebase_runtime/
+        client.go
       heartbeat/
+        heartbeat.go
+      identity/
+        identity.go
+      executor/
+      secrets/
+      core/
+        docker_ops.go
+        git.go
+        ngrok.go
+        utils.go
+      queue/
       inventory/
     Dockerfile
     go.mod
@@ -96,12 +112,12 @@ Actual implemented Go layout today:
 
 ```text
 services/worker-go/
-  cmd/worker/main.go
-  internal/config/config.go
-  internal/docker/summary.go
-  internal/firebase/client.go
-  internal/heartbeat/heartbeat.go
-  internal/identity/identity.go
+  worker/main.go
+  worker/config/config.go
+  worker/core/docker_ops.go
+  worker/firebase_runtime/client.go
+  worker/heartbeat/heartbeat.go
+  worker/identity/identity.go
   Dockerfile
   README.md
   go.mod
@@ -110,13 +126,16 @@ services/worker-go/
 Planned but not implemented yet:
 
 ```text
-services/worker-go/internal/
+services/worker-go/worker/
   queue/
   executor/
-  git/
   secrets/
-  ngrok/
   inventory/
+
+services/worker-go/worker/core/
+  git.go
+  ngrok.go
+  utils.go
 ```
 
 ## Python vs Go Parity Matrix
@@ -155,6 +174,7 @@ services/worker-go/internal/
 | `tunnel_stop` | Complete | Missing | Needs ngrok process manager. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
 | Compose profile | Complete | Implemented | `docker compose --profile go-worker` includes `worker-go`. |
+| Local Go container startup | Complete | Implemented | `./run.sh up-go` builds and starts `web` + `worker-go` without starting Python worker. |
 
 ## Runtime Selection
 
@@ -604,7 +624,7 @@ WORKDIR /src
 COPY services/worker-go/go.mod services/worker-go/go.sum ./
 RUN go mod download
 COPY services/worker-go ./
-RUN CGO_ENABLED=0 go build -o /out/docker-panel-worker ./cmd/worker
+RUN CGO_ENABLED=0 go build -o /out/docker-panel-worker ./worker
 
 FROM alpine:3.22
 RUN apk add --no-cache git ca-certificates curl docker-cli docker-cli-compose
@@ -646,6 +666,8 @@ Implemented:
 - `worker-go` build target in `docker-compose.build.yaml`.
 - `WORKER_GO_IMAGE` in `.env.example`.
 - `services/worker-go/Dockerfile`.
+- `./run.sh up-go`, `./run.sh build-go`, and `./run.sh logs-go` for local Go worker development.
+- `WORKER_RUNTIME=go ./run-local.sh` for a one-command local app + Go worker stack.
 
 Not implemented:
 

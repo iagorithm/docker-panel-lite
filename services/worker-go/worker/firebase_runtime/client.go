@@ -1,4 +1,4 @@
-package firebase
+package firebase_runtime
 
 import (
 	"bytes"
