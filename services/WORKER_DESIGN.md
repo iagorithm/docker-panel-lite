@@ -1,5 +1,9 @@
 # Worker Design
 
+Reference implementation: `services/worker/worker` (Python)  
+Contract consumers: Python worker, Go worker, and future worker runtimes  
+Last implementation audit: 2026-07-21
+
 ## Purpose
 
 The worker is the execution agent for Docker Panel Lite. It runs on a Docker
@@ -14,25 +18,198 @@ produce compatible updates for the dashboard.
 
 ## Core Responsibilities
 
-The worker is responsible for:
+This list is the minimum capability contract for every worker runtime. A new
+implementation, including the Go worker, must account for every responsibility
+even when a capability is initially marked as pending.
 
-- Registering itself as an agent in a workspace.
-- Maintaining a stable worker identity across restarts.
-- Producing and protecting a claim token used to assign ownership.
-- Sending lifecycle heartbeats.
-- Publishing Docker availability and container inventory.
-- Polling or listening for queued jobs.
-- Leasing jobs safely so only one worker executes each job.
-- Renewing active job leases.
-- Locking repositories or containers while operations are running.
-- Executing repository, container, command, and tunnel actions.
-- Reporting progress, final status, messages, command output, and errors.
-- Cleaning queue entries and releasing locks after completion.
+### Bootstrap, configuration, and identity
+
+- Load runtime environment variables and an optional fallback environment file,
+  with runtime values taking precedence.
+- Resolve Firebase database URL/project, service-account credentials, workspace,
+  pool, shards, concurrency, lease duration, polling interval, clone/data paths,
+  encryption key, and tunnel configuration.
+- Resolve a stable worker ID from explicit configuration, Docker/host fingerprint,
+  persisted marker, or generated fallback, in that order.
+- Resolve and persist a cryptographically secure worker claim token with mode
+  `0600`; publish only its SHA-256 hash and print the raw token only for claiming.
+- Select and preserve a human-readable worker label without colliding with labels
+  already registered in the workspace.
+- Initialize Firebase before accepting work and register signal/shutdown handling.
+
+### Lifecycle and heartbeat
+
+- Publish `online`, `stopping`, and `offline` agent states.
+- Report worker identity, host/runtime metadata, paths, pool/shards, concurrency,
+  active jobs, lease/poll settings, Docker summary, and tunnel availability.
+- Preserve ownership and sharing metadata already stored on the agent record.
+- Refresh heartbeats periodically and after every completed/failed job.
+- Cache expensive Docker summary calls for a bounded period.
+- Close realtime listeners, stop accepting new jobs, wait for active jobs, and
+  publish `offline` during graceful shutdown.
+
+### Queue, concurrency, leasing, and locking
+
+- Listen to every assigned Firebase queue shard and retain polling as a recovery
+  path if events are missed or listeners disconnect.
+- Sort queue candidates by creation time, remove malformed/orphaned entries,
+  respect `targetWorkerId`, and enforce maximum worker concurrency.
+- Claim the canonical job transactionally/conditionally; accept only queued jobs
+  or leased/running jobs whose lease expired.
+- Detect cancellation before execution and before publishing final success.
+- Increment attempts, set `startedAt`, assign `workerId`, and maintain
+  `leaseExpiresAt`.
+- Acquire a repository lock or container lock before execution; return the job to
+  `queued` if another valid lock exists.
+- Renew both job lease and lock lease while the action is active.
+- Release locks, remove queue entries, remove the job from the active set, wake the
+  scanner, and refresh heartbeat/inventory on every terminal path.
+
+### Job protocol and result publication
+
+- Mirror every job update to both `jobs/{jobId}` and
+  `workspaces/{workspaceId}/deployments/{jobId}`.
+- Publish progress (`10` claimed, `25` executing, `100` terminal), status,
+  message, timestamps, lease state, command output, and exit code as applicable.
+- Support `queued`, `leased`, `running`, `completed`, `failed`, and `cancelled`.
+- Cap failure messages, command output, logs, and process errors before writing to
+  Firebase.
+- Keep the worker alive after individual action, Docker, Git, Firebase, or tunnel
+  failures.
+
+### Docker host and container management
+
+- Connect to the local Docker daemon and report daemon version, API version, OS,
+  architecture, container counts, running counts, and image counts.
+- Publish complete running/stopped container inventory with image, state, ports,
+  Compose project/service labels, worker ownership, and timestamps.
+- Reconcile renamed/legacy IDs and delete stale container records owned by this
+  worker without deleting records owned by another worker.
+- Identify the worker container and protect it from stop, delete, and exec both in
+  published metadata and during execution.
+- Implement inventory refresh, logs, start, stop, restart, delete, and exec.
+- Store the latest 100 log lines (maximum 100,000 characters) and truncate command
+  output to the latest 120,000 characters.
+
+### Repository, Git, and deployment management
+
+- Resolve repository paths from safe names and prohibit escape from the clone
+  directory.
+- Decrypt configured Git credentials, inject them only into HTTPS Git operations,
+  and redact raw and URL-encoded tokens from errors.
+- Discover remote branches with the default branch first; clone, fetch, switch,
+  track, and fast-forward pull the configured branch.
+- Read Compose content only from a validated repository-relative path and reject
+  files larger than 1 MB.
+- Normalize and merge workspace, legacy repository, current repository, and
+  Firebase-stored environment values with repository values taking precedence.
+- Validate environment keys, normalize scalar/JSON/dotenv values, strip null
+  bytes, write `.env`, and generate Compose environment overrides per service.
+- Deploy/stop Compose projects with a stable project name and a 900-second bound.
+- Build Dockerfiles, tag managed images, replace managed containers, and apply
+  configured environment and port mappings.
+
+### Commands, secrets, and public tunnels
+
+- Execute privileged worker commands in the clone root or selected repository,
+  normalize Compose exec to non-interactive mode, enforce 5–1800 second bounds,
+  preserve combined output, and publish exit code.
+- Execute container commands through `/bin/sh -lc`, remove outer Compose exec
+  syntax when supplied, disable TTY/stdin, and preserve output/exit code.
+- Decrypt AES-256-GCM credentials and repository tunnel tokens using the same
+  versioned payload contract as the web application.
+- Resolve tunnel targets from host port mappings or container IP/internal port,
+  connect the worker container to target networks when necessary, and support one
+  tunnel per Compose service.
+- Support repository/service domains, repository-specific encrypted ngrok tokens,
+  persisted PID/state/log files, reuse of compatible tunnels, bounded startup,
+  graceful/forced stop, and cleanup by repository prefix.
+- Publish and clear the complete public URL/tunnel metadata contract.
 
 The worker is not an authentication authority. User access decisions are made by
 the web application before a job is queued. The worker still enforces local
 safety checks such as worker-container protection, path validation, and command
 timeouts.
+
+## Worker Execution Flow
+
+The following flow is derived from the Python reference worker in
+`services/worker/worker/main.py`. Other runtimes must preserve the same observable
+protocol even if their internal concurrency model differs.
+
+```mermaid
+flowchart TD
+    A[Process starts] --> B[Load Settings and fallback config]
+    B --> C[Resolve stable worker ID and claim token]
+    C --> D[Initialize Firebase and Docker access]
+    D --> E[Resolve unique/preserved worker label]
+    E --> F[Publish online heartbeat and reset inventory]
+    F --> G[Start heartbeat loop]
+    F --> H[Open realtime listeners for assigned shards]
+    H --> I[Scan queues; polling is fallback]
+    I --> J{Capacity available?}
+    J -- No --> I
+    J -- Yes --> K[Sort queue items by createdAt]
+    K --> L{Valid item and target worker matches?}
+    L -- No --> K
+    L -- Yes --> M[Transactionally claim canonical job]
+    M --> N{Claimed by this worker?}
+    N -- No --> O[Remove terminal/orphan queue item when applicable]
+    O --> I
+    N -- Yes --> P{Workspace matches?}
+    P -- No --> X[Publish failed]
+    P -- Yes --> Q[Acquire repository/container lock]
+    Q --> R{Lock acquired?}
+    R -- No --> S[Return job to queued; clear lease]
+    S --> I
+    R -- Yes --> T[Publish running progress 10]
+    T --> U[Start lease and lock renewal]
+    U --> V[Publish executing progress 25]
+    V --> W{Dispatch action}
+    W --> W1[Repository: Git / Compose / Dockerfile]
+    W --> W2[Container lifecycle / logs / exec]
+    W --> W3[Worker command]
+    W --> W4[Inventory refresh]
+    W --> W5[Public tunnel start / stop]
+    W1 --> Y{Execution succeeded?}
+    W2 --> Y
+    W3 --> Y
+    W4 --> Y
+    W5 --> Y
+    Y -- No --> X
+    Y -- Yes --> Z{Cancellation requested?}
+    Z -- Yes --> CA[Publish cancelled progress 100]
+    Z -- No --> CO[Publish completed progress 100]
+    X --> CL[Delete queue item]
+    CA --> CL
+    CO --> CL
+    CL --> RL[Stop renewal and release lock]
+    RL --> AC[Remove active job; heartbeat and inventory refresh]
+    AC --> I
+    G --> SD{SIGTERM or SIGINT?}
+    SD -- Yes --> ST[Publish stopping; stop listeners and new work]
+    ST --> WA[Wait for active jobs]
+    WA --> OF[Publish offline and exit]
+```
+
+### Job State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> cancelled: cancellationRequested before claim
+    queued --> leased: transactional claim
+    leased --> queued: valid lock held elsewhere
+    leased --> running: lock acquired
+    running --> completed: action succeeds
+    running --> failed: action raises or returns non-zero
+    running --> cancelled: cancellation observed before completion
+    leased --> leased: expired lease recovered by a worker
+    running --> leased: expired lease recovered after worker loss
+    completed --> [*]
+    failed --> [*]
+    cancelled --> [*]
+```
 
 ## Runtime Configuration
 
@@ -277,6 +454,34 @@ Supported actions:
 - `tunnel_start`
 - `tunnel_stop`
 
+## Complete Action Contract
+
+Every worker runtime must recognize the following actions. Unknown actions must
+fail explicitly rather than being silently ignored.
+
+| Action | Target | Required behavior | Primary side effects |
+| --- | --- | --- | --- |
+| `discover_branches` | Repository | Decrypt optional Git credential and list remote heads with default first. | `availableBranches`, `branchesUpdatedAt` |
+| `sync` | Repository | Safely clone or fast-forward pull the configured branch. | Local clone; synchronized message |
+| `read_compose` | Repository | Sync, validate relative Compose path, enforce 1 MB maximum, read UTF-8 with replacement. | `composeContent` |
+| `deploy` | Repository | Sync and deploy Compose or Dockerfile mode; optionally open tunnels. | Containers/images and repository tunnel metadata |
+| `build` | Repository | Same current execution path as deploy for the configured repository mode. | Containers/images and optional tunnel metadata |
+| `stop` | Repository | Stop Compose stack or remove managed Dockerfile container; stop tunnels. | Cleared public URL/tunnel metadata |
+| `tunnel_start` | Repository/service | Resolve running targets and start/reuse requested tunnel(s). | `publicUrl`, `publicUrls`, `publicTunnels`, status/worker/timestamp fields |
+| `tunnel_stop` | Repository | Stop all tunnel processes by repository prefix. | Cleared public URL/tunnel metadata |
+| `inventory_refresh` | Workspace | Read all Docker containers and reconcile this worker's records. | `workspaces/{workspaceId}/containers/*` |
+| `container_start` | Container | Resolve and start the container. | Docker state; refreshed inventory |
+| `container_stop` | Container | Reject worker container; stop with 20-second grace. | Docker state; refreshed inventory |
+| `container_restart` | Container | Restart with 20-second grace. | Docker state; refreshed inventory |
+| `container_delete` | Container | Reject worker container and force-remove target. | Docker state; refreshed inventory |
+| `container_logs` | Container | Read latest 100 lines and cap stored tail at 100,000 characters. | Container `logTail` |
+| `container_exec` | Container | Reject worker container; run non-interactive shell command with bounded timeout. | `commandOutput`, `commandExitCode` |
+| `worker_command` | Worker/repository | Run parsed command in clone root or repository with bounded timeout and merged environment. | `commandOutput`, `commandExitCode` |
+
+All actions use the common lease, lock, progress, mirrored publication, failure,
+queue cleanup, and post-job heartbeat flow. A runtime is not protocol-compatible
+if it implements an action but omits those surrounding guarantees.
+
 ### Branch Discovery
 
 The worker lists remote Git branches for the repository URL. If a credential is
@@ -480,6 +685,20 @@ repositories unless additional sandboxing or approval workflows are added.
 ## Language-Independent Module Model
 
 Any implementation should provide these modules or equivalent responsibilities.
+The Python files listed here are the reference behavior to inspect when creating
+or reviewing another runtime.
+
+| Contract module | Python reference | Contains |
+| --- | --- | --- |
+| Main lifecycle, heartbeat, queue, lease, lock, inventory | `worker/main.py` | `Worker`, listeners, scanner, claim, process, renewal, publication, shutdown |
+| Configuration and stable ID | `worker/config.py` | Environment/fallback loading, Firebase discovery, fingerprint/marker identity, limits |
+| Action executor and environment | `worker/executor.py` | Repository/container/command dispatch, environment, path validation, Compose/Dockerfile, tunnels |
+| Firebase runtime | `worker/firebase_runtime.py` | Admin initialization and database references |
+| Secret contract | `worker/secrets.py` | AES-256-GCM version 1 decryption |
+| Docker primitives | `worker/core/docker_ops.py` | Docker SDK connection and `.env` writer |
+| Git primitives | `worker/core/git.py` | Branch listing, clone, fetch/switch/pull, credential redaction |
+| Tunnel process manager | `worker/core/ngrok.py` | PID/state/log lifecycle and URL discovery |
+| Shared utilities | `worker/core/utils.py` | Port parsing and safe relative path validation |
 
 ### Config Module
 
