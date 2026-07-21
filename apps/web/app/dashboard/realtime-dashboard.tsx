@@ -147,11 +147,12 @@ function GithubMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
+function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       {name === "add" ? <path {...common} d="M12 4.75v14.5M4.75 12h14.5" /> : null}
+      {name === "check" ? <path {...common} d="m5.25 12.35 4.15 4.15 9.35-9.35" /> : null}
       {name === "key" ? <path {...common} d="M7.75 14.25a4.25 4.25 0 1 1 3.7-6.34 4.25 4.25 0 0 1-3.7 6.34Zm4.05-4.25h8.2m-2.7 0v2.2m-2.55-2.2v1.55M6.55 10h.01" /> : null}
       {name === "sync" ? <path {...common} d="M17.6 6.2A7.25 7.25 0 0 0 5.35 9.05M17.6 6.2V3.45m0 2.75h-2.75M6.4 17.8a7.25 7.25 0 0 0 12.25-2.85M6.4 17.8v2.75m0-2.75h2.75" /> : null}
       {name === "sliders" ? <path {...common} d="M4.25 7.1h6.9m4.45 0h4.15M13.3 7.1a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0ZM4.25 16.9h4.15m4.45 0h6.9M8.4 16.9a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Z" /> : null}
@@ -1448,12 +1449,13 @@ function WorkerSharingForm({ agent }: { agent: Agent }) {
             type="text"
             value={sharedEmails}
             onChange={(event) => setSharedEmails(event.target.value)}
-            placeholder="name@example.com"
+            placeholder="ana@example.com, sam@example.com"
+            aria-label="Shared email addresses separated by commas"
             autoComplete="off"
           />
         </label>
       ) : <input type="hidden" name="sharedEmails" value="" />}
-      <PendingSubmitButton className="secondary" tooltip="Save worker access">Save</PendingSubmitButton>
+      <PendingIconButton title="Save worker access"><Icon name="check" /></PendingIconButton>
     </form>
   );
 }
@@ -1473,7 +1475,7 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
         </div>
         <form action={claimWorker} className="worker-claim-form">
           <input name="workerToken" placeholder="Worker token" autoComplete="off" />
-          <PendingSubmitButton className="secondary" tooltip="Claim worker">Claim</PendingSubmitButton>
+          <PendingIconButton title="Claim worker"><Icon name="add" /></PendingIconButton>
         </form>
       </div>
       <div className="workers-grid">{sortedAgents.map((agent) => {
@@ -1498,7 +1500,16 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
               <span className="worker-card-chevron"><Icon name="chevron" /></span>
             </summary>
             <div className="worker-details">
-              {isOwner ? <WorkerSharingForm agent={agent} /> : null}
+              {isOwner ? (
+                <details className="worker-access-settings">
+                  <summary title="Manage worker access" data-tooltip="Manage worker access">
+                    <Icon name="key" />
+                    <span>{workerSharingLabel(agent)}</span>
+                    <span className="worker-access-chevron"><Icon name="chevron" /></span>
+                  </summary>
+                  <WorkerSharingForm agent={agent} />
+                </details>
+              ) : null}
               <span><strong>ID</strong><small>{agent.id}</small></span>
               <span><strong>Access</strong><small>{isOwner ? `Owned by you · ${workerSharingLabel(agent)}` : workerSharingLabel(agent)}</small></span>
               <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
