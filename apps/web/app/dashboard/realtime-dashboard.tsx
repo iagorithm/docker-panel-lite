@@ -147,6 +147,18 @@ function GithubMark() {
   );
 }
 
+function SidebarContainerMark() {
+  return (
+    <span className="sidebar-container-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M12 3.6 19.2 7.75 12 11.9 4.8 7.75 12 3.6Z" />
+        <path d="M5.25 9.45 11.15 12.82v6.95L5.25 16.4V9.45Z" />
+        <path d="M18.75 9.45 12.85 12.82v6.95l5.9-3.37V9.45Z" />
+      </svg>
+    </span>
+  );
+}
+
 function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
@@ -454,8 +466,8 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><span><Icon name="container" /></span>Containers</button>
-          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span><Icon name="repo" /></span>Repositories</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><SidebarContainerMark />Containers</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span className="sidebar-github-mark"><GithubMark /></span>Repositories</button>
         </nav>
 
         <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
@@ -1035,10 +1047,12 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
         <div className="toolbar-actions">
-          <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} onClick={() => setShowAddRepository((current) => !current)} primary={showAddRepository}><Icon name={showAddRepository ? "close" : "add"} /></IconButton>
-          <IconButton title={showCredentials ? "Close credentials" : "Add credential"} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
-          <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} onClick={() => setShowCommandPresets((current) => !current)} primary={showCommandPresets}><Icon name="terminal" /></IconButton>
-          <form action={enqueueAllRepositories}><PendingIconButton title="Sync all"><Icon name="sync" /></PendingIconButton></form>
+          <div className="icon-toggle repository-toolbar-toggle" aria-label="Repository tools">
+            <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} active={showAddRepository} onClick={() => setShowAddRepository((current) => !current)}><Icon name="add" /></IconButton>
+            <IconButton title={showCredentials ? "Close credentials" : "Credentials"} active={showCredentials} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
+            <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} active={showCommandPresets} onClick={() => setShowCommandPresets((current) => !current)}><Icon name="terminal" /></IconButton>
+            <form action={enqueueAllRepositories}><PendingIconButton title="Sync all repositories"><Icon name="sync" /></PendingIconButton></form>
+          </div>
         </div>
       </div>
 
