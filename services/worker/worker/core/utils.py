@@ -1,21 +1,20 @@
 from __future__ import annotations
 
+import re
 from pathlib import PurePosixPath
 
 
 def parse_ports(port_str: str) -> dict[str, int]:
     ports: dict[str, int] = {}
-    for pair in (port_str or "").split(","):
-        pair = pair.strip()
-        if ":" not in pair:
+    for pair in re.split(r"[\s,]+", (port_str or "").strip()):
+        if not pair:
             continue
-        host, container = (item.strip() for item in pair.split(":", 1))
-        if not host or not container:
+        match = re.fullmatch(r"(\d+):(\d+)(?:/(tcp|udp))?", pair, re.IGNORECASE)
+        if not match:
             continue
-        try:
-            ports[f"{container}/tcp"] = int(host)
-        except ValueError:
-            continue
+        host, container = int(match.group(1)), int(match.group(2))
+        protocol = (match.group(3) or "tcp").lower()
+        ports[f"{container}/{protocol}"] = host
     return ports
 
 

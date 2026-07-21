@@ -369,6 +369,9 @@ def _container_tunnel_target(container, fallback_port: int) -> str:
     host_target = _host_port_target(container, internal_port)
     if host_target:
         return host_target
+    network_mode = str((container.attrs.get("HostConfig", {}) or {}).get("NetworkMode") or "").strip().lower()
+    if network_mode == "host":
+        return f"http://host.docker.internal:{fallback_port}"
     _connect_worker_to_container_networks(container)
     ip_address = _container_ip(container)
     if ip_address:
@@ -386,15 +389,24 @@ def _public_tunnel_targets(repository: dict, settings: Settings, only_service: s
             all=False,
             filters={"label": f"com.docker.compose.project={project}"},
         )
-        service_containers: dict[str, object] = {}
+        running_services: dict[str, object] = {}
         for container in sorted(containers, key=lambda item: item.name):
             if container.status != "running":
                 continue
             service = str(container.labels.get("com.docker.compose.service") or container.name).strip()
-            if only_service and service != only_service:
-                continue
-            if service and service not in service_containers:
-                service_containers[service] = container
+            if service and service not in running_services:
+                running_services[service] = container
+        if only_service and only_service not in running_services:
+            available = ", ".join(sorted(running_services)) or "none"
+            raise RuntimeError(
+                f"Compose service '{only_service}' is not running for public tunnel '{project}'. "
+                f"Running services: {available}"
+            )
+        service_containers = (
+            {only_service: running_services[only_service]}
+            if only_service
+            else running_services
+        )
         targets = {}
         for service, container in service_containers.items():
             target = _container_tunnel_target(container, service_ports.get(service, fallback_port))
@@ -402,7 +414,11 @@ def _public_tunnel_targets(repository: dict, settings: Settings, only_service: s
                 targets[service] = target
         if targets:
             return targets
-        raise RuntimeError(f"No running compose services found for public tunnel '{project}'{f' service {only_service}' if only_service else ''}")
+        unresolved = ", ".join(sorted(service_containers)) or "none"
+        raise RuntimeError(
+            f"Could not resolve a tunnel target for compose project '{project}' services: {unresolved}. "
+            "Publish a port, configure the service internal port, or use a reachable Docker network."
+        )
     try:
         container = client.containers.get(project)
     except NotFound:
@@ -535,6 +551,92 @@ def _compose_override(repository: dict, settings: Settings, environment: dict[st
     return override
 
 
+def _configured_port_bindings(value: str) -> set[tuple[int, str]]:
+    bindings: set[tuple[int, str]] = set()
+    for raw_entry in re.split(r"[\s,]+", str(value or "").strip()):
+        if not raw_entry:
+            continue
+        match = re.fullmatch(r"(\d+):(\d+)(?:/(tcp|udp))?", raw_entry, re.IGNORECASE)
+        if not match:
+            raise ValueError(f"Invalid port mapping '{raw_entry}'. Use host:container, for example 8080:80")
+        host_port, container_port = int(match.group(1)), int(match.group(2))
+        if not 1 <= host_port <= 65535 or not 1 <= container_port <= 65535:
+            raise ValueError(f"Invalid port mapping '{raw_entry}'. Ports must be between 1 and 65535")
+        binding = (host_port, (match.group(3) or "tcp").lower())
+        if binding in bindings:
+            raise ValueError(f"Port {host_port}/{binding[1]} is declared more than once")
+        bindings.add(binding)
+    return bindings
+
+
+def _compose_port_bindings(command: list[str], path: Path, environment: dict[str, str]) -> set[tuple[int, str]]:
+    process = subprocess.run(
+        [*command, "config", "--format", "json"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=os.environ | environment,
+    )
+    if process.returncode:
+        raise RuntimeError(_compact_process_error(process.stderr, process.stdout))
+    try:
+        payload = json.loads(process.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Docker Compose returned invalid JSON while validating published ports") from error
+    bindings: set[tuple[int, str]] = set()
+    services = payload.get("services", {}) if isinstance(payload, dict) else {}
+    for service in services.values() if isinstance(services, dict) else []:
+        ports = service.get("ports", []) if isinstance(service, dict) else []
+        for item in ports if isinstance(ports, list) else []:
+            if not isinstance(item, dict) or item.get("published") in (None, ""):
+                continue
+            published = str(item["published"])
+            bounds = published.split("-", 1)
+            try:
+                first = int(bounds[0])
+                last = int(bounds[-1])
+            except ValueError as error:
+                raise ValueError(f"Invalid Compose published port '{published}'") from error
+            if not 1 <= first <= last <= 65535:
+                raise ValueError(f"Invalid Compose published port '{published}'")
+            protocol = str(item.get("protocol") or "tcp").lower()
+            if protocol not in {"tcp", "udp"}:
+                continue
+            bindings.update((port, protocol) for port in range(first, last + 1))
+    return bindings
+
+
+def _container_bound_ports(container) -> set[tuple[int, str]]:
+    result: set[tuple[int, str]] = set()
+    ports = (container.attrs.get("NetworkSettings", {}) or {}).get("Ports", {}) or {}
+    for container_port, mappings in ports.items():
+        protocol = str(container_port).split("/", 1)[1].lower() if "/" in str(container_port) else "tcp"
+        for mapping in mappings or []:
+            try:
+                host_port = int(str((mapping or {}).get("HostPort") or ""))
+            except ValueError:
+                continue
+            if host_port:
+                result.add((host_port, protocol))
+    return result
+
+
+def _validate_deployment_ports(client, project: str, requested: set[tuple[int, str]]) -> None:
+    if not requested:
+        return
+    for container in client.containers.list(all=False):
+        labels = container.labels or {}
+        if labels.get("com.docker.compose.project") == project or container.name == project:
+            continue
+        conflicts = requested & _container_bound_ports(container)
+        if conflicts:
+            ports = ", ".join(f"{port}/{protocol}" for port, protocol in sorted(conflicts))
+            raise RuntimeError(
+                f"Deployment port collision: {ports} already bound by running container '{container.name}'"
+            )
+
+
 def _run_compose(repository: dict, path: Path, settings: Settings, environment: dict[str, str], down: bool = False) -> str:
     project = _safe_name(repository["alias"])
     compose_file = _repository_file(
@@ -549,6 +651,9 @@ def _run_compose(repository: dict, path: Path, settings: Settings, environment: 
     override = _compose_override(repository, settings, environment, compose_file)
     if override:
         command.extend(["-f", str(override)])
+    if not down:
+        requested_ports = _compose_port_bindings(command, path, environment)
+        _validate_deployment_ports(docker_ops.connect(), project, requested_ports)
     command.extend(["down"] if down else ["up", "-d", "--build"])
     process = subprocess.run(
         command,
@@ -566,6 +671,8 @@ def _run_compose(repository: dict, path: Path, settings: Settings, environment: 
 def _run_dockerfile(repository: dict, path: Path, settings: Settings, environment: dict[str, str]) -> str:
     client = docker_ops.connect()
     project = _safe_name(repository["alias"])
+    requested_ports = _configured_port_bindings(repository.get("ports", ""))
+    _validate_deployment_ports(client, project, requested_ports)
     dockerfile = _repository_file(
         path,
         repository.get("dockerfile", ""),

@@ -207,6 +207,10 @@ even when a capability is initially marked as pending.
   save/import also reserves declared host ports within the same worker pool.
 - Treat the backend check as an early conflict guard; the Docker daemon remains
   the final authority because inventory can change between validation and bind.
+- Each worker must repeat the validation against its local Docker daemon directly
+  before deployment. Compose workers resolve the effective merged configuration
+  and validate its published ports; Dockerfile workers validate the repository
+  mappings. Running containers from the same project are excluded for replacement.
 
 ### Commands, secrets, and public tunnels
 
@@ -220,6 +224,9 @@ even when a capability is initially marked as pending.
 - Resolve tunnel targets from host port mappings or container IP/internal port,
   connect the worker container to target networks when necessary, and support one
   tunnel per Compose service.
+- Resolve Compose services using their Docker labels, report the running service
+  inventory when a requested service is absent, and route host-network services
+  through `host.docker.internal` with their configured internal port.
 - Support repository/service domains, repository-specific encrypted ngrok tokens,
   persisted PID/state/log files, reuse of compatible tunnels, bounded startup,
   graceful/forced stop, and cleanup by repository prefix.

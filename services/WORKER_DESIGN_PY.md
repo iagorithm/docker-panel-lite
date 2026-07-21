@@ -63,6 +63,7 @@ Status legend: **Implemented**, **Partial**, **Pending**.
 | `.env` and Compose override | `core/docker_ops.py:write_env_file`; `executor.py:_compose_override` | Implemented | — |
 | Compose deploy/stop | `executor.py:_run_compose` | Implemented | No active cancellation after process start. |
 | Dockerfile build/run/remove | `executor.py:_run_dockerfile` | Implemented | No active cancellation after build starts. |
+| Deployment port collision validation | `executor.py:_configured_port_bindings/_compose_port_bindings/_validate_deployment_ports` | Implemented | Docker remains the final authority for races after validation. |
 | Worker command parsing/timeout/output | `executor.py:_non_interactive_command/execute_worker_command` | Implemented | Active cancellation pending. |
 | Container command parsing/timeout/output | `executor.py:_container_exec_shell_command/execute_container_command` | Implemented | Active cancellation pending. |
 | AES-256-GCM secret decryption | `secrets.py:decrypt_secret` | Implemented | — |
@@ -78,4 +79,3 @@ Status legend: **Implemented**, **Partial**, **Pending**.
 | Actions implemented | 16/16 |
 | Actions missing | 0/16 |
 | Main functional gap | Active cancellation after process execution starts |
-
