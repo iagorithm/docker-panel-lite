@@ -23,6 +23,7 @@ import (
 
 const tokenURL = "https://oauth2.googleapis.com/token"
 const databaseScope = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email"
+const maxRequestAttempts = 3
 
 type Client struct {
 	databaseURL string
@@ -61,7 +62,7 @@ func New(databaseURL, serviceAccountJSON string) (*Client, error) {
 	return &Client{
 		databaseURL: databaseURL,
 		account:     account,
-		httpClient:  &http.Client{Timeout: 20 * time.Second},
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -74,14 +75,14 @@ func (c *Client) GetWithETag(ctx context.Context, path string, out interface{}) 
 	if err != nil {
 		return "", err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, token), nil)
+	request, err := c.authenticatedRequest(ctx, http.MethodGet, path, token, nil)
 	if err != nil {
 		return "", err
 	}
 	request.Header.Set("X-Firebase-ETag", "true")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return "", err
+		return "", requestError(http.MethodGet, path, err)
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(response.Body)
@@ -109,7 +110,7 @@ func (c *Client) PutIfMatch(ctx context.Context, path string, etag string, value
 	if err != nil {
 		return false, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(path, token), bytes.NewReader(payload))
+	request, err := c.authenticatedRequest(ctx, http.MethodPut, path, token, bytes.NewReader(payload))
 	if err != nil {
 		return false, err
 	}
@@ -117,7 +118,7 @@ func (c *Client) PutIfMatch(ctx context.Context, path string, etag string, value
 	request.Header.Set("If-Match", etag)
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return false, err
+		return false, requestError(http.MethodPut, path, err)
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(response.Body)
@@ -148,44 +149,102 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 	if err != nil {
 		return err
 	}
-	var reader io.Reader
+	var payload []byte
 	if body != nil {
-		payload, err := json.Marshal(body)
+		payload, err = json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		reader = bytes.NewReader(payload)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, c.url(path, token), reader)
-	if err != nil {
-		return err
+	for attempt := 1; attempt <= maxRequestAttempts; attempt++ {
+		var reader io.Reader
+		if payload != nil {
+			reader = bytes.NewReader(payload)
+		}
+		request, err := c.authenticatedRequest(ctx, method, path, token, reader)
+		if err != nil {
+			return err
+		}
+		if body != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		response, err := c.httpClient.Do(request)
+		if err != nil {
+			if attempt < maxRequestAttempts && retryableRequestError(ctx, err) {
+				if err := waitForRetry(ctx, attempt); err != nil {
+					return requestError(method, path, err)
+				}
+				continue
+			}
+			return requestError(method, path, err)
+		}
+		responseBody, readErr := io.ReadAll(response.Body)
+		response.Body.Close()
+		if readErr != nil {
+			if attempt < maxRequestAttempts {
+				if err := waitForRetry(ctx, attempt); err != nil {
+					return requestError(method, path, err)
+				}
+				continue
+			}
+			return requestError(method, path, readErr)
+		}
+		if retryableStatus(response.StatusCode) && attempt < maxRequestAttempts {
+			if err := waitForRetry(ctx, attempt); err != nil {
+				return requestError(method, path, err)
+			}
+			continue
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return fmt.Errorf("firebase %s %s failed: %s: %s", method, path, response.Status, strings.TrimSpace(string(responseBody)))
+		}
+		if out != nil && len(bytes.TrimSpace(responseBody)) > 0 && string(bytes.TrimSpace(responseBody)) != "null" {
+			return json.Unmarshal(responseBody, out)
+		}
+		return nil
 	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	responseBody, _ := io.ReadAll(response.Body)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("firebase %s %s failed: %s: %s", method, path, response.Status, strings.TrimSpace(string(responseBody)))
-	}
-	if out != nil && len(bytes.TrimSpace(responseBody)) > 0 && string(bytes.TrimSpace(responseBody)) != "null" {
-		return json.Unmarshal(responseBody, out)
-	}
-	return nil
+	return fmt.Errorf("firebase %s %s failed after %d attempts", method, path, maxRequestAttempts)
 }
 
-func (c *Client) url(path string, token string) string {
+func (c *Client) url(path string) string {
 	clean := strings.Trim(path, "/")
-	query := url.Values{}
-	query.Set("access_token", token)
 	if clean == "" {
-		return c.databaseURL + "/.json?" + query.Encode()
+		return c.databaseURL + "/.json"
 	}
-	return c.databaseURL + "/" + clean + ".json?" + query.Encode()
+	return c.databaseURL + "/" + clean + ".json"
+}
+
+func (c *Client) authenticatedRequest(ctx context.Context, method string, path string, token string, body io.Reader) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, method, c.url(path), body)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	return request, nil
+}
+
+func retryableRequestError(ctx context.Context, err error) bool {
+	return err != nil && ctx.Err() == nil
+}
+
+func retryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusInternalServerError || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+}
+
+func waitForRetry(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt*attempt) * 250 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func requestError(method string, path string, err error) error {
+	return fmt.Errorf("firebase %s %s request failed: %w", method, path, err)
 }
 
 func (c *Client) token(ctx context.Context) (string, error) {

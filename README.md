@@ -22,6 +22,7 @@ Run these commands from the repository root.
 | `./run.sh build` | Builds local images from `docker-compose.yaml` plus `docker-compose.build.yaml`. |
 | `./run.sh build all` | Same as `./run.sh build`. |
 | `./run.sh build go` | Builds only the local Go worker image. |
+| `cd services/worker-go && go test ./...` | Runs all Go worker tests. |
 | `docker login` | Signs in to Docker Hub before publishing images. |
 | `./run.sh publish` | Builds and pushes both worker images to Docker Hub: Python as `:py` and Go as `:go`. |
 | `./run.sh publish py` | Builds and pushes only the Python worker image as `:py`. |
@@ -56,6 +57,13 @@ Run the web app, Python worker, and Go worker from local source:
 
 ```bash
 ./run.sh run
+```
+
+Run the Go worker tests:
+
+```bash
+cd services/worker-go
+go test ./...
 ```
 
 Local persistent data is stored in:
