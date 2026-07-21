@@ -30,6 +30,7 @@ import {
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
+import { canManageRepository, repositorySharingMode, type RepositoryAccessRecord } from "@/lib/repository-access";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
 import { canManageWorker, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
@@ -399,6 +400,11 @@ function workerSharingLabel(agent: Agent) {
 
 function credentialSharingLabel(credential: CredentialSummary) {
   const sharing = credentialSharingMode(credential as CredentialAccessRecord);
+  return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
+}
+
+function repositorySharingLabel(repository: Repository) {
+  const sharing = repositorySharingMode(repository as RepositoryAccessRecord);
   return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
 }
 
@@ -1111,6 +1117,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
 
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
+          const isOwner = canManageRepository(repository as RepositoryAccessRecord, currentUser);
           const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
           const workerSelected = Boolean(targetWorkerId);
           const deployedWorkers = workersByRepository.get(repository.id) || [];
@@ -1122,7 +1129,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
               <div className="resource-metadata">
                 <span title={repository.url}>{repository.url}</span>
-                <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"}</small>
+                <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"} · {repositorySharingLabel(repository)}</small>
                 {deployedWorkers.length ? (
                   <div className="repo-worker-flags" aria-label="Deployed workers">
                     {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
@@ -1135,12 +1142,14 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                   {availableWorkers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}</option>)}
                 </select>
                 <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
-                <IconButton
-                  title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
-                  onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
-                >
-                  <Icon name="sliders" />
-                </IconButton>
+                {isOwner ? (
+                  <IconButton
+                    title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
+                    onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
+                  >
+                    <Icon name="sliders" />
+                  </IconButton>
+                ) : null}
                 {repository.mode === "compose" ? (
                   viewingComposeRepositoryId === repository.id ? (
                     <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
@@ -1159,11 +1168,11 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                 <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
                 {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
-                <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton>
+                {isOwner ? <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton> : null}
               </div>
-              <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} />
+              {isOwner ? <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} /> : null}
               <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
-              <RepositoryDeleteConfirm repository={repository} open={deletingRepositoryId === repository.id} onClose={() => setDeletingRepositoryId(null)} />
+              {isOwner ? <RepositoryDeleteConfirm repository={repository} open={deletingRepositoryId === repository.id} onClose={() => setDeletingRepositoryId(null)} /> : null}
             </article>
           );
         }) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
@@ -1265,7 +1274,9 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
-  const [settingsTab, setSettingsTab] = useState<"general" | "build" | "environment" | "public" | "danger">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "build" | "environment" | "public" | "access" | "danger">("general");
+  const [sharing, setSharing] = useState(repositorySharingMode(repository as RepositoryAccessRecord));
+  const [sharedEmails, setSharedEmails] = useState((repository.sharedEmails || []).join(", "));
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -1278,9 +1289,11 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
     setBranches(repository.availableBranches || []);
     setBranchMessage("");
     setLoadingBranches(false);
+    setSharing(repositorySharingMode(repository as RepositoryAccessRecord));
+    setSharedEmails((repository.sharedEmails || []).join(", "));
     setSettingsTab("general");
     setShowDeleteConfirm(false);
-  }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches]);
+  }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches, repository.sharing, repository.public, repository.sharedEmails]);
 
   async function discoverBranches() {
     if (!repositoryUrl.trim()) {
@@ -1325,6 +1338,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
             ["build", "Build"],
             ["environment", "Environment"],
             ["public", "Public URL"],
+            ["access", "Access"],
             ["danger", "Danger"],
           ].map(([tab, label]) => (
             <button type="button" role="tab" aria-selected={settingsTab === tab} className={settingsTab === tab ? "is-active" : ""} onClick={() => setSettingsTab(tab as typeof settingsTab)} key={tab}>{label}</button>
@@ -1358,6 +1372,13 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
             <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
             <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
             <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
+          </div>
+        </div>
+        <div className={tabClass("access")} role="tabpanel" aria-label="Repository access settings">
+          <div className="form-grid repository-access-form">
+            <label>Visibility<select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as typeof sharing)}><option value="private">Private</option><option value="shared">Shared with users</option><option value="public">Public to workspace</option></select></label>
+            {sharing === "shared" ? <label className="wide">Shared with<input name="sharedEmails" type="text" value={sharedEmails} onChange={(event) => setSharedEmails(event.target.value)} placeholder="one@example.com, two@example.com" /><small className="field-hint">Separate multiple email addresses with commas.</small></label> : <input type="hidden" name="sharedEmails" value="" />}
+            <div className="repository-access-note wide"><strong>{sharing === "private" ? "Only you can see this repository." : sharing === "shared" ? "Only the listed users can see and run it." : "Every user in this workspace can see and run it."}</strong><small>Only the owner can edit access, settings, or remove the repository.</small></div>
           </div>
         </div>
         <div className={tabClass("danger")} role="tabpanel" aria-label="Danger zone">

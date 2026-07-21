@@ -1,6 +1,7 @@
 import { adminDatabase } from "@/lib/firebase-admin";
 import { canAccessCredential, sanitizeCredentialForClient, type CredentialAccessRecord } from "@/lib/credential-access";
 import { requireSession } from "@/lib/session";
+import { canAccessRepository, sanitizeRepositoryForClient, type RepositoryAccessRecord } from "@/lib/repository-access";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
 import { canAccessWorker, sanitizeWorkerForClient, type WorkerAccessRecord } from "@/lib/worker-access";
 import { RealtimeDashboard } from "./realtime-dashboard";
@@ -25,11 +26,14 @@ export default async function DashboardPage() {
     .filter((credential) => canAccessCredential(credential as CredentialAccessRecord, user))
     .map((credential) => sanitizeCredentialForClient(credential as CredentialAccessRecord, user) as CredentialSummary);
   const visibleCredentialIds = new Set(visibleCredentials.map((credential) => credential.id));
-  const visibleRepositories = values<Repository>(repositories.val()).map((repository) => (
-    repository.credentialId && !visibleCredentialIds.has(repository.credentialId)
-      ? { ...repository, credentialId: "" }
-      : repository
-  ));
+  const visibleRepositories = values<Repository>(repositories.val())
+    .filter((repository) => canAccessRepository(repository as RepositoryAccessRecord, user))
+    .map((repository) => sanitizeRepositoryForClient(repository as RepositoryAccessRecord, user) as Repository)
+    .map((repository) => (
+      repository.credentialId && !visibleCredentialIds.has(repository.credentialId)
+        ? { ...repository, credentialId: "" }
+        : repository
+    ));
   const visibleWorkerIds = new Set(visibleAgents.map((agent) => agent.id));
   const visibleContainers = values<ManagedContainer>(containers.val()).filter((container) => Boolean(container.workerId && visibleWorkerIds.has(container.workerId)));
   const visibleDeployments = values<Deployment>(deployments.val()).filter((deployment) => !deployment.targetWorkerId || visibleWorkerIds.has(deployment.targetWorkerId));

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { adminDatabase } from "@/lib/firebase-admin";
 import { canAccessCredential, sanitizeCredentialForClient, type CredentialAccessRecord } from "@/lib/credential-access";
+import { canAccessRepository, sanitizeRepositoryForClient, type RepositoryAccessRecord } from "@/lib/repository-access";
 import { getSessionUser } from "@/lib/session";
 import type { CredentialSummary, Repository } from "@/lib/types";
 
@@ -24,11 +25,14 @@ export async function GET() {
     .filter((credential) => canAccessCredential(credential as CredentialAccessRecord, user))
     .map((credential) => sanitizeCredentialForClient(credential as CredentialAccessRecord, user) as CredentialSummary);
   const visibleCredentialIds = new Set(visibleCredentials.map((credential) => credential.id));
-  const visibleRepositories = values<Repository>(repositories.val()).map((repository) => (
-    repository.credentialId && !visibleCredentialIds.has(repository.credentialId)
-      ? { ...repository, credentialId: "" }
-      : repository
-  ));
+  const visibleRepositories = values<Repository>(repositories.val())
+    .filter((repository) => canAccessRepository(repository as RepositoryAccessRecord, user))
+    .map((repository) => sanitizeRepositoryForClient(repository as RepositoryAccessRecord, user) as Repository)
+    .map((repository) => (
+      repository.credentialId && !visibleCredentialIds.has(repository.credentialId)
+        ? { ...repository, credentialId: "" }
+        : repository
+    ));
 
   return NextResponse.json(
     {
