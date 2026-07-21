@@ -69,8 +69,9 @@
     <text x="1120" y="181" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#0f766e">Worker hosts</text>
     <circle cx="1134" cy="248" r="28" fill="url(#green)"/>
     <path d="M1134 229 1157 242 1134 255 1111 242l23-13Zm-19 21 17 10v21l-17-10v-21Zm38 0v21l-17 10v-21l17-10Z" fill="#fff"/>
-    <text x="1182" y="244" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="850" fill="#0f172a">Docker runtime</text>
-    <text x="1182" y="274" font-family="Inter, Arial, sans-serif" font-size="16" fill="#64748b">VPS, lab, local, private hosts</text>
+    <text x="1176" y="239" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="850" fill="#0f172a">Docker</text>
+    <text x="1176" y="263" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="850" fill="#0f172a">runtime</text>
+    <text x="1176" y="291" font-family="Inter, Arial, sans-serif" font-size="13" fill="#64748b">VPS, lab, local hosts</text>
   </g>
   <g filter="url(#shadow)">
     <rect x="1086" y="430" width="276" height="186" rx="24" fill="#ffffff" stroke="#ddd6fe"/>
@@ -78,8 +79,9 @@
     <text x="1120" y="466" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#6d28d9">Live services</text>
     <circle cx="1134" cy="533" r="28" fill="#8b5cf6"/>
     <path d="M1122 538a17 17 0 0 1 24-24l10 10a17 17 0 0 1-12 29" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-    <text x="1182" y="529" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="850" fill="#0f172a">Containers + URLs</text>
-    <text x="1182" y="559" font-family="Inter, Arial, sans-serif" font-size="16" fill="#64748b">Running apps, logs, previews</text>
+    <text x="1176" y="524" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="850" fill="#0f172a">Containers</text>
+    <text x="1176" y="548" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="850" fill="#0f172a">+ URLs</text>
+    <text x="1176" y="576" font-family="Inter, Arial, sans-serif" font-size="13" fill="#64748b">Apps, logs, previews</text>
   </g>
   <path d="M394 238h96" stroke="#2563eb" stroke-width="5" stroke-linecap="round"/>
   <path d="m472 221 22 17-22 17" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
