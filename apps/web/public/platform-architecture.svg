@@ -54,8 +54,8 @@
     <text x="582" y="316" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="850" fill="#fff">Jobs</text>
     <text x="582" y="344" font-family="Inter, Arial, sans-serif" font-size="14" fill="#dbeafe">sync, build, deploy</text>
     <rect x="760" y="274" width="168" height="108" rx="18" fill="#0f766e"/>
-    <text x="790" y="316" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="850" fill="#fff">Access</text>
-    <text x="790" y="344" font-family="Inter, Arial, sans-serif" font-size="14" fill="#ccfbf1">private, shared, public</text>
+    <text x="844" y="316" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="850" fill="#fff">Access</text>
+    <text x="844" y="344" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="13" fill="#ccfbf1">private, shared, public</text>
     <rect x="552" y="426" width="168" height="108" rx="18" fill="#b45309"/>
     <text x="582" y="468" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="850" fill="#fff">State</text>
     <text x="582" y="496" font-family="Inter, Arial, sans-serif" font-size="14" fill="#fef3c7">containers and logs</text>
