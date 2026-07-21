@@ -1,10 +1,10 @@
+# syntax=docker/dockerfile:1.7
 FROM python:3.12-slim
 
 ARG DOCKER_CLI_VERSION=27.3.1
 ARG COMPOSE_VERSION=2.29.7
 ARG NGROK_VERSION=3
 ARG TARGETARCH
-ARG WORKER_BAKED_CONFIG_B64=
 
 RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
@@ -30,9 +30,10 @@ COPY services/worker/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY services/worker/worker ./worker
 COPY services/worker/scripts ./scripts
-RUN mkdir -p /app/config \
-    && if [ -n "$WORKER_BAKED_CONFIG_B64" ]; then \
-      printf '%s' "$WORKER_BAKED_CONFIG_B64" | base64 -d > /app/config/worker.env; \
+RUN --mount=type=secret,id=worker_config,required=false \
+    mkdir -p /app/config \
+    && if [ -f /run/secrets/worker_config ]; then \
+      cp /run/secrets/worker_config /app/config/worker.env; \
       chmod 600 /app/config/worker.env; \
     fi
 

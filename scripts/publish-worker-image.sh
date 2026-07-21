@@ -78,7 +78,7 @@ fi
 
 ensure_builder
 
-BUILD_ARGS=()
+BUILD_SECRETS=()
 if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
   CONFIG_TEXT=""
   CONFIG_KEYS=(
@@ -110,8 +110,10 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
     echo "WORKER_BAKE_CONFIG is enabled, but no worker configuration values were found in $ENV_FILE."
     exit 1
   fi
-  WORKER_BAKED_CONFIG_B64="$(printf '%s' "$CONFIG_TEXT" | base64 | tr -d '\n')"
-  BUILD_ARGS+=(--build-arg "WORKER_BAKED_CONFIG_B64=$WORKER_BAKED_CONFIG_B64")
+  WORKER_CONFIG_SECRET="$(mktemp)"
+  trap 'rm -f "$WORKER_CONFIG_SECRET"' EXIT
+  printf '%s' "$CONFIG_TEXT" > "$WORKER_CONFIG_SECRET"
+  BUILD_SECRETS+=(--secret "id=worker_config,src=$WORKER_CONFIG_SECRET")
 fi
 
 echo "Building worker image:"
@@ -131,7 +133,7 @@ docker buildx build \
   -f "$ROOT_DIR/services/worker/Dockerfile" \
   -t "$BASE_IMAGE:$TAG" \
   -t "$BASE_IMAGE:latest" \
-  "${BUILD_ARGS[@]}" \
+  "${BUILD_SECRETS[@]}" \
   "${OUTPUT_FLAG[@]}" \
   "$ROOT_DIR"
 
