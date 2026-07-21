@@ -1,8 +1,10 @@
-package queue
+package main
 
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 )
 
 var errRealtimeQueueNotImplemented = errors.New("Firebase realtime queue listener is not implemented")
@@ -23,10 +25,34 @@ func (r *Runner) RunRealtime(ctx context.Context) error {
 // execution context as soon as cancellationRequested becomes true or ownership
 // of the lease is lost.
 //
-// TODO: Subscribe to job changes, call cancel for cancellation or lease loss,
-// wait for the active command/process group to stop, preserve partial output,
-// and let the runner publish the terminal cancelled state. The watcher must
-// exit when ctx is done and must not cancel a job owned by another worker.
 func (r *Runner) WatchActiveCancellation(ctx context.Context, job Job, cancel context.CancelFunc) error {
-	return errors.New("active job cancellation watcher is not implemented")
+	jobID := stringValue(job["id"])
+	if jobID == "" {
+		return fmt.Errorf("cannot watch cancellation without a job ID")
+	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			current := Job{}
+			if err := r.client.Get(ctx, "jobs/"+jobID, &current); err != nil {
+				continue
+			}
+			if boolValue(current["cancellationRequested"]) {
+				cancel()
+				return nil
+			}
+			if workerID := stringValue(current["workerId"]); workerID != "" && workerID != r.settings.WorkerID {
+				cancel()
+				return fmt.Errorf("job lease moved to worker %s", workerID)
+			}
+			status := stringValue(current["status"])
+			if status == "completed" || status == "failed" || status == "cancelled" {
+				return nil
+			}
+		}
+	}
 }

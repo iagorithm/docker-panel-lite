@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -131,6 +134,10 @@ func ContainerAction(action string, candidates []string) (string, *string, error
 }
 
 func ContainerExec(candidates []string, command string, timeoutSeconds int) (CommandResult, error) {
+	return ContainerExecContext(context.Background(), candidates, command, timeoutSeconds)
+}
+
+func ContainerExecContext(ctx context.Context, candidates []string, command string, timeoutSeconds int) (CommandResult, error) {
 	containerID, name, err := resolveContainer(candidates)
 	if err != nil {
 		return CommandResult{}, err
@@ -143,7 +150,10 @@ func ContainerExec(candidates []string, command string, timeoutSeconds int) (Com
 		return CommandResult{}, err
 	}
 	timeout := boundedTimeout(timeoutSeconds)
-	output, exitCode, timedOut := dockerOutputWithExit(timeout, "", nil, "exec", "-i", containerID, "/bin/sh", "-lc", shellCommand)
+	output, exitCode, timedOut, cancelled := dockerOutputWithExitContext(ctx, timeout, "", nil, "exec", "-i", containerID, "/bin/sh", "-lc", shellCommand)
+	if cancelled {
+		return CommandResult{Message: "Container command cancelled", Output: tailText(output, 120000), ExitCode: 130}, context.Canceled
+	}
 	if timedOut {
 		message := fmt.Sprintf("Command timed out after %ds", int(timeout/time.Second))
 		if strings.TrimSpace(output) == "" {
@@ -246,12 +256,19 @@ func StopDockerfileContainer(project string) (string, error) {
 }
 
 func RunWorkerCommand(command string, workdir string, environment map[string]string, timeoutSeconds int) (CommandResult, error) {
+	return RunWorkerCommandContext(context.Background(), command, workdir, environment, timeoutSeconds)
+}
+
+func RunWorkerCommandContext(ctx context.Context, command string, workdir string, environment map[string]string, timeoutSeconds int) (CommandResult, error) {
 	args, err := nonInteractiveCommand(command)
 	if err != nil {
 		return CommandResult{}, err
 	}
 	timeout := boundedTimeout(timeoutSeconds)
-	output, exitCode, timedOut := commandOutputWithExit(timeout, workdir, environment, args[0], args[1:]...)
+	output, exitCode, timedOut, cancelled := commandOutputWithExitContext(ctx, timeout, workdir, environment, args[0], args[1:]...)
+	if cancelled {
+		return CommandResult{Message: "Command cancelled", Output: tailText(output, 120000), ExitCode: 130}, context.Canceled
+	}
 	if timedOut {
 		message := fmt.Sprintf("Command timed out after %ds", int(timeout/time.Second))
 		if strings.TrimSpace(output) == "" {
@@ -463,7 +480,16 @@ func dockerOutputWithExit(timeout time.Duration, workdir string, environment map
 	return commandOutputWithExit(timeout, workdir, environment, "docker", args...)
 }
 
+func dockerOutputWithExitContext(ctx context.Context, timeout time.Duration, workdir string, environment map[string]string, args ...string) (string, int, bool, bool) {
+	return commandOutputWithExitContext(ctx, timeout, workdir, environment, "docker", args...)
+}
+
 func commandOutputWithExit(timeout time.Duration, workdir string, environment map[string]string, name string, args ...string) (string, int, bool) {
+	output, exitCode, timedOut, _ := commandOutputWithExitContext(context.Background(), timeout, workdir, environment, name, args...)
+	return output, exitCode, timedOut
+}
+
+func commandOutputWithExitContext(ctx context.Context, timeout time.Duration, workdir string, environment map[string]string, name string, args ...string) (string, int, bool, bool) {
 	cmd := exec.Command(name, args...)
 	if strings.TrimSpace(workdir) != "" {
 		cmd.Dir = workdir
@@ -475,23 +501,48 @@ func commandOutputWithExit(timeout time.Duration, workdir string, environment ma
 		}
 		cmd.Env = env
 	}
-	timedOut := false
-	timer := time.AfterFunc(timeout, func() {
-		if cmd.Process != nil {
-			timedOut = true
-			_ = cmd.Process.Kill()
-		}
-	})
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Start(); err != nil {
+		return "", 1, false, false
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	output, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(output))
+	var err error
+	timedOut := false
+	cancelled := false
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		cancelled = true
+		killProcessGroup(cmd.Process.Pid)
+		err = <-done
+	case <-timer.C:
+		timedOut = true
+		killProcessGroup(cmd.Process.Pid)
+		err = <-done
+	}
+	text := strings.TrimSpace(output.String())
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			return text, exitError.ExitCode(), timedOut
+			return text, exitError.ExitCode(), timedOut, cancelled
 		}
-		return text, 1, timedOut
+		return text, 1, timedOut, cancelled
 	}
-	return text, 0, timedOut
+	return text, 0, timedOut, cancelled
+}
+
+func killProcessGroup(pid int) {
+	if pid <= 0 {
+		return
+	}
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
 }
 
 func compactProcessError(output string) string {

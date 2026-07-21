@@ -1,7 +1,8 @@
-package queue
+package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -10,17 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"docker-panel-lite-worker-go/worker/config"
 	"docker-panel-lite-worker-go/worker/core"
-	"docker-panel-lite-worker-go/worker/executor"
-	"docker-panel-lite-worker-go/worker/firebase_runtime"
-	"docker-panel-lite-worker-go/worker/heartbeat"
 )
 
 type Runner struct {
-	client    *firebase_runtime.Client
-	settings  config.Settings
-	heartbeat *heartbeat.Agent
+	client    *Client
+	settings  Settings
+	heartbeat *Agent
 
 	mu     sync.Mutex
 	active map[string]bool
@@ -28,7 +25,7 @@ type Runner struct {
 
 type Job map[string]interface{}
 
-func New(client *firebase_runtime.Client, settings config.Settings, agent *heartbeat.Agent) *Runner {
+func NewRunner(client *Client, settings Settings, agent *Agent) *Runner {
 	return &Runner{
 		client:    client,
 		settings:  settings,
@@ -166,8 +163,27 @@ func (r *Runner) process(jobID string, shard string) {
 	renewalCancel = cancel
 	go r.renewLease(renewCtx, job)
 
-	message, err := r.execute(ctx, job)
+	executionCtx, executionCancel := context.WithCancel(ctx)
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	defer executionCancel()
+	defer stopWatching()
+	go func() {
+		if err := r.WatchActiveCancellation(watchCtx, job, executionCancel); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("job %s cancellation watcher stopped: %v", jobID, err)
+		}
+	}()
+
+	message, err := r.execute(executionCtx, job)
+	stopWatching()
 	if err != nil {
+		current := Job{}
+		_ = r.client.Get(ctx, "jobs/"+jobID, &current)
+		if errors.Is(err, context.Canceled) && boolValue(current["cancellationRequested"]) {
+			_ = r.publish(ctx, job, map[string]interface{}{"status": "cancelled", "message": "Cancelled during execution", "finishedAt": nowMillis(), "leaseExpiresAt": nil})
+			_ = r.client.Delete(ctx, queuePath(r.settings.PoolID, shard)+"/"+jobID)
+			log.Printf("job %s cancelled during execution", jobID)
+			return
+		}
 		log.Printf("job %s failed: %v", jobID, err)
 		_ = r.fail(ctx, job, err)
 		_ = r.client.Delete(ctx, queuePath(r.settings.PoolID, shard)+"/"+jobID)
@@ -257,7 +273,7 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 				return "", fmt.Errorf("repository no longer exists")
 			}
 		}
-		result, err := executor.ExecuteWorkerCommand(ctx, r.client, job, repository, r.settings)
+		result, err := ExecuteWorkerCommand(ctx, r.client, job, repository, r.settings)
 		if err != nil {
 			return "", err
 		}
@@ -269,7 +285,7 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 		}
 		return result.Message, nil
 	case "container_exec":
-		result, err := core.ContainerExec(containerCandidates(job), stringValue(job["command"]), intValue(job["timeoutSeconds"]))
+		result, err := core.ContainerExecContext(ctx, containerCandidates(job), stringValue(job["command"]), intValue(job["timeoutSeconds"]))
 		if err != nil {
 			return "", err
 		}
@@ -301,7 +317,7 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 		if len(repository) == 0 {
 			return "", fmt.Errorf("repository no longer exists")
 		}
-		result, err := executor.Execute(ctx, r.client, job, repository, r.settings)
+		result, err := Execute(ctx, r.client, job, repository, r.settings)
 		if err != nil {
 			return "", err
 		}
@@ -562,27 +578,6 @@ func jobActionLabel(action string) string {
 	return action
 }
 
-func stringValue(value interface{}) string {
-	if text, ok := value.(string); ok {
-		return strings.TrimSpace(text)
-	}
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
-}
-
-func boolValue(value interface{}) bool {
-	if typed, ok := value.(bool); ok {
-		return typed
-	}
-	return strings.EqualFold(stringValue(value), "true")
-}
-
-func intValue(value interface{}) int {
-	return int(int64Value(value))
-}
-
 func int64Value(value interface{}) int64 {
 	switch typed := value.(type) {
 	case int64:
@@ -598,10 +593,6 @@ func int64Value(value interface{}) int64 {
 		}
 	}
 	return 0
-}
-
-func nowMillis() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
 func maxInt(left int, right int) int {

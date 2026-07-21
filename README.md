@@ -23,6 +23,7 @@ Run these commands from the repository root.
 | `./run.sh build all` | Same as `./run.sh build`. |
 | `./run.sh build go` | Builds only the local Go worker image. |
 | `cd services/worker-go && go test ./...` | Runs all Go worker tests. |
+| `bash scripts/check-worker-parity.sh` | Verifies that every shared Python worker module has its matching Go file. |
 | `docker login` | Signs in to Docker Hub before publishing images. |
 | `./run.sh publish` | Builds and pushes both worker images to Docker Hub: Python as `:py` and Go as `:go`. |
 | `./run.sh publish py` | Builds and pushes only the Python worker image as `:py`. |

@@ -2,6 +2,10 @@
 
 This is the Go implementation of the Docker Panel Lite worker. It is intended to run beside the existing Python worker and implement the same Firebase worker protocol.
 
+The source layout follows the Python worker by responsibility and filename.
+See [`../../../services/worker-go/worker/PARITY.md`](../../../services/worker-go/worker/PARITY.md) for the
+Python ↔ Go file map and the rules for keeping future functionality comparable.
+
 Current implementation status:
 
 - Loads the same worker environment variables as the Python worker.
@@ -23,7 +27,7 @@ Current implementation status:
 Not implemented yet:
 
 - Firebase realtime queue listeners. The Go worker currently uses polling.
-- Active command cancellation/interruption after Docker or process execution has started.
+- Active cancellation for long Compose, Docker build, Git, and tunnel setup operations. `worker_command` and `container_exec` are interrupted while running.
 
 Run locally:
 

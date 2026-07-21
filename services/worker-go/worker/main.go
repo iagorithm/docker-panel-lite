@@ -10,12 +10,6 @@ import (
 	"syscall"
 	"time"
 	"unicode"
-
-	"docker-panel-lite-worker-go/worker/config"
-	"docker-panel-lite-worker-go/worker/firebase_runtime"
-	"docker-panel-lite-worker-go/worker/heartbeat"
-	"docker-panel-lite-worker-go/worker/identity"
-	"docker-panel-lite-worker-go/worker/queue"
 )
 
 var workerNames = []string{
@@ -34,18 +28,18 @@ var workerNames = []string{
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	settings, err := config.FromEnvironment()
+	settings, err := FromEnvironment()
 	if err != nil {
 		log.Fatalf("load settings: %v", err)
 	}
 
-	workerToken, err := identity.ResolveWorkerToken(settings.DataDir)
+	workerToken, err := ResolveWorkerToken(settings.DataDir)
 	if err != nil {
 		log.Fatalf("resolve worker token: %v", err)
 	}
-	workerTokenHash := identity.SHA256Hex(workerToken)
+	workerTokenHash := SHA256Hex(workerToken)
 
-	client, err := firebase_runtime.New(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON)
+	client, err := NewFirebaseClient(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON)
 	if err != nil {
 		log.Fatalf("initialize firebase client: %v", err)
 	}
@@ -54,8 +48,8 @@ func main() {
 	defer stop()
 
 	settings.WorkerLabel = resolveWorkerLabel(ctx, client, settings)
-	agent := heartbeat.New(client, settings, workerTokenHash)
-	runner := queue.New(client, settings, agent)
+	agent := NewHeartbeatAgent(client, settings, workerTokenHash)
+	runner := NewRunner(client, settings, agent)
 	log.Printf("Worker claim token for %s (%s): %s", settings.WorkerID, settings.WorkerLabelOrDefault(), workerToken)
 
 	if err := agent.Send(ctx, "online", 0); err != nil {
@@ -91,7 +85,7 @@ func main() {
 	}
 }
 
-func resolveWorkerLabel(ctx context.Context, client *firebase_runtime.Client, settings config.Settings) string {
+func resolveWorkerLabel(ctx context.Context, client *Client, settings Settings) string {
 	agents := map[string]map[string]interface{}{}
 	if err := client.Get(ctx, "workspaces/"+settings.WorkspaceID+"/agents", &agents); err != nil {
 		log.Printf("could not read worker labels: %v", err)
@@ -138,11 +132,4 @@ func normalizedName(value string) string {
 		}
 	}
 	return builder.String()
-}
-
-func stringValue(value interface{}) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return ""
 }

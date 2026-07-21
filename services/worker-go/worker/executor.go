@@ -1,4 +1,4 @@
-package executor
+package main
 
 import (
 	"context"
@@ -11,10 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"docker-panel-lite-worker-go/worker/config"
 	"docker-panel-lite-worker-go/worker/core"
-	"docker-panel-lite-worker-go/worker/firebase_runtime"
-	"docker-panel-lite-worker-go/worker/secrets"
 )
 
 type Result struct {
@@ -23,7 +20,7 @@ type Result struct {
 	Command *core.CommandResult
 }
 
-func Execute(ctx context.Context, client *firebase_runtime.Client, job map[string]interface{}, repository map[string]interface{}, settings config.Settings) (Result, error) {
+func Execute(ctx context.Context, client *Client, job map[string]interface{}, repository map[string]interface{}, settings Settings) (Result, error) {
 	action := stringValue(job["action"])
 	workspaceID := stringValue(job["workspaceId"])
 	switch action {
@@ -171,7 +168,7 @@ func Execute(ctx context.Context, client *firebase_runtime.Client, job map[strin
 	}
 }
 
-func ExecuteWorkerCommand(ctx context.Context, client *firebase_runtime.Client, job map[string]interface{}, repository map[string]interface{}, settings config.Settings) (Result, error) {
+func ExecuteWorkerCommand(ctx context.Context, client *Client, job map[string]interface{}, repository map[string]interface{}, settings Settings) (Result, error) {
 	workspaceID := stringValue(job["workspaceId"])
 	command := stringValue(job["command"])
 	if command == "" {
@@ -195,14 +192,14 @@ func ExecuteWorkerCommand(ctx context.Context, client *firebase_runtime.Client, 
 	if err != nil || !info.IsDir() {
 		return Result{}, fmt.Errorf("working directory not found: %s. Sync or deploy the repository first", workdir)
 	}
-	result, err := core.RunWorkerCommand(command, workdir, environment, intValue(job["timeoutSeconds"]))
+	result, err := core.RunWorkerCommandContext(ctx, command, workdir, environment, intValue(job["timeoutSeconds"]))
 	if err != nil {
 		return Result{}, err
 	}
 	return Result{Message: result.Message, Updates: map[string]interface{}{}, Command: &result}, nil
 }
 
-func loadEnvironment(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string) (map[string]string, error) {
+func loadEnvironment(ctx context.Context, client *Client, repository map[string]interface{}, workspaceID string) (map[string]string, error) {
 	environment := map[string]string{}
 	workspaceEnvironment := interface{}(nil)
 	_ = client.Get(ctx, fmt.Sprintf("workspaces/%s/environment", workspaceID), &workspaceEnvironment)
@@ -320,7 +317,7 @@ func parsePorts(value string) []string {
 	return result
 }
 
-func stoppedTunnelUpdates(settings config.Settings) map[string]interface{} {
+func stoppedTunnelUpdates(settings Settings) map[string]interface{} {
 	return map[string]interface{}{
 		"publicUrl":               "",
 		"publicUrls":              map[string]interface{}{},
@@ -333,7 +330,7 @@ func stoppedTunnelUpdates(settings config.Settings) map[string]interface{} {
 	}
 }
 
-func stopPublicTunnel(repository map[string]interface{}, settings config.Settings) (map[string]interface{}, error) {
+func stopPublicTunnel(repository map[string]interface{}, settings Settings) (map[string]interface{}, error) {
 	project, err := projectName(repository)
 	if err != nil {
 		return nil, err
@@ -342,7 +339,7 @@ func stopPublicTunnel(repository map[string]interface{}, settings config.Setting
 	return stoppedTunnelUpdates(settings), nil
 }
 
-func startPublicTunnel(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings, onlyService string, reset bool) (map[string]interface{}, error) {
+func startPublicTunnel(ctx context.Context, client *Client, repository map[string]interface{}, workspaceID string, settings Settings, onlyService string, reset bool) (map[string]interface{}, error) {
 	project, err := projectName(repository)
 	if err != nil {
 		return nil, err
@@ -422,7 +419,7 @@ func startPublicTunnel(ctx context.Context, client *firebase_runtime.Client, rep
 	}, nil
 }
 
-func repositoryNgrokAuthtoken(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings) (string, error) {
+func repositoryNgrokAuthtoken(ctx context.Context, client *Client, repository map[string]interface{}, workspaceID string, settings Settings) (string, error) {
 	repositoryID := stringValue(repository["id"])
 	if repositoryID == "" {
 		repositoryID = stringValue(repository["alias"])
@@ -431,13 +428,13 @@ func repositoryNgrokAuthtoken(ctx context.Context, client *firebase_runtime.Clie
 		encrypted := map[string]interface{}{}
 		_ = client.Get(ctx, fmt.Sprintf("secrets/ngrok/%s/%s", workspaceID, repositoryID), &encrypted)
 		if len(encrypted) > 0 {
-			return secrets.DecryptSecret(encrypted, settings.EncryptionKey)
+			return DecryptSecret(encrypted, settings.EncryptionKey)
 		}
 	}
 	return stringValue(firstPresent(repository, "ngrokAuthtoken", "ngrokToken", "ngrokApiKey")), nil
 }
 
-func syncRepository(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings) (string, error) {
+func syncRepository(ctx context.Context, client *Client, repository map[string]interface{}, workspaceID string, settings Settings) (string, error) {
 	path, err := repoPath(settings, repository)
 	if err != nil {
 		return "", err
@@ -452,7 +449,7 @@ func syncRepository(ctx context.Context, client *firebase_runtime.Client, reposi
 	return path, nil
 }
 
-func credential(ctx context.Context, client *firebase_runtime.Client, workspaceID string, credentialID string, settings config.Settings) (string, error) {
+func credential(ctx context.Context, client *Client, workspaceID string, credentialID string, settings Settings) (string, error) {
 	if strings.TrimSpace(credentialID) == "" {
 		return "", nil
 	}
@@ -463,10 +460,10 @@ func credential(ctx context.Context, client *firebase_runtime.Client, workspaceI
 	if len(encrypted) == 0 {
 		return "", fmt.Errorf("credential '%s' does not exist", credentialID)
 	}
-	return secrets.DecryptSecret(encrypted, settings.EncryptionKey)
+	return DecryptSecret(encrypted, settings.EncryptionKey)
 }
 
-func repoPath(settings config.Settings, repository map[string]interface{}) (string, error) {
+func repoPath(settings Settings, repository map[string]interface{}) (string, error) {
 	alias := stringValue(repository["alias"])
 	if alias == "" {
 		alias = stringValue(repository["id"])

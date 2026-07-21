@@ -1,24 +1,21 @@
-package heartbeat
+package main
 
 import (
 	"context"
 	"os"
 	"runtime"
-	"time"
 
-	"docker-panel-lite-worker-go/worker/config"
 	"docker-panel-lite-worker-go/worker/core"
-	"docker-panel-lite-worker-go/worker/firebase_runtime"
 )
 
 type Agent struct {
-	client          *firebase_runtime.Client
-	settings        config.Settings
+	client          *Client
+	settings        Settings
 	workerTokenHash string
 	startedAt       int64
 }
 
-func New(client *firebase_runtime.Client, settings config.Settings, workerTokenHash string) *Agent {
+func NewHeartbeatAgent(client *Client, settings Settings, workerTokenHash string) *Agent {
 	return &Agent{
 		client:          client,
 		settings:        settings,
@@ -84,23 +81,12 @@ func (a *Agent) Send(ctx context.Context, status string, activeJobs int) error {
 	return a.client.Put(ctx, path, payload)
 }
 
-func nowMillis() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
-}
-
 func executable() string {
 	value, err := os.Executable()
 	if err != nil {
 		return ""
 	}
 	return value
-}
-
-func stringValue(value interface{}) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return ""
 }
 
 func existingSharedEmails(value interface{}) interface{} {

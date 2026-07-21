@@ -1,4 +1,4 @@
-package secrets
+package main
 
 import (
 	"crypto/aes"
@@ -44,24 +44,4 @@ func DecryptSecret(value map[string]interface{}, encodedKey string) (string, err
 		return "", err
 	}
 	return string(plain), nil
-}
-
-func stringValue(value interface{}) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return ""
-}
-
-func intValue(value interface{}) int {
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		return 0
-	}
 }

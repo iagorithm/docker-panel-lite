@@ -9,9 +9,9 @@ RUN go mod download
 COPY services/worker-go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -ldflags="-s -w \
-      -X docker-panel-lite-worker-go/worker/heartbeat.WorkerVersion=${WORKER_VERSION} \
-      -X docker-panel-lite-worker-go/worker/heartbeat.BuildCommit=${WORKER_COMMIT} \
-      -X docker-panel-lite-worker-go/worker/heartbeat.BuildDate=${WORKER_BUILD_DATE}" \
+      -X docker-panel-lite-worker-go/worker.WorkerVersion=${WORKER_VERSION} \
+      -X docker-panel-lite-worker-go/worker.BuildCommit=${WORKER_COMMIT} \
+      -X docker-panel-lite-worker-go/worker.BuildDate=${WORKER_BUILD_DATE}" \
     -o /out/docker-panel-worker ./worker
 
 FROM alpine:3.22

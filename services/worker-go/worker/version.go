@@ -1,4 +1,4 @@
-package heartbeat
+package main
 
 import "strings"
 

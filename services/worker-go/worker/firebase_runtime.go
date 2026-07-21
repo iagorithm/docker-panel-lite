@@ -1,4 +1,4 @@
-package firebase_runtime
+package main
 
 import (
 	"bytes"
@@ -41,7 +41,7 @@ type serviceAccount struct {
 	TokenURI    string `json:"token_uri"`
 }
 
-func New(databaseURL, serviceAccountJSON string) (*Client, error) {
+func NewFirebaseClient(databaseURL, serviceAccountJSON string) (*Client, error) {
 	databaseURL = strings.TrimRight(strings.TrimSpace(databaseURL), "/")
 	if databaseURL == "" {
 		return nil, errors.New("firebase database URL is required")

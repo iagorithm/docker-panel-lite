@@ -37,9 +37,9 @@ Current Go implementation in `services/worker-go` supports:
 Current Go implementation does **not** support yet:
 
 - Firebase realtime queue listeners. The Go worker currently uses polling.
-- Active command cancellation/interruption. It observes cancellation before execution and at completion.
+- Active cancellation/interruption for `worker_command` and `container_exec`; long deploy, Git, and tunnel setup operations still need context propagation.
 - Firebase realtime queue listeners. The Go worker currently uses polling.
-- Active command cancellation/interruption after Docker or process execution has started.
+- Active cancellation/interruption for the remaining Compose, Docker build, Git, and tunnel setup processes.
 
 Production deploy actions should continue to use the Python worker until the Go worker reaches protocol and executor parity.
 
@@ -115,14 +115,14 @@ Actual implemented Go layout today:
 ```text
 services/worker-go/
   worker/main.go
-  worker/config/config.go
+  worker/config.go
   worker/core/docker_ops.go
-  worker/firebase_runtime/client.go
-  worker/heartbeat/heartbeat.go
-  worker/identity/identity.go
-  worker/queue/runner.go
-  worker/executor/executor.go
-  worker/secrets/secrets.go
+  worker/firebase_runtime.go
+  worker/heartbeat.go
+  worker/identity.go
+  worker/queue.go
+  worker/executor.go
+  worker/secrets.go
   worker/core/git.go
   worker/core/utils.go
   Dockerfile
@@ -154,7 +154,7 @@ services/worker-go/worker/
 | Job leasing | Complete | Implemented | Go uses Firebase REST ETags and conditional PUT. |
 | Lease renewal | Complete | Implemented | Go extends job and lock leases while processing. |
 | Repository lock | Complete | Implemented | Go locks by repository or container key before execution. |
-| Cancellation | Complete | Partial | Go handles cancellation before execution and final status, but does not interrupt active Docker commands yet. |
+| Cancellation | Complete | Partial | Go interrupts active `worker_command` and `container_exec` process groups; Compose, Docker build, Git, and tunnel setup still need context propagation. |
 | `inventory_refresh` | Complete | Implemented | Publishes container inventory. |
 | `container_logs` | Complete | Implemented | Loads Docker log tail into container record. |
 | `container_start` | Complete | Implemented | Uses Docker CLI. |
