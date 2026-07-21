@@ -55,6 +55,15 @@ const commandPresetSchema = z.object({
   command: z.string().trim().min(1).max(4000),
 });
 
+const workerSharingSchema = z.object({
+  workerId: z.string().min(1),
+  sharing: z.enum(["private", "shared", "public"]),
+});
+
+const workerClaimSchema = z.object({
+  workerToken: z.string().trim().min(8),
+});
+
 const repositoryImportSchema = z.object({
   alias: z.string().trim().optional(),
   id: z.string().trim().optional(),
@@ -890,6 +899,52 @@ export async function deleteWorker(formData: FormData) {
   } catch (error) {
     console.error("deleteWorker failed", error);
   }
+}
+
+export async function saveWorkerSharing(formData: FormData) {
+  const user = await requireSession("operator");
+  const input = workerSharingSchema.parse(formObject(formData));
+  const workspaceRoot = `workspaces/${user.workspaceId}`;
+  const agentRef = adminDatabase.ref(`${workspaceRoot}/agents/${input.workerId}`);
+  const snapshot = await agentRef.get();
+  if (!snapshot.exists()) throw new Error("Worker not found");
+  const now = Date.now();
+  await agentRef.update({
+    sharing: input.sharing,
+    shared: input.sharing === "shared" || input.sharing === "public",
+    public: input.sharing === "public",
+    sharingUpdatedAt: now,
+    sharingUpdatedBy: user.uid,
+  });
+  revalidatePath("/dashboard");
+}
+
+export async function claimWorker(formData: FormData) {
+  const user = await requireSession("operator");
+  const parsed = workerClaimSchema.safeParse(formObject(formData));
+  if (!parsed.success) return;
+  const input = parsed.data;
+  const workspaceRoot = `workspaces/${user.workspaceId}`;
+  const tokenHash = createHash("sha256").update(input.workerToken, "utf8").digest("hex");
+  const agentsSnapshot = await adminDatabase.ref(`${workspaceRoot}/agents`).get();
+  const agents = (agentsSnapshot.val() ?? {}) as Record<string, Record<string, unknown>>;
+  const match = Object.entries(agents).find(([, agent]) => {
+    if (!agent || typeof agent !== "object") return false;
+    return agent.workerTokenHash === tokenHash || agent.claimTokenHash === tokenHash;
+  });
+  if (!match) return;
+  const [workerId, agent] = match;
+  const sharing = agent.sharing === "private" || agent.sharing === "shared" || agent.sharing === "public" ? agent.sharing : "public";
+  const now = Date.now();
+  await adminDatabase.ref(`${workspaceRoot}/agents/${workerId}`).update({
+    claimedAt: now,
+    claimedBy: user.uid,
+    ownerUid: user.uid,
+    sharing,
+    shared: sharing === "shared" || sharing === "public",
+    public: sharing === "public",
+  });
+  revalidatePath("/dashboard");
 }
 
 export async function deleteRepository(formData: FormData) {

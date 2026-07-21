@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import logging
 import os
 import platform
 import re
+import secrets as token_secrets
 import signal
 import sys
 import threading
@@ -86,6 +88,29 @@ class Worker:
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_concurrency, thread_name_prefix="job")
         self.listeners = []
         self._docker_cache: tuple[int, dict] = (0, {})
+        self.worker_token = self._resolve_worker_token()
+        self.worker_token_hash = hashlib.sha256(self.worker_token.encode("utf-8")).hexdigest()
+
+    def _resolve_worker_token(self) -> str:
+        configured = os.getenv("WORKER_TOKEN", "").strip()
+        if configured:
+            return configured
+        marker = self.settings.data_dir / "worker-token"
+        try:
+            self.settings.data_dir.mkdir(parents=True, exist_ok=True)
+            if marker.is_file():
+                saved = marker.read_text(encoding="utf-8").strip()
+                if saved:
+                    return saved
+            generated = token_secrets.token_urlsafe(24)
+            marker.write_text(generated + "\n", encoding="utf-8")
+            try:
+                marker.chmod(0o600)
+            except OSError:
+                pass
+            return generated
+        except OSError:
+            return token_secrets.token_urlsafe(24)
 
     def _docker_summary(self) -> dict:
         timestamp = now_ms()
@@ -112,6 +137,14 @@ class Worker:
         return summary
 
     def _worker_payload(self, status: str, active_jobs: int) -> dict:
+        existing = {}
+        try:
+            existing = reference(f"workspaces/{self.settings.workspace_id}/agents/{self.settings.worker_id}").get() or {}
+        except Exception:
+            existing = {}
+        sharing = existing.get("sharing") if isinstance(existing, dict) else None
+        if sharing not in {"private", "shared", "public"}:
+            sharing = "public"
         return {
             "id": self.settings.worker_id,
             "identitySource": self.settings.worker_identity_source,
@@ -140,6 +173,15 @@ class Worker:
             "leaseSeconds": self.settings.lease_seconds,
             "pollSeconds": self.settings.poll_seconds,
             "docker": self._docker_summary(),
+            "sharing": sharing,
+            "shared": sharing in {"shared", "public"},
+            "public": sharing == "public",
+            "sharingUpdatedAt": existing.get("sharingUpdatedAt") if isinstance(existing, dict) else None,
+            "sharingUpdatedBy": existing.get("sharingUpdatedBy") if isinstance(existing, dict) else "",
+            "workerTokenHash": self.worker_token_hash,
+            "claimedAt": existing.get("claimedAt") if isinstance(existing, dict) else None,
+            "claimedBy": existing.get("claimedBy") if isinstance(existing, dict) else "",
+            "ownerUid": existing.get("ownerUid") if isinstance(existing, dict) else "",
         }
 
     def _resolve_worker_label(self) -> str:
@@ -173,6 +215,7 @@ class Worker:
 
     def start(self) -> None:
         self.worker_label = self._resolve_worker_label()
+        LOG.info("Worker claim token for %s (%s): %s", self.settings.worker_id, self.worker_label or "unnamed", self.worker_token)
         self._heartbeat(reset_inventory=True)
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         for shard in self.settings.shards:

@@ -81,6 +81,15 @@ export type Agent = {
   hostname: string;
   location?: string;
   poolId?: string;
+  sharing?: "private" | "shared" | "public";
+  shared?: boolean;
+  public?: boolean;
+  sharingUpdatedAt?: number;
+  sharingUpdatedBy?: string;
+  workerTokenHash?: string;
+  claimedAt?: number;
+  claimedBy?: string;
+  ownerUid?: string;
   activeJobs: number;
   maxConcurrency: number;
   shards?: string[];

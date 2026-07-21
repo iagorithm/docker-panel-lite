@@ -8,6 +8,7 @@ import { useFormStatus } from "react-dom";
 
 import {
   cancelDeployment,
+  claimWorker,
   deleteCommandPreset,
   deleteCredential,
   deleteRepository,
@@ -24,6 +25,7 @@ import {
   saveCredential,
   saveCredentialsJson,
   saveRepository,
+  saveWorkerSharing,
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
@@ -292,6 +294,17 @@ function workerStatusLabel(agent: Agent, now: number) {
   if (agent.status === "stopping") return "stopping";
   if (isWorkerOnline(agent, now)) return "online";
   return "offline";
+}
+
+function workerSharing(agent: Agent): "private" | "shared" | "public" {
+  if (agent.sharing === "public" || agent.public) return "public";
+  if (agent.sharing === "shared" || agent.shared) return "shared";
+  return "private";
+}
+
+function workerSharingLabel(agent: Agent) {
+  const sharing = workerSharing(agent);
+  return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
 }
 
 function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: number; onOpenWorkers: () => void }) {
@@ -1377,8 +1390,14 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
   return (
     <section className="workers-panel">
       <div className="workers-panel-header">
-        <strong>Workers</strong>
-        <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
+        <div>
+          <strong>Workers</strong>
+          <span>{sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length}/{sortedAgents.length} online</span>
+        </div>
+        <form action={claimWorker} className="worker-claim-form">
+          <input name="workerToken" placeholder="Worker token" autoComplete="off" />
+          <PendingSubmitButton className="secondary" tooltip="Claim worker">Claim</PendingSubmitButton>
+        </form>
       </div>
       <div className="workers-grid">{sortedAgents.map((agent) => {
         const online = isWorkerOnline(agent, now);
@@ -1387,6 +1406,7 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
         const canDelete = !online && agent.status === "offline" && now - agent.lastHeartbeat >= orphanWorkerDeleteAge;
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
+        const sharing = workerSharing(agent);
         const deleteTitle = ownedContainerCount
           ? `Remove stale worker record and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
           : "Remove stale worker record";
@@ -1396,12 +1416,18 @@ function WorkersPanel({ agents, containers, now }: { agents: Agent[]; containers
               <StatusBadge label={statusLabel} running={online} />
               <div className="worker-card-title">
                 <strong>{displayName}</strong>
-                <small>{agent.poolId || "default"} · {agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {elapsed(agent.lastHeartbeat)}</small>
+                <small>{agent.poolId || "default"} · {agent.activeJobs || 0}/{agent.maxConcurrency || 1} jobs · {workerSharingLabel(agent)} · {elapsed(agent.lastHeartbeat)}</small>
               </div>
               <span className="worker-card-chevron"><Icon name="chevron" /></span>
             </summary>
             <div className="worker-details">
+              <form action={saveWorkerSharing} className="worker-sharing-form">
+                <input type="hidden" name="workerId" value={agent.id} />
+                <label>Sharing<select name="sharing" defaultValue={sharing}><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select></label>
+                <PendingSubmitButton className="secondary" tooltip="Save worker sharing">Save</PendingSubmitButton>
+              </form>
               <span><strong>ID</strong><small>{agent.id}</small></span>
+              <span><strong>Claim</strong><small>{agent.claimedAt ? `claimed ${elapsed(agent.claimedAt)}` : "unclaimed"}</small></span>
               <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
               <span><strong>Host</strong><small>{agent.hostname || "Unknown"}{agent.location ? ` · ${agent.location}` : ""}</small></span>
               <span><strong>Shards</strong><small>{agent.shards?.length ? agent.shards.join(", ") : "all/default"}</small></span>
