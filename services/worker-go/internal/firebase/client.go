@@ -1,0 +1,212 @@
+package firebase
+
+import (
+	"bytes"
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+const tokenURL = "https://oauth2.googleapis.com/token"
+const databaseScope = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email"
+
+type Client struct {
+	databaseURL string
+	account     serviceAccount
+	httpClient  *http.Client
+
+	mu          sync.Mutex
+	accessToken string
+	expiresAt   time.Time
+}
+
+type serviceAccount struct {
+	ClientEmail string `json:"client_email"`
+	PrivateKey  string `json:"private_key"`
+	TokenURI    string `json:"token_uri"`
+}
+
+func New(databaseURL, serviceAccountJSON string) (*Client, error) {
+	databaseURL = strings.TrimRight(strings.TrimSpace(databaseURL), "/")
+	if databaseURL == "" {
+		return nil, errors.New("firebase database URL is required")
+	}
+	if strings.TrimSpace(serviceAccountJSON) == "" {
+		return nil, errors.New("FIREBASE_SERVICE_ACCOUNT_JSON is required for the Go worker")
+	}
+	var account serviceAccount
+	if err := json.Unmarshal([]byte(serviceAccountJSON), &account); err != nil {
+		return nil, fmt.Errorf("parse service account JSON: %w", err)
+	}
+	if account.ClientEmail == "" || account.PrivateKey == "" {
+		return nil, errors.New("service account JSON must include client_email and private_key")
+	}
+	if account.TokenURI == "" {
+		account.TokenURI = tokenURL
+	}
+	return &Client{
+		databaseURL: databaseURL,
+		account:     account,
+		httpClient:  &http.Client{Timeout: 20 * time.Second},
+	}, nil
+}
+
+func (c *Client) Get(ctx context.Context, path string, out interface{}) error {
+	return c.request(ctx, http.MethodGet, path, nil, out)
+}
+
+func (c *Client) Put(ctx context.Context, path string, value interface{}) error {
+	return c.request(ctx, http.MethodPut, path, value, nil)
+}
+
+func (c *Client) Patch(ctx context.Context, path string, value interface{}) error {
+	return c.request(ctx, http.MethodPatch, path, value, nil)
+}
+
+func (c *Client) request(ctx context.Context, method, path string, body interface{}, out interface{}) error {
+	token, err := c.token(ctx)
+	if err != nil {
+		return err
+	}
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(payload)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, c.url(path, token), reader)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(response.Body)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("firebase %s %s failed: %s: %s", method, path, response.Status, strings.TrimSpace(string(responseBody)))
+	}
+	if out != nil && len(bytes.TrimSpace(responseBody)) > 0 && string(bytes.TrimSpace(responseBody)) != "null" {
+		return json.Unmarshal(responseBody, out)
+	}
+	return nil
+}
+
+func (c *Client) url(path string, token string) string {
+	clean := strings.Trim(path, "/")
+	query := url.Values{}
+	query.Set("access_token", token)
+	if clean == "" {
+		return c.databaseURL + "/.json?" + query.Encode()
+	}
+	return c.databaseURL + "/" + clean + ".json?" + query.Encode()
+}
+
+func (c *Client) token(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	if c.accessToken != "" && time.Now().Before(c.expiresAt.Add(-60*time.Second)) {
+		token := c.accessToken
+		c.mu.Unlock()
+		return token, nil
+	}
+	c.mu.Unlock()
+
+	jwt, err := c.signedJWT()
+	if err != nil {
+		return "", err
+	}
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	form.Set("assertion", jwt)
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.account.TokenURI, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("oauth token exchange failed: %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", err
+	}
+	if payload.AccessToken == "" {
+		return "", errors.New("oauth token response did not include access_token")
+	}
+	c.mu.Lock()
+	c.accessToken = payload.AccessToken
+	c.expiresAt = time.Now().Add(time.Duration(payload.ExpiresIn) * time.Second)
+	c.mu.Unlock()
+	return payload.AccessToken, nil
+}
+
+func (c *Client) signedJWT() (string, error) {
+	now := time.Now().Unix()
+	header := map[string]string{"alg": "RS256", "typ": "JWT"}
+	claims := map[string]interface{}{
+		"iss":   c.account.ClientEmail,
+		"scope": databaseScope,
+		"aud":   c.account.TokenURI,
+		"iat":   now,
+		"exp":   now + 3600,
+	}
+	headerJSON, _ := json.Marshal(header)
+	claimsJSON, _ := json.Marshal(claims)
+	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(claimsJSON)
+	key, err := parsePrivateKey(c.account.PrivateKey)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	if err != nil {
+		return "", err
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+func parsePrivateKey(raw string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(raw))
+	if block == nil {
+		return nil, errors.New("private key is not PEM encoded")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("private key is not RSA")
+	}
+	return rsaKey, nil
+}

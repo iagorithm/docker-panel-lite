@@ -64,6 +64,44 @@ services:
       - APP_CLONE_DIR
     restart: unless-stopped
 
+  worker-go:
+    profiles:
+      - go-worker
+    image: ${WORKER_GO_IMAGE:-cjarn/docker-panel-lite-worker:go}
+    build:
+      context: .
+      dockerfile: services/worker-go/Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./repos:/app/clones
+      - ./data:/app/data
+    environment:
+      - FIREBASE_DATABASE_URL
+      - NEXT_PUBLIC_FIREBASE_DATABASE_URL
+      - NEXT_PUBLIC_FIREBASE_PROJECT_ID
+      - FIREBASE_SERVICE_ACCOUNT_JSON
+      - CREDENTIAL_ENCRYPTION_KEY
+      - WORKER_WORKSPACE_ID
+      - WORKER_POOL
+      - WORKER_ID
+      - WORKER_TOKEN
+      - WORKER_MACHINE_ID
+      - WORKER_LABEL
+      - WORKER_LOCATION
+      - WORKER_SHARDS
+      - WORKER_MAX_CONCURRENCY
+      - WORKER_LEASE_SECONDS
+      - WORKER_POLL_SECONDS
+      - QUEUE_SHARDS
+      - TRAEFIK_ENABLED
+      - TRAEFIK_NETWORK
+      - NGROK_ENABLED
+      - NGROK_AUTHTOKEN
+      - NGROK_REGION
+      - APP_DATA_DIR
+      - APP_CLONE_DIR
+    restart: unless-stopped
+
   traefik:
     image: traefik:v3.3
     profiles:

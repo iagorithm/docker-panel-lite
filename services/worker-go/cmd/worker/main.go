@@ -1,0 +1,66 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"docker-panel-lite-worker-go/internal/config"
+	"docker-panel-lite-worker-go/internal/firebase"
+	"docker-panel-lite-worker-go/internal/heartbeat"
+	"docker-panel-lite-worker-go/internal/identity"
+)
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
+	settings, err := config.FromEnvironment()
+	if err != nil {
+		log.Fatalf("load settings: %v", err)
+	}
+
+	workerToken, err := identity.ResolveWorkerToken(settings.DataDir)
+	if err != nil {
+		log.Fatalf("resolve worker token: %v", err)
+	}
+	workerTokenHash := identity.SHA256Hex(workerToken)
+
+	client, err := firebase.New(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON)
+	if err != nil {
+		log.Fatalf("initialize firebase client: %v", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	agent := heartbeat.New(client, settings, workerTokenHash)
+	log.Printf("Worker claim token for %s (%s): %s", settings.WorkerID, settings.WorkerLabelOrDefault(), workerToken)
+
+	if err := agent.Send(ctx, "online", 0); err != nil {
+		log.Printf("heartbeat failed: %v", err)
+	}
+
+	ticker := time.NewTicker(time.Duration(settings.PollSeconds) * time.Second)
+	defer ticker.Stop()
+
+	log.Printf("Go worker %s (%s) online pool=%s shards=%v", settings.WorkerID, settings.WorkerLabelOrDefault(), settings.PoolID, settings.Shards)
+	for {
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			if err := agent.Send(shutdownCtx, "offline", 0); err != nil {
+				log.Printf("offline heartbeat failed: %v", err)
+			}
+			log.Printf("Go worker %s stopped", settings.WorkerID)
+			return
+		case <-ticker.C:
+			if err := agent.Send(ctx, "online", 0); err != nil {
+				log.Printf("heartbeat failed: %v", err)
+			}
+		}
+	}
+}

@@ -1716,6 +1716,10 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
         const displayName = agent.label || agent.hostname || agent.id;
         const docker = agent.docker;
         const isOwner = canManageWorker(agent as WorkerAccessRecord, currentUser);
+        const runtimeName = agent.runtime === "go" ? "Go" : "Python";
+        const runtimeVersion = agent.runtime === "go"
+          ? agent.runtimeVersion || agent.goVersion || "unknown"
+          : agent.pythonVersion || "unknown";
         const deleteTitle = ownedContainerCount
           ? `Remove stale worker record and ${ownedContainerCount} stale container record${ownedContainerCount === 1 ? "" : "s"}`
           : "Remove stale worker record";
@@ -1745,7 +1749,7 @@ function WorkersPanel({ agents, containers, now, currentUser }: { agents: Agent[
               <span><strong>Identity</strong><small>{agent.identitySource || "unknown"}</small></span>
               <span><strong>Host</strong><small>{agent.hostname || "Unknown"}{agent.location ? ` · ${agent.location}` : ""}</small></span>
               <span><strong>Shards</strong><small>{agent.shards?.length ? agent.shards.join(", ") : "all/default"}</small></span>
-              <span><strong>Runtime</strong><small>Python {agent.pythonVersion || "unknown"} · {agent.machine || agent.system || "host"}</small></span>
+              <span><strong>Runtime</strong><small>{runtimeName} {runtimeVersion} · {agent.machine || agent.system || agent.platform || "host"}</small></span>
               <span><strong>Paths</strong><small>{agent.cloneDir || "/app/clones"} · {agent.dataDir || "/app/data"}</small></span>
               <span><strong>Docker</strong><small>{docker?.available ? `${docker.containersRunning || 0}/${docker.containers || 0} running · ${docker.images || 0} images · ${docker.serverVersion || "Docker"}` : docker?.error || "Unavailable"}</small></span>
               <span><strong>Timing</strong><small>lease {agent.leaseSeconds || 90}s · poll {agent.pollSeconds || 5}s · started {elapsed(agent.startedAt)}</small></span>

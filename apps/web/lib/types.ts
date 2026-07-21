@@ -122,6 +122,11 @@ export type Agent = {
   startedAt?: number;
   stoppingAt?: number;
   pid?: number;
+  runtime?: string;
+  runtimeVersion?: string;
+  workerVersion?: string;
+  features?: string[];
+  goVersion?: string;
   pythonVersion?: string;
   platform?: string;
   system?: string;

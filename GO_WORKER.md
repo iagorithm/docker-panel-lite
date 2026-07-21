@@ -310,18 +310,20 @@ Acceptance criteria:
 
 ### Phase 1: Minimal Go Worker
 
+Status: partially implemented in `services/worker-go`.
+
 Deliverables:
 
-- `services/worker-go` scaffold.
-- Config loader.
-- Firebase Admin client setup.
-- Persistent worker ID.
-- Persistent worker token.
-- Worker token SHA-256 hash.
-- Heartbeat writer.
-- Online/offline lifecycle.
-- Docker summary.
-- Runtime metadata in heartbeat.
+- `services/worker-go` scaffold. Done.
+- Config loader. Done.
+- Firebase REST client with service-account OAuth. Done.
+- Persistent worker ID. Done.
+- Persistent worker token. Done.
+- Worker token SHA-256 hash. Done.
+- Heartbeat writer. Done.
+- Online/offline lifecycle. Done.
+- Docker summary. Done.
+- Runtime metadata in heartbeat. Done.
 
 Acceptance criteria:
 
