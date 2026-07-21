@@ -35,8 +35,8 @@ services:
     image: ${WORKER_IMAGE:-cjarn/docker-panel-lite-worker:latest}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./repos:/app/clones
-      - ./data:/app/data
+      - ./volume/repos/worker-py:/app/clones
+      - ./volume/data/worker-py:/app/data
     environment:
       - FIREBASE_DATABASE_URL
       - NEXT_PUBLIC_FIREBASE_DATABASE_URL
@@ -71,8 +71,8 @@ services:
       dockerfile: services/worker-go/Dockerfile
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./repos-go:/app/clones
-      - ./data-go:/app/data
+      - ./volume/repos/worker-go:/app/clones
+      - ./volume/data/worker-go:/app/data
     environment:
       FIREBASE_DATABASE_URL: ${FIREBASE_DATABASE_URL:-}
       NEXT_PUBLIC_FIREBASE_DATABASE_URL: ${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}

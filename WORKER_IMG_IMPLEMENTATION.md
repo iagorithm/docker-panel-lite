@@ -234,8 +234,8 @@ The worker needs three mounts:
 
 ```yaml
 - /var/run/docker.sock:/var/run/docker.sock
-- ./repos:/app/clones
-- ./data:/app/data
+- ./volume/repos/worker-py:/app/clones
+- ./volume/data/worker-py:/app/data
 ```
 
 Their responsibilities are:
@@ -269,7 +269,7 @@ The identity source is published to Firebase as `identitySource`, making it
 possible to diagnose whether an ID came from an environment override, host
 fingerprint, marker file, or fallback.
 
-Persisting `./data` is essential. It prevents a recreated container from
+Persisting `./volume/data/worker-py` is essential. It prevents a recreated container from
 appearing as a new orphan worker.
 
 ## 7. Stable Creative Worker Names

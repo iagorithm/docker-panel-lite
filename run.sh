@@ -120,7 +120,11 @@ worker_image_ref() {
 }
 
 prepare_runtime_dirs() {
-  mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/repos" "$ROOT_DIR/data-go" "$ROOT_DIR/repos-go"
+  mkdir -p \
+    "$ROOT_DIR/volume/data/worker-py" \
+    "$ROOT_DIR/volume/repos/worker-py" \
+    "$ROOT_DIR/volume/data/worker-go" \
+    "$ROOT_DIR/volume/repos/worker-go"
 }
 
 main() {

@@ -70,17 +70,17 @@ When the worker starts, it prints a claim token in its logs:
 Worker claim token for worker-default-... (Mexica): ...
 ```
 
-Paste that token in the Workers tab to claim the worker. Unclaimed workers are hidden, and a newly claimed worker is private to its owner by default. The owner can later make it public or share it with specific email addresses. If you need to pin the token yourself, set `WORKER_TOKEN` in `.env`; otherwise it is generated once and stored in `./data/worker-token`.
+Paste that token in the Workers tab to claim the worker. Unclaimed workers are hidden, and a newly claimed worker is private to its owner by default. The owner can later make it public or share it with specific email addresses. If you need to pin the token yourself, set `WORKER_TOKEN` in `.env`; otherwise it is generated once and stored in `./volume/data/worker-py/worker-token`.
 
 The compose file mounts Docker and local worker state:
 
 ```yaml
 /var/run/docker.sock:/var/run/docker.sock
-./repos:/app/clones
-./data:/app/data
+./volume/repos/worker-py:/app/clones
+./volume/data/worker-py:/app/data
 ```
 
-Keep `./data` on the machine if you want the worker identity to remain stable.
+Keep `./volume/data/worker-py` on the machine if you want the worker identity to remain stable.
 
 ## Local Development Build
 

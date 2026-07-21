@@ -25,7 +25,11 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/repos" "$ROOT_DIR/data" "$ROOT_DIR/repos-go" "$ROOT_DIR/data-go"
+mkdir -p \
+  "$ROOT_DIR/volume/data/worker-py" \
+  "$ROOT_DIR/volume/repos/worker-py" \
+  "$ROOT_DIR/volume/data/worker-go" \
+  "$ROOT_DIR/volume/repos/worker-go"
 
 # Override Docker Hub images configured in .env with explicitly local tags.
 export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"

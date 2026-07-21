@@ -24,5 +24,6 @@ streamlit/repos/
 data/
 repos/
 clones/
+volume/
 .gocache/
 .pycache-check/
