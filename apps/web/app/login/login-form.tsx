@@ -67,7 +67,7 @@ export function LoginForm() {
       <label>Email<input name="email" type="email" autoComplete="email" required /></label>
       <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
       {error ? <p className="error">{error}</p> : null}
-      <button type="submit" aria-label={busy === "email" ? "Signing in with email" : undefined} disabled={Boolean(busy)}>{busy === "email" ? <span className="button-spinner" aria-hidden="true" /> : "Continue"}</button>
+      <button type="submit" aria-label={busy === "email" ? "Signing in with email" : undefined} disabled={Boolean(busy)}>{busy === "email" ? <span className="button-spinner" aria-hidden="true" /> : "Start workspace"}</button>
       <button className="auth-google-button" type="button" aria-label={busy === "google" ? "Signing in with Gmail" : undefined} onClick={signInWithGoogle} disabled={Boolean(busy)}>
         {busy === "google" ? (
           <span className="button-spinner" aria-hidden="true" />

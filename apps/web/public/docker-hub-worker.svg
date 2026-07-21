@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="920" viewBox="0 0 1440 920" role="img" aria-labelledby="title desc">
+  <title id="title">Docker Hub worker image preview</title>
+  <desc id="desc">A polished Docker Hub style preview for the docker-panel-lite worker image.</desc>
+  <rect width="1440" height="920" fill="#eef5ff"/>
+  <rect x="80" y="70" width="1280" height="780" rx="42" fill="#ffffff"/>
+  <rect x="80" y="70" width="1280" height="92" rx="42" fill="#f7fbff"/>
+  <path d="M80 162h1280" stroke="#d6e5f7" stroke-width="2"/>
+  <g transform="translate(124 101)">
+    <rect x="0" y="20" width="104" height="42" rx="8" fill="#1d63ed"/>
+    <rect x="10" y="9" width="16" height="12" rx="2" fill="#1d63ed"/>
+    <rect x="30" y="9" width="16" height="12" rx="2" fill="#1d63ed"/>
+    <rect x="50" y="9" width="16" height="12" rx="2" fill="#1d63ed"/>
+    <rect x="30" y="-7" width="16" height="12" rx="2" fill="#1d63ed"/>
+    <path d="M14 45c17 22 65 23 88-6 8 3 18 1 25-6-5 15-18 28-35 36-30 14-70 10-92-15 5 0 10-3 14-9Z" fill="#1d63ed"/>
+    <circle cx="108" cy="31" r="4" fill="#ffffff"/>
+  </g>
+  <text x="270" y="126" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" fill="#102033">Docker Hub</text>
+  <text x="270" y="150" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="600" fill="#5a6b7f">Verified worker image for Docker Panel Lite</text>
+  <rect x="1108" y="101" width="188" height="38" rx="19" fill="#e8f1ff" stroke="#bdd4f4"/>
+  <text x="1202" y="126" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" fill="#1859c9">latest</text>
+  <text x="124" y="238" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#64748b">IMAGE</text>
+  <text x="124" y="294" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="850" fill="#0f172a">cjarn/docker-panel-lite-worker</text>
+  <text x="124" y="330" font-family="Inter, Arial, sans-serif" font-size="22" fill="#526175">Remote execution worker for container deployments, sync jobs, logs, and tunnels.</text>
+  <rect x="124" y="388" width="1192" height="118" rx="22" fill="#0f172a"/>
+  <text x="164" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#91f0bb">docker run</text>
+  <text x="306" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#e2e8f0">--env-file .env cjarn/docker-panel-lite-worker:latest</text>
+  <text x="164" y="468" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#94a3b8"># copy the Worker claim token from the logs and claim it in the panel</text>
+  <g transform="translate(124 568)">
+    <rect width="360" height="154" rx="24" fill="#f8fbff" stroke="#d7e6f8"/>
+    <circle cx="54" cy="54" r="20" fill="#dcfce7"/>
+    <path d="m44 54 7 7 14-17" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="90" y="54" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Realtime worker</text>
+    <text x="90" y="86" font-family="Inter, Arial, sans-serif" font-size="17" fill="#64748b">Heartbeats, queues, and job status.</text>
+  </g>
+  <g transform="translate(540 568)">
+    <rect width="360" height="154" rx="24" fill="#f8fbff" stroke="#d7e6f8"/>
+    <circle cx="54" cy="54" r="20" fill="#e0f2fe"/>
+    <path d="M45 61h18M45 47h18M54 38v32" stroke="#0284c7" stroke-width="5" stroke-linecap="round"/>
+    <text x="90" y="54" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Docker control</text>
+    <text x="90" y="86" font-family="Inter, Arial, sans-serif" font-size="17" fill="#64748b">Deploy, stop, restart, and inspect.</text>
+  </g>
+  <g transform="translate(956 568)">
+    <rect width="360" height="154" rx="24" fill="#f8fbff" stroke="#d7e6f8"/>
+    <circle cx="54" cy="54" r="20" fill="#fef3c7"/>
+    <path d="M43 57a12 12 0 0 1 20-9l8 8a12 12 0 0 1-9 20" fill="none" stroke="#d97706" stroke-width="5" stroke-linecap="round"/>
+    <text x="90" y="54" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Public tunnels</text>
+    <text x="90" y="86" font-family="Inter, Arial, sans-serif" font-size="17" fill="#64748b">Expose services with managed URLs.</text>
+  </g>
+</svg>
