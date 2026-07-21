@@ -139,7 +139,7 @@ export default async function LoginPage() {
       <section className="landing-architecture" id="architecture" aria-label="Platform architecture">
         <div className="landing-section-copy">
           <p className="eyebrow">Platform architecture</p>
-          <h2>A control plane that stays close to your infrastructure.</h2>
+          <h2>A control panel that stays close to your infrastructure.</h2>
           <p>
             The dashboard coordinates auth, job state, access rules, repositories,
             credentials, workers, containers, and public URLs while execution stays on
@@ -210,7 +210,7 @@ export default async function LoginPage() {
           <a href="/docs#architecture">
             <span>01</span>
             <h3>Architecture</h3>
-            <p>Understand the control plane, Firebase state, Docker workers, queues, containers, and public URLs.</p>
+            <p>Understand the control panel, Firebase state, Docker workers, queues, containers, and public URLs.</p>
           </a>
           <a href="/docs#worker-setup">
             <span>02</span>

@@ -27,7 +27,7 @@ export default function DocsPage() {
         <a href="#architecture">
           <span>01</span>
           <strong>Architecture</strong>
-          <small>Control plane, Firebase, workers, queues, containers, and URLs.</small>
+          <small>Control panel, Firebase, workers, queues, containers, and URLs.</small>
         </a>
         <a href="#worker-setup">
           <span>02</span>
@@ -46,7 +46,7 @@ export default function DocsPage() {
           <p className="eyebrow">01 Architecture</p>
           <h2>How Docker Panel Lite is made</h2>
           <p>
-            Docker Panel Lite separates the control plane from execution. The web app
+            Docker Panel Lite separates the control panel from execution. The web app
             owns authentication, sharing rules, repository settings, credentials,
             queue state, and realtime visibility. Workers run on your Docker hosts
             and execute the operational work.
@@ -57,7 +57,7 @@ export default function DocsPage() {
         </div>
         <div className="docs-explain-grid">
           <article>
-            <h3>Control plane</h3>
+            <h3>Control panel</h3>
             <p>Next.js and Firebase coordinate user sessions, resource access, job state, worker heartbeats, container inventory, logs, and public URL metadata.</p>
           </article>
           <article>
