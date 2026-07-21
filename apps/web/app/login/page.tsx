@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 
-import { DocumentationPanel } from "@/app/documentation-panel";
 import { getSessionUser } from "@/lib/session";
 import { LoginForm } from "./login-form";
 
@@ -15,7 +14,7 @@ export default async function LoginPage() {
         </a>
         <div>
           <a href="#architecture">Architecture</a>
-          <a href="#docs">Docs</a>
+          <a href="/docs">Docs</a>
           <a href="#login">Login</a>
           <a className="landing-nav-cta" href="#login">Get started</a>
         </div>
@@ -33,7 +32,7 @@ export default async function LoginPage() {
           </p>
           <div className="landing-hero-actions">
             <a className="landing-primary-link" href="#login">Get started</a>
-            <a className="landing-secondary-link" href="#workflow">See the workflow</a>
+            <a className="landing-secondary-link" href="/docs">Read the docs</a>
           </div>
           <div className="landing-trust-row" aria-label="Platform capabilities">
             <span>Firebase Auth</span>
@@ -202,7 +201,29 @@ export default async function LoginPage() {
       </section>
 
       <section className="landing-docs" id="docs" aria-label="Public setup documentation">
-        <DocumentationPanel />
+        <div className="landing-section-copy">
+          <p className="eyebrow">Documentation</p>
+          <h2>A practical guide for the whole deployment path.</h2>
+          <p>Open the documentation hub for the architecture, worker setup, and the repository-to-deployment workflow.</p>
+        </div>
+        <div className="landing-doc-list">
+          <a href="/docs#architecture">
+            <span>01</span>
+            <h3>Architecture</h3>
+            <p>Understand the control plane, Firebase state, Docker workers, queues, containers, and public URLs.</p>
+          </a>
+          <a href="/docs#worker-setup">
+            <span>02</span>
+            <h3>Set up a worker</h3>
+            <p>Run the Docker Hub image, persist the worker identity, copy the claim token, and attach the host.</p>
+          </a>
+          <a href="/docs#clone-deploy">
+            <span>03</span>
+            <h3>Clone and deploy</h3>
+            <p>Add credentials, register a repository, sync branches, select a worker, and launch the service.</p>
+          </a>
+        </div>
+        <a className="landing-docs-cta" href="/docs">Open documentation</a>
       </section>
 
       <section className="landing-login-section" id="login" aria-label="Sign in">
