@@ -5,6 +5,11 @@ import { SESSION_COOKIE } from "@/lib/session";
 
 const SESSION_TTL_MS = 5 * 24 * 60 * 60 * 1000;
 
+function requestUsesHttps(request: NextRequest) {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return forwardedProto ? forwardedProto === "https" : request.nextUrl.protocol === "https:";
+}
+
 export async function POST(request: NextRequest) {
   const { idToken } = (await request.json()) as { idToken?: string };
   if (!idToken) return NextResponse.json({ error: "Missing ID token" }, { status: 400 });
@@ -14,7 +19,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, sessionCookie, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: requestUsesHttps(request),
       sameSite: "lax",
       maxAge: SESSION_TTL_MS / 1000,
       path: "/",

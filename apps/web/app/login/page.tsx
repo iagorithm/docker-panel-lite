@@ -13,6 +13,7 @@ export default async function LoginPage() {
           <span>Docker Panel Lite</span>
         </a>
         <div>
+          <a href="#architecture">Architecture</a>
           <a href="#docs">Docs</a>
           <a href="#login">Login</a>
           <a className="landing-nav-cta" href="#login">Get started</a>
@@ -90,6 +91,21 @@ export default async function LoginPage() {
           <article><span>02</span><strong>Launch</strong><small>Run Compose or Dockerfile flows with the same repeatable controls every time.</small></article>
           <article><span>03</span><strong>Operate</strong><small>Manage containers, commands, restarts, logs, and service state from one surface.</small></article>
           <article><span>04</span><strong>Share</strong><small>Open public URLs when you need previews, demos, callbacks, or quick validation.</small></article>
+        </div>
+      </section>
+
+      <section className="landing-architecture" id="architecture" aria-label="Platform architecture">
+        <div className="landing-section-copy">
+          <p className="eyebrow">Platform architecture</p>
+          <h2>A control plane that stays close to your infrastructure.</h2>
+          <p>
+            The dashboard coordinates auth, job state, access rules, repositories,
+            credentials, workers, containers, and public URLs while execution stays on
+            the Docker hosts you already control.
+          </p>
+        </div>
+        <div className="architecture-frame">
+          <img src="/platform-architecture.svg" alt="Docker Panel Lite architecture diagram" />
         </div>
       </section>
 

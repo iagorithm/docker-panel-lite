@@ -20,7 +20,10 @@ export function LoginForm() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ idToken }),
     });
-    if (!response.ok) throw new Error("Could not create server session");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error || "Could not create server session");
+    }
     router.replace("/dashboard");
     router.refresh();
   }
