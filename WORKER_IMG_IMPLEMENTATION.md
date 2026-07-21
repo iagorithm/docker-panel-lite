@@ -176,8 +176,6 @@ WORKER_MAX_CONCURRENCY
 WORKER_LEASE_SECONDS
 WORKER_POLL_SECONDS
 QUEUE_SHARDS
-TRAEFIK_ENABLED
-TRAEFIK_NETWORK
 NGROK_ENABLED
 NGROK_AUTHTOKEN
 NGROK_REGION
@@ -421,7 +419,7 @@ sharingUpdatedBy
 
 The worker detail view displays its sharing mode,
 identity source, host, pool, shards, runtime, Docker availability, timing,
-Traefik state, and ngrok state.
+public tunnel state.
 
 The browser does not subscribe directly to the Firebase `agents` node. An
 authenticated `/api/workers` endpoint reads agents with the Admin SDK, applies

@@ -167,8 +167,6 @@ Required fields:
     "containersRunning": 0,
     "images": 0
   },
-  "traefikEnabled": false,
-  "traefikNetwork": "proxy",
   "ngrokEnabled": false,
   "ngrokRegion": "",
   "leaseSeconds": 90,
@@ -284,8 +282,6 @@ WORKER_POLL_SECONDS=5
 Public routing:
 
 ```env
-TRAEFIK_ENABLED=false
-TRAEFIK_NETWORK=proxy
 NGROK_ENABLED=false
 NGROK_AUTHTOKEN=
 NGROK_REGION=
@@ -406,7 +402,7 @@ Acceptance criteria:
 - Path traversal outside clone directory is blocked.
 - Environment format is compatible with Python worker behavior.
 
-### Phase 6: Public URLs and Traefik
+### Phase 6: Public URLs
 
 Deliverables:
 
@@ -415,7 +411,6 @@ Deliverables:
 - `tunnel_stop`.
 - Per-service tunnel support.
 - Public URL status updates.
-- Traefik override generation.
 - Worker network connection for tunnel targets.
 
 Acceptance criteria:

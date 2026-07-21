@@ -84,12 +84,12 @@ const appGuideDocs = [
   },
   {
     step: "05",
-    title: "Domains, tunnels, and Traefik",
-    summary: "The platform can expose services through quick public URLs or production-style domain routing when the VPS is prepared.",
+    title: "Public URLs and tunnels",
+    summary: "The platform can expose services through quick public URLs for previews, demos, callbacks, and validation.",
     items: [
-      "For real domains, point DNS to the server and keep ports 80 and 443 open for Traefik.",
-      "The app stores the domain-to-container route, and the worker writes the Traefik override needed to reach the internal service port.",
-      "Use tunnels for fast previews and domain routing for stable public services.",
+      "Use tunnels when you need a reachable URL without configuring a reverse proxy.",
+      "The app stores the public URL metadata and the worker connects the tunnel to the selected running service.",
+      "Close public URLs when previews, callbacks, or demos no longer need external access.",
     ],
   },
   {
@@ -120,7 +120,7 @@ const docs = [
   },
   {
     title: "Complete app guide",
-    summary: "The full platform guide: credentials, repositories, deployments, domains, scaling, and operations.",
+    summary: "The full platform guide: credentials, repositories, deployments, public URLs, scaling, and operations.",
     entries: appGuideDocs,
   },
 ];
@@ -142,7 +142,7 @@ export function DocumentationPanel({ defaultOpen = true, compact = false }: Docu
         <div>
           <p className="eyebrow">Documentation</p>
           <h2>Setup docs for workers, repositories, and deployments</h2>
-          <p>Start with the worker claim flow, then connect credentials, repositories, deployment targets, domains, and container operations.</p>
+          <p>Start with the worker claim flow, then connect credentials, repositories, deployment targets, public URLs, and container operations.</p>
         </div>
         <button type="button" aria-label="Close documentation" title="Close documentation" onClick={() => setOpen(false)}>
           <span aria-hidden="true">x</span>

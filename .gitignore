@@ -25,3 +25,4 @@ data/
 repos/
 clones/
 .gocache/
+.pycache-check/

@@ -6,7 +6,7 @@ This migration introduces a decoupled control plane:
 - **Firebase Authentication** manages users. Custom claims carry `role` and `workspaceId`.
 - **Firebase Realtime Database** distributes repository, deployment, worker, and queue state immediately.
 - **Python workers** claim jobs with RTDB transactions, renew leases, enforce one active job per repository, and execute Git/Docker operations.
-- **Traefik** reads generated Docker labels and routes configured domains with automatic TLS.
+- **Public tunnels** expose selected running services for previews, callbacks, demos, and validation links.
 Everything running on the VPS is defined in [docker-compose.yaml](docker-compose.yaml) at the repository root. Firebase remains the managed external state and authentication service.
 
 ## 1. Revoke the exposed GitHub token
@@ -95,9 +95,7 @@ Existing RTDB records are preserved. Add `--overwrite` only when replacing them 
 
 Point each application hostname to the VPS public IP using an `A` record (and `AAAA` when IPv6 is configured). Open inbound TCP ports `80` and `443` in the VPS firewall/security group.
 
-The app controls the **domain-to-container route**: set `domain`, Compose service name, and internal port on the repository. The worker generates a Traefik override, attaches that service to the shared `proxy` network, and applies HTTPS labels. DNS records themselves still belong to the DNS provider; automating them later requires that provider's API and a separately scoped credential.
-
-Set a real `ACME_EMAIL` in `.env`. Traefik persists certificates under `data/letsencrypt`.
+The app controls **public URL metadata** for selected services. The worker connects the public tunnel to the running container/service and reports the generated URL back to Firebase. DNS records and reverse proxy routing are no longer managed by this stack.
 
 ## 7. Start the migration stack
 
@@ -116,7 +114,7 @@ Inspect health and logs:
 
 ```bash
 docker compose --env-file .env -f docker-compose.yaml ps
-docker compose --env-file .env -f docker-compose.yaml logs -f web worker traefik
+docker compose --env-file .env -f docker-compose.yaml logs -f web worker
 ```
 
 ## 8. Scale workers
@@ -145,4 +143,4 @@ Before retiring Streamlit, verify:
 - jobs recover after forcibly restarting a worker;
 - unauthorized users cannot see another workspace or save credentials.
 
-Keep Firebase backups, `.env`, the encryption key, and `data/letsencrypt` in the VPS backup policy.
+Keep Firebase backups, `.env`, the encryption key, worker data, and repository clones in the VPS backup policy.
