@@ -173,7 +173,7 @@ services/worker-go/worker/
 | `tunnel_stop` | Complete | Implemented | Stops ngrok processes by repository prefix and clears public URL state. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
 | Compose profile | Complete | Implemented | `docker compose --profile go-worker` includes `worker-go`. |
-| Local Go container startup | Complete | Implemented | `./run.sh up-go` builds and starts `web` + `worker-go` without starting Python worker. |
+| Local Go container startup | Complete | Implemented | `./run.sh up-go` builds and starts `web`, `worker`, and `worker-go` together. |
 
 ## Runtime Selection
 
@@ -666,7 +666,7 @@ Implemented:
 - `WORKER_GO_IMAGE` in `.env.example`.
 - `services/worker-go/Dockerfile`.
 - `./run.sh up-go`, `./run.sh build-go`, and `./run.sh logs-go` for local Go worker development.
-- `WORKER_RUNTIME=go ./run-local.sh` for a one-command local app + Go worker stack.
+- `./run-local.sh` for a one-command local app stack with both Python and Go workers.
 
 Not implemented:
 
@@ -738,9 +738,8 @@ Run with Docker Compose:
 ### Migration Tests
 
 - Claim a Python worker.
-- Stop Python worker.
-- Start Go worker with same mounted `/app/data`.
-- Confirm worker ID and token remain stable if intended.
+- Start the Go worker beside it with its own mounted `/app/data`.
+- Confirm both workers keep separate worker IDs and claim tokens.
 - Confirm dashboard ownership and sharing survive.
 
 ## Security Requirements

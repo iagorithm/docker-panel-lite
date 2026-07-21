@@ -107,7 +107,7 @@ Evidence:
 
 - `scripts/publish-worker-image.sh` supports `WORKER_BAKE_CONFIG=true`.
 - The baked config can include `FIREBASE_SERVICE_ACCOUNT_JSON`, `CREDENTIAL_ENCRYPTION_KEY`, `NGROK_AUTHTOKEN`, and Firebase database settings.
-- `WORKER_DOCKER_HUB.md` states baked config is intended for private images only.
+- `docs/WORKER_DOCKER_HUB.md` states baked config is intended for private images only.
 
 Impact:
 
