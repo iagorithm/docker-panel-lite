@@ -1264,6 +1264,13 @@ button[data-tooltip]:disabled::after {
 }
 .top-toolbar .icon-button { width: 2.72rem; max-width: 2.72rem; min-width: 2.72rem; min-height: 2.72rem; font-size: 1rem; }
 .top-toolbar .ui-icon { width: 1.28rem; height: 1.28rem; }
+.top-toolbar .container-toolbar-toggle .icon-button {
+  width: 2.26rem;
+  max-width: 2.26rem;
+  min-width: 2.26rem;
+  min-height: 2.26rem;
+}
+.top-toolbar .container-toolbar-toggle .ui-icon { width: 1.14rem; height: 1.14rem; }
 .row-actions .icon-button { width: 2.48rem; max-width: 2.48rem; min-width: 2.48rem; min-height: 2.48rem; font-size: 0.95rem; }
 .row-actions .ui-icon { width: 1.2rem; height: 1.2rem; }
 .repositories-workspace .row-actions .icon-button { background: transparent; border-color: transparent; box-shadow: none; }

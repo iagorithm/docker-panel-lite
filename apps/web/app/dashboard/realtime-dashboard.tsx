@@ -195,8 +195,8 @@ function Spinner() {
   return <span className="button-spinner" aria-hidden="true" />;
 }
 
-function IconButton({ title, children, onClick, primary = false, disabled = false, type = "button" }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean; type?: "button" | "submit" }) {
-  return <button type={type} className={`icon-button ${primary ? "primary-icon" : ""}`} title={title} aria-label={title} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
+function IconButton({ title, children, onClick, primary = false, active = false, disabled = false, type = "button" }: { title: string; children: React.ReactNode; onClick?: () => void; primary?: boolean; active?: boolean; disabled?: boolean; type?: "button" | "submit" }) {
+  return <button type={type} className={`icon-button ${primary ? "primary-icon" : ""} ${active ? "is-active" : ""}`} title={title} aria-label={title} aria-pressed={active || undefined} data-tooltip={title} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
 function useVisiblePending(pending: boolean) {
@@ -688,16 +688,14 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
         <div className="toolbar-actions">
-          {!showLogsMonitor && !showCommandTerminal ? (
-            <div className="icon-toggle" aria-label="Container view mode">
-              <button type="button" className={containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={containerViewMode === "containers"} data-tooltip="View containers" onClick={() => setContainerViewMode("containers")}><Icon name="container" /></button>
-              <button type="button" className={containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={containerViewMode === "groups"} data-tooltip="View groups" onClick={() => setContainerViewMode("groups")}><Icon name="layers" /></button>
-              <button type="button" className={containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={containerViewMode === "workers"} data-tooltip="View workers" onClick={() => setContainerViewMode("workers")}><Icon name="worker" /></button>
-            </div>
-          ) : null}
-          <IconButton title={showLogsMonitor ? "Show containers" : "Monitor logs"} onClick={() => { setShowCommandTerminal(false); setShowLogsMonitor((current) => !current); }} primary={showLogsMonitor}><Icon name={showLogsMonitor ? "container" : "logs"} /></IconButton>
-          <IconButton title={showCommandTerminal ? "Show containers" : "Command terminal"} onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal((current) => !current); }} primary={showCommandTerminal}><Icon name={showCommandTerminal ? "container" : "terminal"} /></IconButton>
-          <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
+          <div className="icon-toggle container-toolbar-toggle" aria-label="Container tools">
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers"} data-tooltip="View containers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("containers"); }}><Icon name="container" /></button>
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups"} data-tooltip="View groups" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("groups"); }}><Icon name="layers" /></button>
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers"} data-tooltip="View workers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("workers"); }}><Icon name="worker" /></button>
+            <IconButton title="Monitor logs" active={showLogsMonitor} onClick={() => { setShowCommandTerminal(false); setShowLogsMonitor((current) => !current); }}><Icon name="logs" /></IconButton>
+            <IconButton title="Command terminal" active={showCommandTerminal} onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal((current) => !current); }}><Icon name="terminal" /></IconButton>
+            <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
+          </div>
         </div>
       </div>
 
