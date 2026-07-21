@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { DocumentationPanel } from "@/app/documentation-panel";
 import { getSessionUser } from "@/lib/session";
 import { LoginForm } from "./login-form";
 
@@ -201,32 +202,7 @@ export default async function LoginPage() {
       </section>
 
       <section className="landing-docs" id="docs" aria-label="Public setup documentation">
-        <div className="landing-section-copy">
-          <p className="eyebrow">Public documentation</p>
-          <h2>Built for a fast first deployment.</h2>
-        </div>
-        <div className="landing-doc-list">
-          <article>
-            <span>01</span>
-            <h3>Install the runner</h3>
-            <p>Start <strong>cjarn/docker-panel-lite-worker:latest</strong> on a Docker host and point it at your Firebase workspace.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>Claim capacity</h3>
-            <p>Copy the <strong>Worker claim token</strong> from the logs and attach the machine from the Workers section.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>Connect the app</h3>
-            <p>Add a Git URL, attach credentials when needed, choose Compose or Dockerfile mode, and save environment, port, domain, and tunnel settings.</p>
-          </article>
-          <article>
-            <span>04</span>
-            <h3>Invite the team</h3>
-            <p>Use <strong>Private</strong>, <strong>Shared</strong>, and <strong>Public</strong> access modes to decide who can launch, operate, and reuse each resource.</p>
-          </article>
-        </div>
+        <DocumentationPanel />
       </section>
 
       <section className="landing-login-section" id="login" aria-label="Sign in">

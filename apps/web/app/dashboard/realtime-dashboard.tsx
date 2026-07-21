@@ -29,6 +29,7 @@ import {
   saveWorkerSharing,
   type RepositorySaveState,
 } from "@/app/actions";
+import { DocumentationPanel } from "@/app/documentation-panel";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
 import { canManageRepository, repositorySharingMode, type RepositoryAccessRecord } from "@/lib/repository-access";
@@ -536,6 +537,7 @@ export function RealtimeDashboard(props: Props) {
 
       <main className="main-shell">
         <WorkspaceGuide />
+        <DocumentationPanel defaultOpen={false} compact />
         {view === "containers" ? (
           <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : (
