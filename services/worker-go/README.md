@@ -14,14 +14,15 @@ Current implementation status:
 - Polls Firebase queue shards and leases jobs with conditional REST writes.
 - Publishes container inventory to the dashboard.
 - Handles `inventory_refresh`, `container_logs`, `container_start`, `container_stop`, `container_restart`, and `container_delete`.
-- Handles `discover_branches`, `sync`, `read_compose`, `deploy`, `build`, and `stop` for repository jobs.
+- Handles `container_exec` and `worker_command`.
+- Handles `discover_branches`, `sync`, `read_compose`, `deploy`, `build`, `stop`, `tunnel_start`, and `tunnel_stop` for repository jobs.
 - Decrypts Firebase-stored Git credentials with the same AES-256-GCM format as the app.
+- Opens public ngrok tunnels using the same repository secret path as the Python worker.
 
 Not implemented yet:
 
-- Public tunnels.
-- Worker/container command execution.
-- Compose environment override files are not yet as complete as the Python worker's generated override.
+- Firebase realtime queue listeners. The Go worker currently uses polling.
+- Active command cancellation/interruption after Docker or process execution has started.
 
 Run locally:
 

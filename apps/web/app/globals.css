@@ -226,7 +226,37 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .sidebar-workers-empty { margin: 0; padding: 0.22rem 0.42rem; }
 .sidebar-workers-more { padding: 0.1rem 0.42rem 0; font-weight: 620; }
-.sidebar-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.42rem; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid rgba(201, 201, 197, 0.72); }
+.sidebar-doc-link {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 2.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding: 0.45rem 0.48rem;
+  color: var(--ui-text-tertiary);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  font-weight: 640;
+  text-decoration: none;
+}
+.sidebar-doc-link span {
+  display: inline-grid;
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 0.95rem;
+  place-items: center;
+}
+.sidebar-doc-link .ui-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.sidebar-doc-link:hover {
+  color: var(--ui-text);
+  background: rgba(255, 255, 255, 0.42);
+}
+.sidebar-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.42rem; align-items: center; margin-top: 0.35rem; padding-top: 1rem; border-top: 1px solid rgba(201, 201, 197, 0.72); }
 .sidebar-footer .icon-button { width: 2.2rem; height: 2.2rem; min-height: 2.2rem; background: transparent; border-color: transparent; box-shadow: none; }
 .sidebar-footer .icon-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.45); border-color: transparent; }
 .session-user { display: flex; min-width: 0; min-height: 2.2rem; align-items: center; gap: 0.48rem; opacity: 0.82; }

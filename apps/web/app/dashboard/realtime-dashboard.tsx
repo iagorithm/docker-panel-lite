@@ -29,7 +29,6 @@ import {
   saveWorkerSharing,
   type RepositorySaveState,
 } from "@/app/actions";
-import { DocumentationPanel } from "@/app/documentation-panel";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
 import { canManageRepository, repositorySharingMode, type RepositoryAccessRecord } from "@/lib/repository-access";
@@ -529,6 +528,11 @@ export function RealtimeDashboard(props: Props) {
 
         <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
 
+        <a className="sidebar-doc-link" href="/docs" title="Open documentation" data-tooltip="Open documentation">
+          <span><Icon name="document" /></span>
+          Documentation
+        </a>
+
         <div className="sidebar-footer">
           <div className="session-user"><span aria-hidden="true" /><div><small>Signed in</small><strong>{props.user.email || props.user.role}</strong></div></div>
           <IconButton title="Sign out" onClick={logout}><Icon name="logout" /></IconButton>
@@ -536,8 +540,6 @@ export function RealtimeDashboard(props: Props) {
       </aside>
 
       <main className="main-shell">
-        <WorkspaceGuide />
-        <DocumentationPanel defaultOpen={false} compact />
         {view === "containers" ? (
           <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : (
@@ -545,62 +547,6 @@ export function RealtimeDashboard(props: Props) {
         )}
       </main>
     </div>
-  );
-}
-
-function WorkspaceGuide() {
-  return (
-    <details className="workspace-guide" open>
-      <summary>
-        <span>
-          <strong>Workspace quick guide</strong>
-          <small>Workers, repositories, credentials, and access sharing</small>
-        </span>
-        <span className="workspace-guide-chevron"><Icon name="chevron" /></span>
-      </summary>
-      <div className="workspace-guide-body">
-        <article>
-          <span className="workspace-guide-step">1</span>
-          <div>
-            <h3>Worker</h3>
-            <p>
-              Copy the worker claim token from the worker logs, then paste it in{" "}
-              <strong>Containers</strong> under <strong>Workers</strong>.
-            </p>
-          </div>
-        </article>
-        <article>
-          <span className="workspace-guide-step">R</span>
-          <div>
-            <h3>Repository access</h3>
-            <p>
-              Use <strong>Private</strong>, <strong>Shared</strong>, or{" "}
-              <strong>Public</strong> from repository settings to control who can run it.
-            </p>
-          </div>
-        </article>
-        <article>
-          <span className="workspace-guide-step">C</span>
-          <div>
-            <h3>Credential access</h3>
-            <p>
-              Share credentials only with users who need them for private repository
-              sync and deployment.
-            </p>
-          </div>
-        </article>
-        <article>
-          <span className="workspace-guide-step">W</span>
-          <div>
-            <h3>Worker access</h3>
-            <p>
-              Share a worker when teammates should be able to select it as a deployment
-              target.
-            </p>
-          </div>
-        </article>
-      </div>
-    </details>
   );
 }
 

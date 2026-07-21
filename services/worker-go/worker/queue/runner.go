@@ -245,6 +245,39 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 			return "", err
 		}
 		return "Container inventory refreshed", nil
+	case "worker_command":
+		var repository map[string]interface{}
+		repositoryID := stringValue(job["repositoryId"])
+		if repositoryID != "" {
+			repository = map[string]interface{}{}
+			if err := r.client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s", stringValue(job["workspaceId"]), repositoryID), &repository); err != nil {
+				return "", err
+			}
+			if len(repository) == 0 {
+				return "", fmt.Errorf("repository no longer exists")
+			}
+		}
+		result, err := executor.ExecuteWorkerCommand(ctx, r.client, job, repository, r.settings)
+		if err != nil {
+			return "", err
+		}
+		if result.Command != nil {
+			_ = r.publish(ctx, job, map[string]interface{}{"commandOutput": result.Command.Output, "commandExitCode": result.Command.ExitCode})
+			if result.Command.ExitCode != 0 {
+				return "", fmt.Errorf("%s", result.Command.Message)
+			}
+		}
+		return result.Message, nil
+	case "container_exec":
+		result, err := core.ContainerExec(containerCandidates(job), stringValue(job["command"]), intValue(job["timeoutSeconds"]))
+		if err != nil {
+			return "", err
+		}
+		_ = r.publish(ctx, job, map[string]interface{}{"commandOutput": result.Output, "commandExitCode": result.ExitCode})
+		if result.ExitCode != 0 {
+			return "", fmt.Errorf("%s", result.Message)
+		}
+		return result.Message, nil
 	case "container_start", "container_stop", "container_restart", "container_delete", "container_logs":
 		message, logTail, err := core.ContainerAction(action, containerCandidates(job))
 		if err != nil {

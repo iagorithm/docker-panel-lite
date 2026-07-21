@@ -83,6 +83,12 @@ func ContainerInventory() (map[string]ContainerRecord, error) {
 	return result, nil
 }
 
+type CommandResult struct {
+	Message  string
+	Output   string
+	ExitCode int
+}
+
 func ContainerAction(action string, candidates []string) (string, *string, error) {
 	containerID, name, err := resolveContainer(candidates)
 	if err != nil {
@@ -124,6 +130,40 @@ func ContainerAction(action string, candidates []string) (string, *string, error
 	}
 }
 
+func ContainerExec(candidates []string, command string, timeoutSeconds int) (CommandResult, error) {
+	containerID, name, err := resolveContainer(candidates)
+	if err != nil {
+		return CommandResult{}, err
+	}
+	if IsWorkerContainerName(name) {
+		return CommandResult{}, fmt.Errorf("worker containers can only be restarted or inspected with logs")
+	}
+	shellCommand, err := containerExecShellCommand(command)
+	if err != nil {
+		return CommandResult{}, err
+	}
+	timeout := boundedTimeout(timeoutSeconds)
+	output, exitCode, timedOut := dockerOutputWithExit(timeout, "", nil, "exec", "-i", containerID, "/bin/sh", "-lc", shellCommand)
+	if timedOut {
+		message := fmt.Sprintf("Command timed out after %ds", int(timeout/time.Second))
+		if strings.TrimSpace(output) == "" {
+			output = message
+		}
+		return CommandResult{Message: message, Output: tailText(output, 120000), ExitCode: 124}, nil
+	}
+	if exitCode != 0 {
+		message := fmt.Sprintf("Container command exited with code %d", exitCode)
+		if strings.TrimSpace(output) == "" {
+			output = message
+		}
+		return CommandResult{Message: message, Output: tailText(output, 120000), ExitCode: exitCode}, nil
+	}
+	if strings.TrimSpace(output) == "" {
+		output = "Command completed with no output."
+	}
+	return CommandResult{Message: fmt.Sprintf("Command completed inside '%s'", nameOrID(name, containerID)), Output: tailText(output, 120000), ExitCode: 0}, nil
+}
+
 func WriteEnvFile(repoPath string, environment map[string]string) error {
 	lines := make([]string, 0, len(environment))
 	for key, value := range environment {
@@ -139,11 +179,20 @@ func WriteEnvFile(repoPath string, environment map[string]string) error {
 	return os.WriteFile(filepath.Join(repoPath, ".env"), []byte(content), 0600)
 }
 
-func RunCompose(project string, repoPath string, composeFile string, environment map[string]string, down bool) (string, error) {
+func RunCompose(project string, repoPath string, composeFile string, environment map[string]string, down bool, dataDir string, service string) (string, error) {
 	if err := WriteEnvFile(repoPath, environment); err != nil {
 		return "", err
 	}
 	args := []string{"compose", "-p", project, "-f", composeFile}
+	if len(environment) > 0 {
+		override, err := WriteComposeOverride(project, dataDir, environment, composeFile, service)
+		if err != nil {
+			return "", err
+		}
+		if override != "" {
+			args = append(args, "-f", override)
+		}
+	}
 	if down {
 		args = append(args, "down")
 	} else {
@@ -196,6 +245,106 @@ func StopDockerfileContainer(project string) (string, error) {
 	return "Container stopped", nil
 }
 
+func RunWorkerCommand(command string, workdir string, environment map[string]string, timeoutSeconds int) (CommandResult, error) {
+	args, err := nonInteractiveCommand(command)
+	if err != nil {
+		return CommandResult{}, err
+	}
+	timeout := boundedTimeout(timeoutSeconds)
+	output, exitCode, timedOut := commandOutputWithExit(timeout, workdir, environment, args[0], args[1:]...)
+	if timedOut {
+		message := fmt.Sprintf("Command timed out after %ds", int(timeout/time.Second))
+		if strings.TrimSpace(output) == "" {
+			output = message
+		}
+		return CommandResult{Message: message, Output: tailText(output, 120000), ExitCode: 124}, nil
+	}
+	if exitCode != 0 {
+		message := fmt.Sprintf("Command exited with code %d: %s", exitCode, compactProcessError(output))
+		return CommandResult{Message: message, Output: tailText(output, 120000), ExitCode: exitCode}, nil
+	}
+	if strings.TrimSpace(output) == "" {
+		output = "Command completed with no output."
+	}
+	return CommandResult{Message: "Command completed", Output: tailText(output, 120000), ExitCode: 0}, nil
+}
+
+func PublicTunnelTargets(project string, mode string, service string, fallbackPort int, servicePorts map[string]int) (map[string]string, error) {
+	if fallbackPort <= 0 || fallbackPort > 65535 {
+		fallbackPort = 3000
+	}
+	if mode == "compose" {
+		raw, err := commandOutput(8*time.Second, "docker", "ps", "--filter", "label=com.docker.compose.project="+project, "--format", "{{json .}}")
+		if err != nil {
+			return nil, err
+		}
+		targets := map[string]string{}
+		for _, line := range strings.Split(raw, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var row map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &row); err != nil {
+				continue
+			}
+			id := stringValue(firstValue(row, "ID", "Id", "ContainerID"))
+			name := strings.TrimPrefix(stringValue(firstValue(row, "Names", "Name")), "/")
+			labels := parseLabels(stringValue(row["Labels"]))
+			serviceName := strings.TrimSpace(labels["com.docker.compose.service"])
+			if serviceName == "" {
+				serviceName = name
+			}
+			if service != "" && serviceName != service {
+				continue
+			}
+			port := fallbackPort
+			if configured := servicePorts[serviceName]; configured > 0 {
+				port = configured
+			}
+			target, err := containerTunnelTarget(id, port)
+			if err == nil && target != "" {
+				targets[serviceName] = target
+			}
+		}
+		if len(targets) > 0 {
+			return targets, nil
+		}
+		suffix := ""
+		if service != "" {
+			suffix = " service " + service
+		}
+		return nil, fmt.Errorf("no running compose services found for public tunnel '%s'%s", project, suffix)
+	}
+	target, err := containerTunnelTarget(project, fallbackPort)
+	if err != nil || target == "" {
+		return nil, fmt.Errorf("no running container found for public tunnel '%s'", project)
+	}
+	serviceName := strings.TrimSpace(service)
+	if serviceName == "" {
+		serviceName = "app"
+	}
+	return map[string]string{serviceName: target}, nil
+}
+
+func containerTunnelTarget(container string, fallbackPort int) (string, error) {
+	inspect, err := inspectContainer(container)
+	if err != nil {
+		return "", err
+	}
+	internalPort := firstInternalPort(inspect)
+	if internalPort == 0 {
+		internalPort = fallbackPort
+	}
+	if target := hostPortTarget(inspect, internalPort); target != "" {
+		return target, nil
+	}
+	if ip := containerIPAddress(inspect); ip != "" {
+		return fmt.Sprintf("http://%s:%d", ip, internalPort), nil
+	}
+	return "", fmt.Errorf("container has no reachable tunnel target")
+}
+
 func IsWorkerContainerName(name string) bool {
 	normalized := normalizedName(name)
 	if normalized == "worker" {
@@ -204,20 +353,118 @@ func IsWorkerContainerName(name string) bool {
 	return regexp.MustCompile(`(^|[-_])worker([-_]1)?$`).MatchString(normalized)
 }
 
-func commandOutput(timeout time.Duration, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	timer := time.AfterFunc(timeout, func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+func inspectContainer(container string) (map[string]interface{}, error) {
+	raw, err := commandOutput(8*time.Second, "docker", "inspect", container)
+	if err != nil {
+		return nil, err
+	}
+	var payload []map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return nil, err
+	}
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("container not found")
+	}
+	return payload[0], nil
+}
+
+func firstInternalPort(inspect map[string]interface{}) int {
+	config, _ := inspect["Config"].(map[string]interface{})
+	for key := range mapValue(config["ExposedPorts"]) {
+		if port := parsePortKey(key); port > 0 {
+			return port
 		}
-	})
-	defer timer.Stop()
-	output, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(output)), err
+	}
+	networkSettings, _ := inspect["NetworkSettings"].(map[string]interface{})
+	for key := range mapValue(networkSettings["Ports"]) {
+		if port := parsePortKey(key); port > 0 {
+			return port
+		}
+	}
+	return 0
+}
+
+func hostPortTarget(inspect map[string]interface{}, internalPort int) string {
+	networkSettings, _ := inspect["NetworkSettings"].(map[string]interface{})
+	ports := mapValue(networkSettings["Ports"])
+	keys := []string{fmt.Sprintf("%d/tcp", internalPort), fmt.Sprintf("%d/udp", internalPort)}
+	for _, key := range keys {
+		if target := hostPortFromMapping(ports[key]); target != "" {
+			return target
+		}
+	}
+	for _, value := range ports {
+		if target := hostPortFromMapping(value); target != "" {
+			return target
+		}
+	}
+	return ""
+}
+
+func hostPortFromMapping(value interface{}) string {
+	items, ok := value.([]interface{})
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	first, _ := items[0].(map[string]interface{})
+	hostPort := stringValue(first["HostPort"])
+	if hostPort == "" {
+		return ""
+	}
+	return "http://host.docker.internal:" + hostPort
+}
+
+func containerIPAddress(inspect map[string]interface{}) string {
+	networkSettings, _ := inspect["NetworkSettings"].(map[string]interface{})
+	networks := mapValue(networkSettings["Networks"])
+	for _, value := range networks {
+		network, _ := value.(map[string]interface{})
+		if ip := stringValue(network["IPAddress"]); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func mapValue(value interface{}) map[string]interface{} {
+	if typed, ok := value.(map[string]interface{}); ok {
+		return typed
+	}
+	return map[string]interface{}{}
+}
+
+func parsePortKey(value string) int {
+	portText := strings.SplitN(value, "/", 2)[0]
+	port, _ := strconv.Atoi(portText)
+	if port < 1 || port > 65535 {
+		return 0
+	}
+	return port
+}
+
+func commandOutput(timeout time.Duration, name string, args ...string) (string, error) {
+	output, exitCode, _ := commandOutputWithExit(timeout, "", nil, name, args...)
+	if exitCode != 0 {
+		return strings.TrimSpace(output), fmt.Errorf("%s", compactProcessError(output))
+	}
+	return strings.TrimSpace(output), nil
 }
 
 func dockerOutput(timeout time.Duration, workdir string, environment map[string]string, args ...string) (string, error) {
-	cmd := exec.Command("docker", args...)
+	output, exitCode, _ := dockerOutputWithExit(timeout, workdir, environment, args...)
+	text := strings.TrimSpace(output)
+	if exitCode != 0 {
+		return "", fmt.Errorf("%s", compactProcessError(text))
+	}
+	return text, nil
+}
+
+func dockerOutputWithExit(timeout time.Duration, workdir string, environment map[string]string, args ...string) (string, int, bool) {
+	return commandOutputWithExit(timeout, workdir, environment, "docker", args...)
+}
+
+func commandOutputWithExit(timeout time.Duration, workdir string, environment map[string]string, name string, args ...string) (string, int, bool) {
+	cmd := exec.Command(name, args...)
 	if strings.TrimSpace(workdir) != "" {
 		cmd.Dir = workdir
 	}
@@ -228,8 +475,10 @@ func dockerOutput(timeout time.Duration, workdir string, environment map[string]
 		}
 		cmd.Env = env
 	}
+	timedOut := false
 	timer := time.AfterFunc(timeout, func() {
 		if cmd.Process != nil {
+			timedOut = true
 			_ = cmd.Process.Kill()
 		}
 	})
@@ -237,9 +486,12 @@ func dockerOutput(timeout time.Duration, workdir string, environment map[string]
 	output, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(output))
 	if err != nil {
-		return "", fmt.Errorf("%s", compactProcessError(text))
+		if exitError, ok := err.(*exec.ExitError); ok {
+			return text, exitError.ExitCode(), timedOut
+		}
+		return text, 1, timedOut
 	}
-	return text, nil
+	return text, 0, timedOut
 }
 
 func compactProcessError(output string) string {
@@ -384,6 +636,16 @@ func tailText(value string, limit int) string {
 		return value
 	}
 	return value[len(value)-limit:]
+}
+
+func boundedTimeout(seconds int) time.Duration {
+	if seconds < 5 {
+		seconds = 5
+	}
+	if seconds > 1800 {
+		seconds = 1800
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func nowMillis() int64 {

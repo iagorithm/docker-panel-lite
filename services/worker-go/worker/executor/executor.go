@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 type Result struct {
 	Message string
 	Updates map[string]interface{}
+	Command *core.CommandResult
 }
 
 func Execute(ctx context.Context, client *firebase_runtime.Client, job map[string]interface{}, repository map[string]interface{}, settings config.Settings) (Result, error) {
@@ -82,7 +84,7 @@ func Execute(ctx context.Context, client *firebase_runtime.Client, job map[strin
 			if err != nil {
 				return Result{}, err
 			}
-			message, err := core.RunCompose(project, path, composePath, environment, true)
+			message, err := core.RunCompose(project, path, composePath, environment, true, settings.DataDir, stringValue(repository["service"]))
 			if err != nil {
 				return Result{}, err
 			}
@@ -93,6 +95,18 @@ func Execute(ctx context.Context, client *firebase_runtime.Client, job map[strin
 			return Result{}, err
 		}
 		return Result{Message: message, Updates: stoppedTunnelUpdates(settings)}, nil
+	case "tunnel_stop":
+		updates, err := stopPublicTunnel(repository, settings)
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{Message: "Public URL closed", Updates: updates}, nil
+	case "tunnel_start":
+		updates, err := startPublicTunnel(ctx, client, repository, workspaceID, settings, stringValue(job["tunnelService"]), boolValue(job["tunnelReset"]))
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{Message: fmt.Sprintf("Public URLs ready: %d", len(mapValue(updates["publicUrls"]))), Updates: updates}, nil
 	case "deploy", "build":
 		path, err := syncRepository(ctx, client, repository, workspaceID, settings)
 		if err != nil {
@@ -111,11 +125,22 @@ func Execute(ctx context.Context, client *firebase_runtime.Client, job map[strin
 			if err != nil {
 				return Result{}, err
 			}
-			message, err := core.RunCompose(project, path, composePath, environment, false)
+			message, err := core.RunCompose(project, path, composePath, environment, false, settings.DataDir, stringValue(repository["service"]))
 			if err != nil {
 				return Result{}, err
 			}
-			return Result{Message: message, Updates: map[string]interface{}{}}, nil
+			updates := map[string]interface{}{}
+			if repositoryPublicTunnelEnabled(repository) {
+				tunnelUpdates, err := startPublicTunnel(ctx, client, repository, workspaceID, settings, "", false)
+				if err != nil {
+					return Result{}, err
+				}
+				updates = tunnelUpdates
+				if len(mapValue(updates["publicUrls"])) > 0 {
+					message = fmt.Sprintf("%s. Public URLs ready: %d", message, len(mapValue(updates["publicUrls"])))
+				}
+			}
+			return Result{Message: message, Updates: updates}, nil
 		}
 		dockerfilePath, err := repositoryFile(path, stringValue(repository["dockerfile"]), "Dockerfile", "Dockerfile", true)
 		if err != nil {
@@ -129,12 +154,52 @@ func Execute(ctx context.Context, client *firebase_runtime.Client, job map[strin
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Message: message, Updates: map[string]interface{}{}}, nil
-	case "tunnel_start", "tunnel_stop":
-		return Result{}, fmt.Errorf("Go worker does not implement tunnel action yet: %s", action)
+		updates := map[string]interface{}{}
+		if repositoryPublicTunnelEnabled(repository) {
+			tunnelUpdates, err := startPublicTunnel(ctx, client, repository, workspaceID, settings, "", false)
+			if err != nil {
+				return Result{}, err
+			}
+			updates = tunnelUpdates
+			if len(mapValue(updates["publicUrls"])) > 0 {
+				message = fmt.Sprintf("%s. Public URLs ready: %d", message, len(mapValue(updates["publicUrls"])))
+			}
+		}
+		return Result{Message: message, Updates: updates}, nil
 	default:
 		return Result{}, fmt.Errorf("unknown repository action: %s", action)
 	}
+}
+
+func ExecuteWorkerCommand(ctx context.Context, client *firebase_runtime.Client, job map[string]interface{}, repository map[string]interface{}, settings config.Settings) (Result, error) {
+	workspaceID := stringValue(job["workspaceId"])
+	command := stringValue(job["command"])
+	if command == "" {
+		return Result{}, fmt.Errorf("command is empty")
+	}
+	workdir := settings.CloneDir
+	environment := map[string]string{}
+	if repository != nil && len(repository) > 0 {
+		path, err := repoPath(settings, repository)
+		if err != nil {
+			return Result{}, err
+		}
+		workdir = path
+		loaded, err := loadEnvironment(ctx, client, repository, workspaceID)
+		if err != nil {
+			return Result{}, err
+		}
+		environment = loaded
+	}
+	info, err := os.Stat(workdir)
+	if err != nil || !info.IsDir() {
+		return Result{}, fmt.Errorf("working directory not found: %s. Sync or deploy the repository first", workdir)
+	}
+	result, err := core.RunWorkerCommand(command, workdir, environment, intValue(job["timeoutSeconds"]))
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Message: result.Message, Updates: map[string]interface{}{}, Command: &result}, nil
 }
 
 func loadEnvironment(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string) (map[string]string, error) {
@@ -268,6 +333,110 @@ func stoppedTunnelUpdates(settings config.Settings) map[string]interface{} {
 	}
 }
 
+func stopPublicTunnel(repository map[string]interface{}, settings config.Settings) (map[string]interface{}, error) {
+	project, err := projectName(repository)
+	if err != nil {
+		return nil, err
+	}
+	core.NewNgrokService(settings.DataDir, settings.NgrokEnabled, settings.NgrokAuthtoken, settings.NgrokBin, settings.NgrokRegion).StopPrefix(project)
+	return stoppedTunnelUpdates(settings), nil
+}
+
+func startPublicTunnel(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings, onlyService string, reset bool) (map[string]interface{}, error) {
+	project, err := projectName(repository)
+	if err != nil {
+		return nil, err
+	}
+	targets, err := core.PublicTunnelTargets(project, stringValue(repository["mode"]), strings.TrimSpace(onlyService), intValueDefault(repository["internalPort"], 3000), repositoryPublicTunnelPorts(repository))
+	if err != nil {
+		return nil, err
+	}
+	authtoken, err := repositoryNgrokAuthtoken(ctx, client, repository, workspaceID, settings)
+	if err != nil {
+		return nil, err
+	}
+	service := core.NewNgrokService(settings.DataDir, settings.NgrokEnabled || authtoken != "", authtoken, settings.NgrokBin, settings.NgrokRegion)
+	serviceDomains := repositoryStringMap(firstPresent(repository, "publicTunnelDomains", "publicDomains", "ngrokDomains"))
+	singleDomain := stringValue(firstPresent(repository, "publicTunnelDomain", "publicDomain", "ngrokDomain"))
+	publicUrls := map[string]interface{}{}
+	publicTunnels := map[string]interface{}{}
+	if strings.TrimSpace(onlyService) != "" {
+		for key, value := range mapValue(repository["publicUrls"]) {
+			publicUrls[key] = value
+		}
+		for key, value := range mapValue(repository["publicTunnels"]) {
+			publicTunnels[key] = value
+		}
+	}
+	for serviceName, target := range targets {
+		tunnelKey := project
+		if stringValue(repository["mode"]) == "compose" {
+			safeService, err := core.SafeName(serviceName)
+			if err != nil {
+				return nil, err
+			}
+			tunnelKey = project + "--" + safeService
+		}
+		if reset {
+			service.Stop(tunnelKey)
+			if stringValue(repository["mode"]) == "compose" {
+				service.Stop(project)
+			}
+		}
+		domain := serviceDomains[serviceName]
+		if len(targets) == 1 && domain == "" {
+			domain = singleDomain
+		}
+		tunnel, err := service.Start(tunnelKey, target, domain)
+		if err != nil {
+			return nil, err
+		}
+		publicUrls[serviceName] = tunnel.URL
+		publicTunnels[serviceName] = map[string]interface{}{
+			"url":         tunnel.URL,
+			"target":      tunnel.Target,
+			"domain":      tunnel.Domain,
+			"pid":         tunnel.PID,
+			"workerId":    settings.WorkerID,
+			"workerLabel": settings.WorkerLabelOrDefault(),
+			"updatedAt":   nowMillis(),
+		}
+	}
+	firstService := stringValue(repository["service"])
+	if _, ok := publicUrls[firstService]; !ok {
+		for serviceName := range publicUrls {
+			firstService = serviceName
+			break
+		}
+	}
+	firstTunnel, _ := publicTunnels[firstService].(map[string]interface{})
+	return map[string]interface{}{
+		"publicUrl":               stringValue(publicUrls[firstService]),
+		"publicUrls":              publicUrls,
+		"publicTunnels":           publicTunnels,
+		"publicTunnelStatus":      "online",
+		"publicTunnelTarget":      stringValue(firstTunnel["target"]),
+		"publicTunnelWorkerId":    settings.WorkerID,
+		"publicTunnelWorkerLabel": settings.WorkerLabelOrDefault(),
+		"publicTunnelUpdatedAt":   nowMillis(),
+	}, nil
+}
+
+func repositoryNgrokAuthtoken(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings) (string, error) {
+	repositoryID := stringValue(repository["id"])
+	if repositoryID == "" {
+		repositoryID = stringValue(repository["alias"])
+	}
+	if repositoryID != "" {
+		encrypted := map[string]interface{}{}
+		_ = client.Get(ctx, fmt.Sprintf("secrets/ngrok/%s/%s", workspaceID, repositoryID), &encrypted)
+		if len(encrypted) > 0 {
+			return secrets.DecryptSecret(encrypted, settings.EncryptionKey)
+		}
+	}
+	return stringValue(firstPresent(repository, "ngrokAuthtoken", "ngrokToken", "ngrokApiKey")), nil
+}
+
 func syncRepository(ctx context.Context, client *firebase_runtime.Client, repository map[string]interface{}, workspaceID string, settings config.Settings) (string, error) {
 	path, err := repoPath(settings, repository)
 	if err != nil {
@@ -344,6 +513,104 @@ func repositoryFile(repoPath string, rawValue string, fallback string, label str
 		}
 	}
 	return resolved, nil
+}
+
+func repositoryPublicTunnelEnabled(repository map[string]interface{}) bool {
+	return boolValue(repository["publicTunnelEnabled"]) || boolValue(repository["exposePublic"]) || boolValue(repository["ngrokEnabled"])
+}
+
+func repositoryPublicTunnelPorts(repository map[string]interface{}) map[string]int {
+	result := map[string]int{}
+	for key, value := range repositoryStringMap(firstPresent(repository, "publicTunnelPorts", "publicPorts", "ngrokPorts")) {
+		port := intValue(value)
+		if port >= 1 && port <= 65535 {
+			result[key] = port
+		}
+	}
+	return result
+}
+
+func repositoryStringMap(value interface{}) map[string]string {
+	result := map[string]string{}
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		for key, item := range typed {
+			if strings.TrimSpace(key) != "" && stringValue(item) != "" {
+				result[strings.TrimSpace(key)] = stringValue(item)
+			}
+		}
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return result
+		}
+		if strings.HasPrefix(text, "{") {
+			var parsed map[string]interface{}
+			if err := json.Unmarshal([]byte(regexp.MustCompile(`,\s*([}\]])`).ReplaceAllString(text, "$1")), &parsed); err == nil {
+				return repositoryStringMap(parsed)
+			}
+			return result
+		}
+		for _, item := range regexp.MustCompile(`[\n,]+`).Split(text, -1) {
+			if strings.Contains(item, "=") {
+				parts := strings.SplitN(item, "=", 2)
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				if key != "" && value != "" {
+					result[key] = value
+				}
+			}
+		}
+	}
+	return result
+}
+
+func firstPresent(values map[string]interface{}, keys ...string) interface{} {
+	for _, key := range keys {
+		if value := values[key]; value != nil && stringValue(value) != "" {
+			return value
+		}
+	}
+	return nil
+}
+
+func mapValue(value interface{}) map[string]interface{} {
+	if typed, ok := value.(map[string]interface{}); ok {
+		return typed
+	}
+	return map[string]interface{}{}
+}
+
+func boolValue(value interface{}) bool {
+	if typed, ok := value.(bool); ok {
+		return typed
+	}
+	text := strings.ToLower(stringValue(value))
+	return text == "1" || text == "true" || text == "yes" || text == "on" || text == "enabled"
+}
+
+func intValue(value interface{}) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case string:
+		parsed, _ := strconv.Atoi(strings.TrimSpace(typed))
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func intValueDefault(value interface{}, fallback int) int {
+	parsed := intValue(value)
+	if parsed == 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func stringValue(value interface{}) string {

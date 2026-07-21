@@ -38,9 +38,8 @@ Current Go implementation does **not** support yet:
 
 - Firebase realtime queue listeners. The Go worker currently uses polling.
 - Active command cancellation/interruption. It observes cancellation before execution and at completion.
-- Public URL/tunnel actions.
-- Worker commands.
-- Container exec commands.
+- Firebase realtime queue listeners. The Go worker currently uses polling.
+- Active command cancellation/interruption after Docker or process execution has started.
 
 Production deploy actions should continue to use the Python worker until the Go worker reaches protocol and executor parity.
 
@@ -162,16 +161,16 @@ services/worker-go/worker/
 | `container_stop` | Complete | Implemented | Uses Docker CLI and worker protection. |
 | `container_restart` | Complete | Implemented | Uses Docker CLI. |
 | `container_delete` | Complete | Implemented | Uses Docker CLI and worker protection. |
-| `container_exec` | Complete | Missing | Should wait for command hardening/allowlists. |
-| `worker_command` | Complete | Missing | Should wait for command hardening/allowlists. |
+| `container_exec` | Complete | Implemented | Uses Docker CLI exec and publishes command output/exit code. |
+| `worker_command` | Complete | Implemented | Runs non-interactive commands and publishes command output/exit code. |
 | AES-GCM secret decrypt | Complete | Implemented | Compatible with app credential format. |
 | Git clone/pull | Complete | Implemented | Uses Git CLI with token redaction. |
 | `discover_branches` | Complete | Implemented | Uses `git ls-remote`. |
 | `read_compose` | Complete | Implemented | Syncs repo and stores compose content up to 1 MB. |
-| Compose deploy | Complete | Partial | Runs `docker compose up -d --build`; generated override parity still pending. |
+| Compose deploy | Complete | Implemented | Runs `docker compose up -d --build` with generated environment override. |
 | Dockerfile deploy | Complete | Partial | Builds image and runs container; advanced Docker SDK parity still pending. |
-| `tunnel_start` | Complete | Missing | Needs ngrok process manager and target discovery. |
-| `tunnel_stop` | Complete | Missing | Needs ngrok process manager. |
+| `tunnel_start` | Complete | Implemented | Uses ngrok CLI process manager and target discovery. |
+| `tunnel_stop` | Complete | Implemented | Stops ngrok processes by repository prefix and clears public URL state. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
 | Compose profile | Complete | Implemented | `docker compose --profile go-worker` includes `worker-go`. |
 | Local Go container startup | Complete | Implemented | `./run.sh up-go` builds and starts `web` + `worker-go` without starting Python worker. |
@@ -536,7 +535,7 @@ Acceptance criteria:
 
 ### Phase 6: Public URLs
 
-Status: not implemented.
+Status: implemented with ngrok CLI process management.
 
 Deliverables:
 
@@ -555,7 +554,7 @@ Acceptance criteria:
 
 ### Phase 7: Worker and Container Commands
 
-Status: not implemented.
+Status: implemented.
 
 Deliverables:
 
