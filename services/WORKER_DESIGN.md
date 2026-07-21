@@ -60,6 +60,7 @@ The canonical worker accepts exactly these 16 job actions.
 | `container_delete` | Force-remove a selected non-worker container. |
 | `container_logs` | Load and store the bounded log tail of a container. |
 | `container_exec` | Execute a bounded, non-interactive command inside a non-worker container. |
+| `container_tunnel_start` | Open a public URL for a running local container without requiring a repository registration. |
 
 ### Worker action
 
@@ -589,6 +590,7 @@ fail explicitly rather than being silently ignored.
 | `container_delete` | Container | Reject worker container and force-remove target. | Docker state; refreshed inventory |
 | `container_logs` | Container | Read latest 100 lines and cap stored tail at 100,000 characters. | Container `logTail` |
 | `container_exec` | Container | Reject worker container; run non-interactive shell command with bounded timeout. | `commandOutput`, `commandExitCode` |
+| `container_tunnel_start` | Local container | Resolve a published port or reachable container IP/internal port and start/reuse a worker-owned tunnel without repository metadata. | Container public URL/tunnel metadata |
 | `worker_command` | Worker/repository | Run parsed command in clone root or repository with bounded timeout and merged environment. | `commandOutput`, `commandExitCode` |
 
 All actions use the common lease, lock, progress, mirrored publication, failure,

@@ -29,6 +29,7 @@ Status legend: **Implemented**, **Partial**, **Pending**.
 | `container_delete` | `executor.py:execute_container` | Implemented | — |
 | `container_logs` | `executor.py:execute_container` | Implemented | — |
 | `container_exec` | `executor.py:execute_container_command` | Implemented | Does not interrupt an already-running exec after cancellation. |
+| `container_tunnel_start` | `executor.py:execute_container_tunnel` | Implemented | Uses the worker-level ngrok token because no repository secret exists. |
 | `worker_command` | `executor.py:execute_worker_command` | Implemented | Does not interrupt an already-running command after cancellation. |
 
 ## Auxiliary Function Inventory
