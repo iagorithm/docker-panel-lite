@@ -50,7 +50,7 @@ the SHA-256 hash of the claim token.
 | `apps/web/app/dashboard/realtime-dashboard.tsx` | Worker claim form, sharing selector, worker state, ownership state, and runtime details |
 | `apps/web/lib/types.ts` | Agent ownership, sharing, token hash, runtime, and lifecycle types |
 | `.env.example` | Image publishing and worker configuration contract |
-| `WORKER_DOCKER_HUB.md` | Operator-oriented build, publish, pull, and run instructions |
+| `docs/WORKER_DOCKER_HUB.md` | Operator-oriented build, publish, pull, and run instructions |
 
 ## 1. Portable Worker Image
 
@@ -431,7 +431,7 @@ collections retain their authenticated workspace reads, while all agent
 visibility decisions are made by the server API. Deploy the updated rules with:
 
 ```bash
-firebase deploy --only database
+firebase deploy --config scripts/firebase.json --only database
 ```
 
 ## 11. Worker Sharing Modes
@@ -650,13 +650,13 @@ The access-control release has two independent deployment units:
 
 1. Deploy the updated Next.js application so `/api/workers`, filtered dashboard
    state, atomic claiming, and server action authorization are active.
-2. Deploy `database.rules.json` so browsers can no longer read the raw `agents`
+2. Deploy `scripts/database.rules.json` so browsers can no longer read the raw `agents`
    collection directly.
 
 The Firebase rules command is:
 
 ```bash
-firebase deploy --only database
+firebase deploy --config scripts/firebase.json --only database
 ```
 
 The worker image must also be rebuilt and published because the worker now

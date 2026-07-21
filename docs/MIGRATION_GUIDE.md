@@ -7,7 +7,7 @@ This migration introduces a decoupled control plane:
 - **Firebase Realtime Database** distributes repository, deployment, worker, and queue state immediately.
 - **Python workers** claim jobs with RTDB transactions, renew leases, enforce one active job per repository, and execute Git/Docker operations.
 - **Public tunnels** expose selected running services for previews, callbacks, demos, and validation links.
-Everything running on the VPS is defined in [docker-compose.yaml](docker-compose.yaml) at the repository root. Firebase remains the managed external state and authentication service.
+Everything running on the VPS is defined in [docker-compose.yaml](../docker-compose.yaml) at the repository root. Firebase remains the managed external state and authentication service.
 
 ## 1. Revoke the exposed GitHub token
 
@@ -29,7 +29,7 @@ In one Firebase project:
    ```bash
    firebase login
    firebase use YOUR_PROJECT_ID
-   firebase deploy --only database
+   firebase deploy --config scripts/firebase.json --only database
    ```
 
 The browser may read only its own workspace. It cannot write repositories, jobs, queues, locks, or encrypted secrets directly. Firebase Admin in Next.js and the worker performs those writes.

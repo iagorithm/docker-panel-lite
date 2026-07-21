@@ -26,7 +26,7 @@ Reviewed files and areas:
 - `apps/web/lib/firebase-admin.ts`
 - `apps/web/lib/secrets.ts`
 - `apps/web/lib/*-access.ts`
-- `database.rules.json`
+- `scripts/database.rules.json`
 - `services/worker/worker/*`
 - `services/worker/worker/core/*`
 - `docker-compose.yaml`
@@ -199,7 +199,7 @@ Recommended fix:
 
 Evidence:
 
-- `database.rules.json` allows any authenticated user with matching `workspaceId` to read `repositories`, `credentials`, `containers`, `deployments`, and `commandPresets`.
+- `scripts/database.rules.json` allows any authenticated user with matching `workspaceId` to read `repositories`, `credentials`, `containers`, `deployments`, and `commandPresets`.
 - The server API filters resources by owner/sharing before returning them, but client Firebase subscriptions may still read broad workspace paths if used directly.
 
 Impact:
