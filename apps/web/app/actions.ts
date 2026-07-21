@@ -529,11 +529,12 @@ export async function saveCredential(formData: FormData) {
   const input = credentialSchema.parse(formObject(formData));
   const credentialRef = adminDatabase.ref(`workspaces/${user.workspaceId}/credentials/${input.alias}`);
   const current = (await credentialRef.get()).val() as CredentialAccessRecord | null;
-  if (current && !canManageCredential(current, user)) throw new Error("Credential alias is already owned by another user");
+  const currentOwnerUid = current ? credentialOwnerUid(current) : "";
+  if (currentOwnerUid && current && !canManageCredential(current, user)) throw new Error("Credential alias is already owned by another user");
   const encrypted = encryptSecret(input.token);
   const now = Date.now();
   const sharing = current ? credentialSharingMode(current) : "private";
-  const ownerUid = current ? credentialOwnerUid(current) : user.uid;
+  const ownerUid = currentOwnerUid || user.uid;
   const updates: Record<string, unknown> = {
     [`secrets/credentials/${user.workspaceId}/${input.alias}`]: {
       ...encrypted,
@@ -578,9 +579,10 @@ export async function saveCredentialsJson(formData: FormData) {
     const token = z.string().min(1).parse(item.token);
     const username = z.string().max(200).default("").parse(item.username);
     const current = existingCredentials[alias];
-    if (current && !canManageCredential(current, user)) throw new Error(`Credential '${alias}' is owned by another user`);
+    const currentOwnerUid = current ? credentialOwnerUid(current) : "";
+    if (currentOwnerUid && current && !canManageCredential(current, user)) throw new Error(`Credential '${alias}' is owned by another user`);
     const sharing = current ? credentialSharingMode(current) : "private";
-    const ownerUid = current ? credentialOwnerUid(current) : user.uid;
+    const ownerUid = currentOwnerUid || user.uid;
     updates[`secrets/credentials/${user.workspaceId}/${alias}`] = { ...encryptSecret(token), username, updatedAt: now, updatedBy: user.uid };
     updates[`workspaces/${user.workspaceId}/credentials/${alias}`] = {
       id: alias,
