@@ -5,6 +5,7 @@ ARG DOCKER_CLI_VERSION=27.3.1
 ARG COMPOSE_VERSION=2.29.7
 ARG NGROK_VERSION=3
 ARG TARGETARCH
+ARG WORKER_CONFIG_REQUIRED=false
 
 RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
@@ -35,6 +36,10 @@ RUN --mount=type=secret,id=worker_config,required=false \
     && if [ -f /run/secrets/worker_config ]; then \
       cp /run/secrets/worker_config /app/config/worker.env; \
       chmod 600 /app/config/worker.env; \
+    fi \
+    && if [ "$WORKER_CONFIG_REQUIRED" = "true" ] && [ ! -s /app/config/worker.env ]; then \
+      echo "Worker fallback configuration was required but was not embedded." >&2; \
+      exit 1; \
     fi
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 WORKER_CONFIG_FILE=/app/config/worker.env

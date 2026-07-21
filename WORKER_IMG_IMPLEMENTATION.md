@@ -138,18 +138,24 @@ The commands exposed through `run.sh` are:
 `build worker` only creates a local image. `publish-worker` is the command that
 pushes the multi-platform manifest and layers to Docker Hub.
 
-## 3. Optional Configuration Embedded in the Image
+## 3. Fallback Configuration Embedded in the Image
 
-The worker can run in two configuration modes:
+The worker supports two configuration sources:
 
-1. Runtime configuration supplied through environment variables.
-2. Configuration embedded in a private image at build time.
+1. Runtime configuration supplied through environment variables or Docker's
+   `--env-file` option.
+2. Fallback configuration embedded in a private image at build time.
 
-Embedded configuration is enabled with:
+Worker image publication embeds fallback configuration by default. The project
+configuration keeps that behavior explicit with:
 
 ```env
 WORKER_BAKE_CONFIG=true
 ```
+
+Set `WORKER_BAKE_CONFIG=false` only when intentionally publishing an
+unconfigured image that will always receive its Firebase and encryption values
+at runtime.
 
 The publishing script reads the supported values from the active environment or
 the project `.env`, writes them to a temporary file, and passes the file to the
@@ -202,6 +208,18 @@ worker settings. The loader:
 
 Runtime values therefore override baked values. This allows one image to carry
 defaults while still permitting a machine-specific override.
+
+For example, a remote machine can override any or all embedded defaults without
+rebuilding the image:
+
+```bash
+docker run --env-file /path/to/worker.env ... cjarn/docker-panel-lite-worker:latest
+```
+
+When `--env-file` is omitted, the worker reads `/app/config/worker.env` from the
+published image. Publication fails before pushing when Firebase identity,
+service-account JSON, or `CREDENTIAL_ENCRYPTION_KEY` is unavailable. The image
+build also fails if fallback configuration was requested but not embedded.
 
 Firebase service account credentials are accepted as JSON through
 `FIREBASE_SERVICE_ACCOUNT_JSON`. They can also be loaded from

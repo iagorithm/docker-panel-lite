@@ -42,7 +42,7 @@ PUSH="${PUSH:-true}"
 PROGRESS="$(env_value BUILDKIT_PROGRESS)"
 PROGRESS="${PROGRESS:-plain}"
 BAKE_CONFIG="$(env_value WORKER_BAKE_CONFIG)"
-BAKE_CONFIG="${BAKE_CONFIG:-false}"
+BAKE_CONFIG="${BAKE_CONFIG:-true}"
 
 if [[ "$IMAGE" == *:* ]]; then
   BASE_IMAGE="${IMAGE%:*}"
@@ -106,6 +106,7 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
   CONFIG_KEYS=(
     FIREBASE_DATABASE_URL
     NEXT_PUBLIC_FIREBASE_DATABASE_URL
+    FIREBASE_PROJECT_ID
     NEXT_PUBLIC_FIREBASE_PROJECT_ID
     FIREBASE_SERVICE_ACCOUNT_JSON
     CREDENTIAL_ENCRYPTION_KEY
@@ -130,6 +131,24 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
   done
   if [[ -z "$CONFIG_TEXT" ]]; then
     echo "WORKER_BAKE_CONFIG is enabled, but no worker configuration values were found in $ENV_FILE."
+    exit 1
+  fi
+  DATABASE_URL="$(env_value FIREBASE_DATABASE_URL)"
+  DATABASE_URL="${DATABASE_URL:-$(env_value NEXT_PUBLIC_FIREBASE_DATABASE_URL)}"
+  FIREBASE_PROJECT="$(env_value FIREBASE_PROJECT_ID)"
+  FIREBASE_PROJECT="${FIREBASE_PROJECT:-$(env_value NEXT_PUBLIC_FIREBASE_PROJECT_ID)}"
+  SERVICE_ACCOUNT="$(env_value FIREBASE_SERVICE_ACCOUNT_JSON)"
+  ENCRYPTION_KEY="$(env_value CREDENTIAL_ENCRYPTION_KEY)"
+  if [[ -z "$DATABASE_URL" && -z "$FIREBASE_PROJECT" && -z "$SERVICE_ACCOUNT" ]]; then
+    echo "Cannot bake worker fallback configuration: Firebase database URL or project identity is missing in $ENV_FILE." >&2
+    exit 1
+  fi
+  if [[ -z "$SERVICE_ACCOUNT" || "$SERVICE_ACCOUNT" == "{}" ]]; then
+    echo "Cannot bake worker fallback configuration: FIREBASE_SERVICE_ACCOUNT_JSON is missing in $ENV_FILE." >&2
+    exit 1
+  fi
+  if [[ -z "$ENCRYPTION_KEY" ]]; then
+    echo "Cannot bake worker fallback configuration: CREDENTIAL_ENCRYPTION_KEY is missing in $ENV_FILE." >&2
     exit 1
   fi
   WORKER_CONFIG_SECRET="$(mktemp)"
@@ -157,6 +176,9 @@ BUILD_COMMAND=(
   -t "$BASE_IMAGE:$TAG"
   -t "$BASE_IMAGE:latest"
 )
+if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
+  BUILD_COMMAND+=(--build-arg WORKER_CONFIG_REQUIRED=true)
+fi
 if [[ "${#BUILD_SECRETS[@]}" -gt 0 ]]; then
   BUILD_COMMAND+=("${BUILD_SECRETS[@]}")
 fi
