@@ -23,11 +23,13 @@ import {
   importRepositoriesJson,
   saveCommandPreset,
   saveCredential,
+  saveCredentialSharing,
   saveCredentialsJson,
   saveRepository,
   saveWorkerSharing,
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
+import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
 import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContainer, Repository } from "@/lib/types";
 import { canManageWorker, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
@@ -395,6 +397,11 @@ function workerSharingLabel(agent: Agent) {
   return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
 }
 
+function credentialSharingLabel(credential: CredentialSummary) {
+  const sharing = credentialSharingMode(credential as CredentialAccessRecord);
+  return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
+}
+
 function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: number; onOpenWorkers: () => void }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
@@ -523,7 +530,7 @@ export function RealtimeDashboard(props: Props) {
         {view === "containers" ? (
           <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : (
-          <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} />
+          <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         )}
       </main>
     </div>
@@ -1016,7 +1023,7 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
   );
 }
 
-function RepositoriesView({ repositories, commandPresets, credentials, containers, deployments, agents, activeJobs, now }: {
+function RepositoriesView({ repositories, commandPresets, credentials, containers, deployments, agents, activeJobs, now, currentUser }: {
   repositories: Repository[];
   commandPresets: CommandPreset[];
   credentials: CredentialSummary[];
@@ -1025,6 +1032,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
   agents: Agent[];
   activeJobs: number;
   now: number;
+  currentUser: Props["user"];
 }) {
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
@@ -1098,7 +1106,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       </div>
 
       {showAddRepository ? <AddRepositoryPanel credentials={credentials} /> : null}
-      {showCredentials ? <CredentialsPanel credentials={credentials} /> : null}
+      {showCredentials ? <CredentialsPanel credentials={credentials} currentUser={currentUser} /> : null}
       {showCommandPresets ? <CommandPresetsPanel commandPresets={commandPresets} /> : null}
 
       <section className="panel resource-panel">
