@@ -1,4 +1,4 @@
-@firebaseApiKey = REPLACE_WITH_NEXT_PUBLIC_FIREBASE_API_KEY
+@firebaseApiKey = AIzaSyA7OUzGy3vxo-iaCIA59bqwBOs1U1edhwY
 @email = test@test.com
 @password = 000000
 
@@ -13,11 +13,7 @@ Content-Type: application/json
   "returnSecureToken": true
 }
 
-> {%
-  client.global.set("firebaseIdToken", response.body.idToken);
-  client.global.set("firebaseRefreshToken", response.body.refreshToken);
-  client.global.set("firebaseLocalId", response.body.localId);
-%}
+
 
 ### Verify the authenticated Firebase user
 POST https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebaseApiKey}}
