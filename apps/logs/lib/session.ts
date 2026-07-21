@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase-admin";
 
+export const SESSION_COOKIE = "docker_panel_session";
+
 export async function adminSession() {
-  const value = (await cookies()).get("docker_panel_session")?.value;
+  const value = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!value) return null;
   try {
     const claims = await adminAuth.verifySessionCookie(value, true);
