@@ -19,6 +19,14 @@ docker login
 ./run.sh publish-worker
 ```
 
+To publish a private image that already includes the worker Firebase configuration, set:
+
+```env
+WORKER_BAKE_CONFIG=true
+```
+
+This embeds values such as `FIREBASE_DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CREDENTIAL_ENCRYPTION_KEY`, `WORKER_WORKSPACE_ID`, and ngrok defaults into the image. Use it only for a private Docker Hub repository.
+
 To publish an immutable version:
 
 ```bash
@@ -27,18 +35,32 @@ WORKER_IMAGE_TAG=2026-07-20 ./run.sh publish-worker
 
 ## Run On Another Machine
 
-Copy `.env.example` to `.env`, configure Firebase and encryption values, then set:
+For a configured private image, the remote machine only needs Docker access to the image plus the Docker socket/data mounts:
 
-```env
-WORKER_IMAGE=iagorithm/docker-panel-lite-worker:latest
+```bash
+docker run -d \
+  --name docker-panel-lite-worker \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD/repos:/app/clones" \
+  -v "$PWD/data:/app/data" \
+  iagorithm/docker-panel-lite-worker:latest
 ```
 
-Start only the worker:
+If you prefer runtime configuration instead of a baked image, copy `.env.example` to `.env`, configure Firebase and encryption values, then start only the worker:
 
 ```bash
 ./run.sh pull worker
 ./run.sh up worker
 ```
+
+When the worker starts, it prints a claim token in its logs:
+
+```text
+Worker claim token for worker-default-... (Mexica): ...
+```
+
+Paste that token in the Workers tab to claim the worker. New workers are public by default. If you need to pin the token yourself, set `WORKER_TOKEN` in `.env`; otherwise it is generated once and stored in `./data/worker-token`.
 
 The compose file mounts Docker and local worker state:
 

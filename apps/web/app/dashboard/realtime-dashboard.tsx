@@ -297,9 +297,10 @@ function workerStatusLabel(agent: Agent, now: number) {
 }
 
 function workerSharing(agent: Agent): "private" | "shared" | "public" {
+  if (agent.sharing === "private") return "private";
   if (agent.sharing === "public" || agent.public) return "public";
   if (agent.sharing === "shared" || agent.shared) return "shared";
-  return "private";
+  return "public";
 }
 
 function workerSharingLabel(agent: Agent) {

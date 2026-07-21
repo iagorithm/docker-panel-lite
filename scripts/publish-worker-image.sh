@@ -30,6 +30,8 @@ PUSH="$(env_value PUSH)"
 PUSH="${PUSH:-true}"
 PROGRESS="$(env_value BUILDKIT_PROGRESS)"
 PROGRESS="${PROGRESS:-plain}"
+BAKE_CONFIG="$(env_value WORKER_BAKE_CONFIG)"
+BAKE_CONFIG="${BAKE_CONFIG:-false}"
 
 if [[ "$IMAGE" == *:* ]]; then
   BASE_IMAGE="${IMAGE%:*}"
@@ -76,12 +78,52 @@ fi
 
 ensure_builder
 
+BUILD_ARGS=()
+if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
+  CONFIG_TEXT=""
+  CONFIG_KEYS=(
+    FIREBASE_DATABASE_URL
+    NEXT_PUBLIC_FIREBASE_DATABASE_URL
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    FIREBASE_SERVICE_ACCOUNT_JSON
+    CREDENTIAL_ENCRYPTION_KEY
+    WORKER_WORKSPACE_ID
+    WORKER_POOL
+    WORKER_SHARDS
+    WORKER_MAX_CONCURRENCY
+    WORKER_LEASE_SECONDS
+    WORKER_POLL_SECONDS
+    QUEUE_SHARDS
+    TRAEFIK_ENABLED
+    TRAEFIK_NETWORK
+    NGROK_ENABLED
+    NGROK_AUTHTOKEN
+    NGROK_REGION
+  )
+  for key in "${CONFIG_KEYS[@]}"; do
+    value="$(env_value "$key")"
+    if [[ -n "$value" ]]; then
+      CONFIG_TEXT+="${key}=${value}"$'\n'
+    fi
+  done
+  if [[ -z "$CONFIG_TEXT" ]]; then
+    echo "WORKER_BAKE_CONFIG is enabled, but no worker configuration values were found in $ENV_FILE."
+    exit 1
+  fi
+  WORKER_BAKED_CONFIG_B64="$(printf '%s' "$CONFIG_TEXT" | base64 | tr -d '\n')"
+  BUILD_ARGS+=(--build-arg "WORKER_BAKED_CONFIG_B64=$WORKER_BAKED_CONFIG_B64")
+fi
+
 echo "Building worker image:"
 echo "  image: $BASE_IMAGE"
 echo "  tag: $TAG"
 echo "  platforms: $PLATFORMS"
 echo "  push: $PUSH"
 echo "  builder: $(docker buildx inspect 2>/dev/null | awk -F': +' '/^Name:/ {print $2; exit}')"
+echo "  baked config: $([[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]] && echo yes || echo no)"
+if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "yes" ]]; then
+  echo "  warning: baked config is intended for private images only"
+fi
 
 docker buildx build \
   --progress "$PROGRESS" \
@@ -89,6 +131,7 @@ docker buildx build \
   -f "$ROOT_DIR/services/worker/Dockerfile" \
   -t "$BASE_IMAGE:$TAG" \
   -t "$BASE_IMAGE:latest" \
+  "${BUILD_ARGS[@]}" \
   "${OUTPUT_FLAG[@]}" \
   "$ROOT_DIR"
 
