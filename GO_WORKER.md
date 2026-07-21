@@ -19,18 +19,20 @@ Current Go implementation in `services/worker-go` supports:
 - Preservation of owner and sharing metadata during heartbeat.
 - Runtime metadata: `runtime: "go"`, Go version, worker version placeholder, and feature list.
 - Docker availability summary through Docker CLI.
+- Queue polling for configured shards.
+- ETag-based conditional job leasing.
+- Lease renewal while jobs are active.
+- Repository/container locks.
+- Container inventory publication.
+- Container start, stop, restart, delete, and logs actions.
+- `inventory_refresh` jobs.
 - Docker image build scaffold.
 - Docker Compose profile activation through `worker-go`.
 
 Current Go implementation does **not** support yet:
 
-- Queue polling or realtime queue listeners.
-- Job leasing.
-- Lease renewal.
-- Cancellation.
-- Repository locks.
-- Container inventory publication.
-- Container actions.
+- Firebase realtime queue listeners. The Go worker currently uses polling.
+- Active command cancellation/interruption. It observes cancellation before execution and at completion.
 - Git clone/pull.
 - Credential decryption.
 - Compose deploys.
@@ -118,6 +120,7 @@ services/worker-go/
   worker/firebase_runtime/client.go
   worker/heartbeat/heartbeat.go
   worker/identity/identity.go
+  worker/queue/runner.go
   Dockerfile
   README.md
   go.mod
@@ -127,10 +130,8 @@ Planned but not implemented yet:
 
 ```text
 services/worker-go/worker/
-  queue/
   executor/
   secrets/
-  inventory/
 
 services/worker-go/worker/core/
   git.go
@@ -150,18 +151,18 @@ services/worker-go/worker/core/
 | Online/offline heartbeat | Complete | Implemented | Go sends heartbeat loop and shutdown offline status. |
 | Preserve ownership/sharing | Complete | Implemented | Go reads current agent record before writing heartbeat. |
 | Docker summary | Complete | Implemented | Go uses Docker CLI summary, not Docker SDK yet. |
-| Container inventory | Complete | Missing | Needed for dashboard container list parity. |
-| Queue polling/listening | Complete | Missing | Python listens to queue shards and also scans. |
-| Job leasing | Complete | Missing | Needed before Go can process work safely. |
-| Lease renewal | Complete | Missing | Needed for long-running deploys. |
-| Repository lock | Complete | Missing | Needed to prevent concurrent deploys per repo. |
-| Cancellation | Complete | Missing | Needed for dashboard cancellation behavior. |
-| `inventory_refresh` | Complete | Missing | Depends on inventory implementation. |
-| `container_logs` | Complete | Missing | Depends on Docker container lookup. |
-| `container_start` | Complete | Missing | Depends on Docker actions. |
-| `container_stop` | Complete | Missing | Depends on Docker actions and worker protection. |
-| `container_restart` | Complete | Missing | Depends on Docker actions. |
-| `container_delete` | Complete | Missing | Depends on Docker actions and worker protection. |
+| Container inventory | Complete | Implemented | Go publishes dashboard inventory from Docker CLI. |
+| Queue polling/listening | Complete | Partial | Go polls queue shards. Realtime listeners are not implemented yet. |
+| Job leasing | Complete | Implemented | Go uses Firebase REST ETags and conditional PUT. |
+| Lease renewal | Complete | Implemented | Go extends job and lock leases while processing. |
+| Repository lock | Complete | Implemented | Go locks by repository or container key before execution. |
+| Cancellation | Complete | Partial | Go handles cancellation before execution and final status, but does not interrupt active Docker commands yet. |
+| `inventory_refresh` | Complete | Implemented | Publishes container inventory. |
+| `container_logs` | Complete | Implemented | Loads Docker log tail into container record. |
+| `container_start` | Complete | Implemented | Uses Docker CLI. |
+| `container_stop` | Complete | Implemented | Uses Docker CLI and worker protection. |
+| `container_restart` | Complete | Implemented | Uses Docker CLI. |
+| `container_delete` | Complete | Implemented | Uses Docker CLI and worker protection. |
 | `container_exec` | Complete | Missing | Should wait for command hardening/allowlists. |
 | `worker_command` | Complete | Missing | Should wait for command hardening/allowlists. |
 | AES-GCM secret decrypt | Complete | Missing | Needed for private Git credentials and ngrok tokens. |
@@ -454,46 +455,46 @@ Acceptance criteria:
 
 ### Phase 2: Queue Leasing
 
-Status: not implemented.
+Status: mostly implemented.
 
 Deliverables:
 
-- Queue shard polling.
-- Optional Firebase realtime listener if practical.
-- Job lease transaction.
-- Lease renewal while job runs.
-- Cancellation detection.
-- Active job tracking.
-- Max concurrency enforcement.
+- Queue shard polling. Done.
+- Optional Firebase realtime listener if practical. Pending.
+- Job lease transaction. Done with Firebase REST ETags and conditional PUT.
+- Lease renewal while job runs. Done.
+- Cancellation detection. Partial. Go handles cancellation before execution and final status, but does not interrupt active Docker commands yet.
+- Active job tracking. Done.
+- Max concurrency enforcement. Done.
 
 Acceptance criteria:
 
-- Go worker leases only jobs assigned to its pool/shards.
-- Go worker respects `targetWorkerId`.
-- Go worker does not process jobs owned by another worker.
-- Expired leases can be recovered safely.
+- Go worker leases only jobs assigned to its pool/shards. Done.
+- Go worker respects `targetWorkerId`. Done.
+- Go worker does not process jobs owned by another worker. Done.
+- Expired leases can be recovered safely. Done.
 
 ### Phase 3: Container Inventory and Basic Container Actions
 
-Status: not implemented.
+Status: implemented for Docker CLI based inventory and basic actions.
 
 Deliverables:
 
-- Docker client wrapper.
-- Inventory collection.
-- `inventory_refresh`.
-- `container_logs`.
-- `container_start`.
-- `container_stop`.
-- `container_restart`.
-- `container_delete`.
-- Worker container protection.
+- Docker client wrapper. Done with Docker CLI.
+- Inventory collection. Done.
+- `inventory_refresh`. Done.
+- `container_logs`. Done.
+- `container_start`. Done.
+- `container_stop`. Done.
+- `container_restart`. Done.
+- `container_delete`. Done.
+- Worker container protection. Done for stop/delete/exec.
 
 Acceptance criteria:
 
-- Dashboard container inventory updates correctly.
-- Logs are returned and truncated safely.
-- Worker container cannot be stopped, deleted, or exec'd.
+- Dashboard container inventory updates correctly. Needs live workspace validation.
+- Logs are returned and truncated safely. Done.
+- Worker container cannot be stopped, deleted, or exec'd. Done.
 
 ### Phase 4: Git and Credential Decryption
 
@@ -772,8 +773,8 @@ Recommended:
 1. Build Go worker heartbeat only. Done.
 2. Run Go worker in a dev workspace with no production credentials. Pending.
 3. Claim Go worker from dashboard. Supported by code, needs environment test.
-4. Enable inventory refresh. Pending.
-5. Enable logs and basic container actions. Pending.
+4. Enable inventory refresh. Implemented, needs live workspace validation.
+5. Enable logs and basic container actions. Implemented, needs live workspace validation.
 6. Enable Git sync and branch discovery. Pending.
 7. Enable Compose/Dockerfile deployments. Pending.
 8. Enable tunnels. Pending.
@@ -792,16 +793,16 @@ Recommended:
 
 ## Immediate Next Implementation Steps
 
-1. Add queue polling for `queues/{poolId}/{shardId}`.
-2. Add Firebase transaction support or conditional REST writes for safe job leasing.
-3. Mirror job updates into `jobs/{jobId}` and `workspaces/{workspaceId}/deployments/{jobId}`.
-4. Implement lease renewal and cancellation detection.
-5. Implement container inventory publication.
-6. Implement `inventory_refresh` and `container_logs`.
-7. Add worker container protection before enabling stop/delete/exec.
-8. Add AES-GCM decrypt compatibility.
-9. Add Git clone/pull and branch discovery.
-10. Add Compose and Dockerfile deploy parity.
+1. Add live workspace validation for Go queue leasing and container actions.
+2. Add active cancellation/interruption for long Docker commands.
+3. Add AES-GCM decrypt compatibility.
+4. Add Git clone/pull and branch discovery.
+5. Add `read_compose`.
+6. Add Compose deploy parity.
+7. Add Dockerfile deploy parity.
+8. Add ngrok tunnel start/stop parity.
+9. Add command allowlists before enabling `worker_command` and `container_exec`.
+10. Add contract fixtures shared by Python and Go.
 
 ## Success Criteria
 

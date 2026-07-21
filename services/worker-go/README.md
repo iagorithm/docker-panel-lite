@@ -11,14 +11,16 @@ Current implementation status:
 - Sends online/offline heartbeats to `workspaces/{workspaceId}/agents/{workerId}`.
 - Preserves owner and sharing metadata on heartbeat.
 - Reports Docker availability and summary.
+- Polls Firebase queue shards and leases jobs with conditional REST writes.
+- Publishes container inventory to the dashboard.
+- Handles `inventory_refresh`, `container_logs`, `container_start`, `container_stop`, `container_restart`, and `container_delete`.
 
 Not implemented yet:
 
-- Queue leasing.
 - Repository sync/deploy.
-- Container actions.
 - Public tunnels.
 - Worker/container command execution.
+- Compose and Dockerfile deployments.
 
 Run locally:
 

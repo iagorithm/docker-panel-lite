@@ -69,12 +69,78 @@ func (c *Client) Get(ctx context.Context, path string, out interface{}) error {
 	return c.request(ctx, http.MethodGet, path, nil, out)
 }
 
+func (c *Client) GetWithETag(ctx context.Context, path string, out interface{}) (string, error) {
+	token, err := c.token(ctx)
+	if err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, token), nil)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("X-Firebase-ETag", "true")
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(response.Body)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("firebase GET %s failed: %s: %s", path, response.Status, strings.TrimSpace(string(responseBody)))
+	}
+	if out != nil && len(bytes.TrimSpace(responseBody)) > 0 && string(bytes.TrimSpace(responseBody)) != "null" {
+		if err := json.Unmarshal(responseBody, out); err != nil {
+			return "", err
+		}
+	}
+	return response.Header.Get("ETag"), nil
+}
+
 func (c *Client) Put(ctx context.Context, path string, value interface{}) error {
 	return c.request(ctx, http.MethodPut, path, value, nil)
 }
 
+func (c *Client) PutIfMatch(ctx context.Context, path string, etag string, value interface{}, out interface{}) (bool, error) {
+	token, err := c.token(ctx)
+	if err != nil {
+		return false, err
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return false, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(path, token), bytes.NewReader(payload))
+	if err != nil {
+		return false, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("If-Match", etag)
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(response.Body)
+	if response.StatusCode == http.StatusPreconditionFailed {
+		return false, nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false, fmt.Errorf("firebase conditional PUT %s failed: %s: %s", path, response.Status, strings.TrimSpace(string(responseBody)))
+	}
+	if out != nil && len(bytes.TrimSpace(responseBody)) > 0 && string(bytes.TrimSpace(responseBody)) != "null" {
+		if err := json.Unmarshal(responseBody, out); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 func (c *Client) Patch(ctx context.Context, path string, value interface{}) error {
 	return c.request(ctx, http.MethodPatch, path, value, nil)
+}
+
+func (c *Client) Delete(ctx context.Context, path string) error {
+	return c.request(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body interface{}, out interface{}) error {

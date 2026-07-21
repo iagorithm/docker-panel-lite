@@ -12,6 +12,7 @@ import (
 	"docker-panel-lite-worker-go/worker/firebase_runtime"
 	"docker-panel-lite-worker-go/worker/heartbeat"
 	"docker-panel-lite-worker-go/worker/identity"
+	"docker-panel-lite-worker-go/worker/queue"
 )
 
 func main() {
@@ -37,11 +38,16 @@ func main() {
 	defer stop()
 
 	agent := heartbeat.New(client, settings, workerTokenHash)
+	runner := queue.New(client, settings, agent)
 	log.Printf("Worker claim token for %s (%s): %s", settings.WorkerID, settings.WorkerLabelOrDefault(), workerToken)
 
 	if err := agent.Send(ctx, "online", 0); err != nil {
 		log.Printf("heartbeat failed: %v", err)
 	}
+	if err := runner.PublishContainerInventory(ctx, settings.WorkspaceID, true); err != nil {
+		log.Printf("container inventory failed: %v", err)
+	}
+	go runner.Run(ctx)
 
 	ticker := time.NewTicker(time.Duration(settings.PollSeconds) * time.Second)
 	defer ticker.Stop()
@@ -52,14 +58,17 @@ func main() {
 		case <-ctx.Done():
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 			defer cancel()
-			if err := agent.Send(shutdownCtx, "offline", 0); err != nil {
+			if err := agent.Send(shutdownCtx, "offline", runner.ActiveCount()); err != nil {
 				log.Printf("offline heartbeat failed: %v", err)
 			}
 			log.Printf("Go worker %s stopped", settings.WorkerID)
 			return
 		case <-ticker.C:
-			if err := agent.Send(ctx, "online", 0); err != nil {
+			if err := agent.Send(ctx, "online", runner.ActiveCount()); err != nil {
 				log.Printf("heartbeat failed: %v", err)
+			}
+			if err := runner.PublishContainerInventory(ctx, settings.WorkspaceID, false); err != nil {
+				log.Printf("container inventory failed: %v", err)
 			}
 		}
 	}
