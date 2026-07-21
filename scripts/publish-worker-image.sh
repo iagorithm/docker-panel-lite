@@ -4,6 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 
+publish_error() {
+  local status="$1"
+  local line="$2"
+  echo "Worker image publication stopped unexpectedly near line $line (exit $status)." >&2
+  echo "Run again after checking the Docker/Buildx message immediately above." >&2
+}
+
+trap 'status=$?; publish_error "$status" "$LINENO"; exit "$status"' ERR
+
+echo "Preparing worker image publication..."
+
 env_value() {
   local key="$1"
   local value="${!key:-}"
@@ -58,16 +69,27 @@ ensure_builder() {
     return
   fi
   local current_driver
-  current_driver="$(docker buildx inspect 2>/dev/null | awk -F': +' '/^Driver:/ {print $2; exit}')"
-  if [[ "$current_driver" != "docker" ]]; then
+  current_driver="$(docker buildx inspect 2>/dev/null | awk -F': +' '/^Driver:/ {print $2; exit}' || true)"
+  if [[ "$current_driver" == "docker-container" ]]; then
     return
   fi
+
+  echo "Preparing multi-platform builder: $builder"
   if docker buildx inspect "$builder" >/dev/null 2>&1; then
-    docker buildx use "$builder" >/dev/null
+    if ! docker buildx use "$builder"; then
+      echo "Could not select Docker Buildx builder '$builder'." >&2
+      return 1
+    fi
   else
-    docker buildx create --name "$builder" --driver docker-container --use >/dev/null
+    if ! docker buildx create --name "$builder" --driver docker-container --use; then
+      echo "Could not create Docker Buildx builder '$builder'." >&2
+      return 1
+    fi
   fi
-  docker buildx inspect --bootstrap >/dev/null
+  if ! docker buildx inspect --bootstrap; then
+    echo "Could not start Docker Buildx builder '$builder'." >&2
+    return 1
+  fi
 }
 
 OUTPUT_FLAG=(--push)
@@ -127,15 +149,20 @@ if [[ "$BAKE_CONFIG" == "true" || "$BAKE_CONFIG" == "1" || "$BAKE_CONFIG" == "ye
   echo "  warning: baked config is intended for private images only"
 fi
 
-if ! docker buildx build \
-  --progress "$PROGRESS" \
-  --platform "$PLATFORMS" \
-  -f "$ROOT_DIR/services/worker/Dockerfile" \
-  -t "$BASE_IMAGE:$TAG" \
-  -t "$BASE_IMAGE:latest" \
-  ${BUILD_SECRETS[@]+"${BUILD_SECRETS[@]}"} \
-  "${OUTPUT_FLAG[@]}" \
-  "$ROOT_DIR"; then
+BUILD_COMMAND=(
+  docker buildx build
+  --progress "$PROGRESS"
+  --platform "$PLATFORMS"
+  -f "$ROOT_DIR/services/worker/Dockerfile"
+  -t "$BASE_IMAGE:$TAG"
+  -t "$BASE_IMAGE:latest"
+)
+if [[ "${#BUILD_SECRETS[@]}" -gt 0 ]]; then
+  BUILD_COMMAND+=("${BUILD_SECRETS[@]}")
+fi
+BUILD_COMMAND+=("${OUTPUT_FLAG[@]}" "$ROOT_DIR")
+
+if ! "${BUILD_COMMAND[@]}"; then
   echo
   echo "Worker image build/publish failed."
   if [[ "$PUSH" != "false" && "$PUSH" != "0" ]]; then
