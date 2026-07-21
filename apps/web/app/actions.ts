@@ -133,6 +133,11 @@ const repositoryImportSchema = z.object({
   createdAt: z.number().optional(),
 });
 
+export type RepositorySaveState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 function formObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
@@ -466,6 +471,27 @@ export async function saveRepository(formData: FormData) {
   }
   await adminDatabase.ref().update(updates);
   revalidatePath("/dashboard");
+}
+
+export async function saveRepositoryWithState(_previousState: RepositorySaveState, formData: FormData): Promise<RepositorySaveState> {
+  try {
+    const isEditing = Boolean(formData.get("repositoryId"));
+    await saveRepository(formData);
+    return { status: "success", message: isEditing ? "Repository settings saved." : "Repository registered." };
+  } catch (error) {
+    console.error("saveRepository failed", error);
+    if (error instanceof z.ZodError) {
+      return { status: "error", message: error.issues[0]?.message || "Check the repository fields and try again." };
+    }
+    const message = error instanceof Error ? error.message : "Repository could not be saved.";
+    if (message === "Repository is owned by another user") {
+      return { status: "error", message: "That repository name is already registered by another user. Choose another display name or ask its owner to share it." };
+    }
+    if (message.startsWith("Legacy repository has no owner")) {
+      return { status: "error", message: "That repository name belongs to a legacy record. Remove or migrate that record before registering it again." };
+    }
+    return { status: "error", message };
+  }
 }
 
 export async function importRepositoriesJson(formData: FormData) {

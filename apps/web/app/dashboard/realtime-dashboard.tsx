@@ -3,7 +3,7 @@
 import { signOut } from "firebase/auth";
 import { onValue, ref } from "firebase/database";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -25,8 +25,9 @@ import {
   saveCredential,
   saveCredentialSharing,
   saveCredentialsJson,
-  saveRepository,
+  saveRepositoryWithState,
   saveWorkerSharing,
+  type RepositorySaveState,
 } from "@/app/actions";
 import { firebaseAuth, realtimeDatabase } from "@/lib/firebase-client";
 import { canManageCredential, credentialSharingMode, type CredentialAccessRecord } from "@/lib/credential-access";
@@ -54,6 +55,7 @@ const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60 * 1000;
 const activeJobMaxAge = 15 * 60 * 1000;
 const pendingButtonMaxAge = 15 * 1000;
+const initialRepositorySaveState: RepositorySaveState = { status: "idle", message: "" };
 
 function useCollection<T>(path: string, initial: T[]) {
   const [items, setItems] = useState(initial);
@@ -1182,6 +1184,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
 }
 
 function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] }) {
+  const [saveState, saveAction] = useActionState(saveRepositoryWithState, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
@@ -1220,7 +1223,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 
   return (
     <section className="panel add-repository-panel">
-      <form action={saveRepository} className="add-repository-form">
+      <form action={saveAction} className="add-repository-form">
         <input type="hidden" name="poolId" value="default" />
         <input type="hidden" name="domain" value="" />
         <input type="hidden" name="service" value="web" />
@@ -1258,6 +1261,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder="Optional per repository token" /></label>
           <EnvironmentEditor initialEnvText="" />
           <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
+          {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
         </div>
       </form>
       {showRepositoryImport ? (
@@ -1271,6 +1275,7 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 }
 
 function RepositorySettings({ repository, credentials, open }: { repository: Repository; credentials: CredentialSummary[]; open: boolean }) {
+  const [saveState, saveAction] = useActionState(saveRepositoryWithState, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
@@ -1328,7 +1333,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   return (
     <details className="inline-editor" open={open}>
       <summary><span>Edit settings</span><span>⌄</span></summary>
-      <form action={saveRepository} className="repository-settings-form">
+      <form action={saveAction} className="repository-settings-form">
         <input type="hidden" name="repositoryId" value={repository.id} />
         <input type="hidden" name="publicTunnelDomainsJson" value={JSON.stringify(repository.publicTunnelDomains || {})} />
         <input type="hidden" name="publicTunnelPortsJson" value={JSON.stringify(repository.publicTunnelPorts || {})} />
@@ -1387,7 +1392,10 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
             <button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button>
           </div>
         </div>
-        <div className="settings-form-footer"><PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton></div>
+        <div className="settings-form-footer">
+          {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
+          <PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton>
+        </div>
       </form>
       <RepositoryDeleteConfirm repository={repository} open={showDeleteConfirm} compact onClose={() => setShowDeleteConfirm(false)} />
     </details>

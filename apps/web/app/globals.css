@@ -569,6 +569,28 @@ a:hover { text-decoration-color: var(--ui-text); }
   width: 1.2rem;
   height: 1.2rem;
 }
+.form-action-feedback {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.42rem 0.55rem;
+  color: var(--ui-text-secondary);
+  background: var(--ui-surface-hover);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.42rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.form-action-feedback.is-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.form-action-feedback.is-success {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
 .repository-import-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1685,11 +1707,16 @@ details[open] > summary { border-bottom: 1px solid var(--ui-border); }
 }
 .settings-form-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.38rem;
   padding: 0.52rem 0.65rem;
   background: rgba(255, 255, 255, 0.42);
   border-top: 1px solid var(--ui-border);
+}
+.settings-form-footer .form-action-feedback {
+  margin-right: auto;
+  padding-block: 0.34rem;
 }
 .repo-resource-row .inline-editor .form-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
