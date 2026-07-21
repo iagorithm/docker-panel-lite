@@ -1407,7 +1407,46 @@ function ComposeViewer({ repository, open, onClose }: { repository: Repository; 
   );
 }
 
-function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] }) {
+function CredentialSharingForm({ credential }: { credential: CredentialSummary }) {
+  const currentSharing = credentialSharingMode(credential as CredentialAccessRecord);
+  const currentSharedEmails = (credential.sharedEmails || []).join(", ");
+  const [sharing, setSharing] = useState(currentSharing);
+  const [sharedEmails, setSharedEmails] = useState(currentSharedEmails);
+  useEffect(() => {
+    setSharing(currentSharing);
+    setSharedEmails(currentSharedEmails);
+  }, [credential.id, currentSharing, currentSharedEmails]);
+  return (
+    <form action={saveCredentialSharing} className={`credential-sharing-form ${sharing === "shared" ? "has-shared-emails" : ""}`}>
+      <input type="hidden" name="credentialId" value={credential.id} />
+      <label>
+        Access
+        <select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as "private" | "shared" | "public")}>
+          <option value="private">Private</option>
+          <option value="shared">Shared</option>
+          <option value="public">Public</option>
+        </select>
+      </label>
+      {sharing === "shared" ? (
+        <label className="credential-shared-emails">
+          Shared with
+          <input
+            name="sharedEmails"
+            type="text"
+            value={sharedEmails}
+            onChange={(event) => setSharedEmails(event.target.value)}
+            placeholder="ana@example.com, sam@example.com"
+            aria-label="Shared email addresses separated by commas"
+            autoComplete="off"
+          />
+        </label>
+      ) : <input type="hidden" name="sharedEmails" value="" />}
+      <PendingIconButton title="Save credential access"><Icon name="check" /></PendingIconButton>
+    </form>
+  );
+}
+
+function CredentialsPanel({ credentials, currentUser }: { credentials: CredentialSummary[]; currentUser: Props["user"] }) {
   const [showCredentialForm, setShowCredentialForm] = useState(false);
   const [showImportForm, setShowImportForm] = useState(false);
   return (
@@ -1438,9 +1477,26 @@ function CredentialsPanel({ credentials }: { credentials: CredentialSummary[] })
           <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import credentials from JSON">Import credentials</PendingSubmitButton></div>
         </form>
       ) : null}
-      <div className="compact-list">{credentials.map((credential) => (
-        <div className="compact-row" key={credential.id}><div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask}</small></div><form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><PendingIconButton title="Delete credential"><Icon name="trash" /></PendingIconButton></form></div>
-      ))}</div>
+      <div className="compact-list">{credentials.map((credential) => {
+        const isOwner = canManageCredential(credential as CredentialAccessRecord, currentUser);
+        const sharingLabel = credentialSharingLabel(credential);
+        return (
+          <div className="compact-row credential-row" key={credential.id}>
+            <div><strong>{credential.alias}</strong><small>{credential.username || "GitHub"} · {credential.tokenMask} · {sharingLabel}</small></div>
+            {isOwner ? (
+              <details className="credential-access-settings">
+                <summary title="Manage credential access" data-tooltip="Manage credential access">
+                  <Icon name="key" />
+                  <span>{sharingLabel}</span>
+                  <Icon name="chevron" />
+                </summary>
+                <CredentialSharingForm credential={credential} />
+              </details>
+            ) : <span className="credential-access-label">{sharingLabel}</span>}
+            {isOwner ? <form action={deleteCredential}><input type="hidden" name="credentialId" value={credential.id} /><PendingIconButton title="Delete credential"><Icon name="trash" /></PendingIconButton></form> : null}
+          </div>
+        );
+      })}</div>
       {!credentials.length && !showCredentialForm ? <p className="empty-copy">No credentials saved.</p> : null}
     </section>
   );
