@@ -1537,7 +1537,7 @@ a:hover { text-decoration-color: var(--ui-text); }
 .projects-heading { display: flex; align-items: baseline; justify-content: space-between; padding: 0 0.75rem; }
 .projects-heading h1 { margin: 0; color: var(--ui-text); font-size: 1.55rem; font-weight: 650; letter-spacing: -0.045em; }
 .projects-heading span { color: var(--ui-text-tertiary); font-size: 0.72rem; }
-.repositories-workspace .resource-panel { overflow: hidden; background: var(--ui-surface); border-radius: 0.85rem; }
+.repositories-workspace .resource-panel { overflow: visible; background: var(--ui-surface); border-radius: 0.85rem; }
 .repositories-workspace .repo-resource-row {
   grid-template-columns: minmax(15rem, 1fr) auto auto;
   gap: 0.55rem 1rem;
@@ -1608,6 +1608,108 @@ a:hover { text-decoration-color: var(--ui-text); }
 .project-detail-line .repo-worker-flags { justify-content: flex-end; margin: 0; }
 .repositories-workspace .repo-resource-row > .project-row-actions { grid-column: auto; min-height: 2.45rem; justify-content: flex-end; gap: 0.15rem; padding: 0; }
 .project-row-actions .worker-target-select { margin-right: auto; }
+.repositories-workspace .repo-resource-row .project-row-actions > form > .icon-button,
+.repositories-workspace .repo-resource-row .project-row-actions > .icon-button {
+  width: auto;
+  max-width: none;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  gap: 0.38rem;
+  padding-inline: 0.58rem;
+  font-size: 0.65rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.project-row-actions > form > .icon-button .ui-icon,
+.project-row-actions > .icon-button .ui-icon { flex: 0 0 auto; }
+.project-actions-overflow {
+  position: relative;
+}
+.project-actions-overflow > summary {
+  display: inline-flex;
+  width: auto;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  padding: 0.42rem 0.58rem;
+  color: var(--ui-text-secondary);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 650;
+  line-height: 1;
+  list-style: none;
+  white-space: nowrap;
+}
+.project-actions-overflow > summary:hover,
+.project-actions-overflow[open] > summary {
+  color: var(--ui-text);
+  background: var(--ui-surface-hover);
+  border-color: var(--ui-border-strong);
+}
+.project-actions-overflow > summary::-webkit-details-marker { display: none; }
+.project-actions-overflow > summary .ui-icon { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.project-actions-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  display: flex;
+  width: 13.5rem;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.35rem;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 0.58rem;
+  box-shadow: var(--ui-shadow-sm);
+}
+.project-actions-menu form { display: block; width: 100%; }
+.repositories-workspace .repo-resource-row .project-actions-menu .icon-button,
+.containers-workspace .resource-row .deployment-actions-menu .icon-button {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 2.15rem;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  color: var(--ui-text-secondary);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  font-size: 0.68rem;
+  font-weight: 620;
+}
+.repositories-workspace .repo-resource-row .project-actions-menu .icon-button:hover:not(:disabled),
+.containers-workspace .resource-row .deployment-actions-menu .icon-button:hover:not(:disabled) { color: var(--ui-text); background: var(--ui-surface-hover); }
+.project-actions-menu .icon-button .ui-icon { width: 0.9rem; height: 0.9rem; flex: 0 0 auto; }
+.project-actions-menu .icon-button span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.containers-workspace .resource-row .deployment-row-actions > form > .icon-button,
+.containers-workspace .resource-row .deployment-row-actions > .container-command-form > .icon-button {
+  width: auto;
+  max-width: none;
+  min-width: 1.9rem;
+  gap: 0.35rem;
+  padding-inline: 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.containers-workspace .resource-row .deployment-actions-menu form { display: block; width: 100%; }
+.containers-workspace .resource-row .deployment-actions-menu .icon-button {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 2.15rem;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.68rem;
+}
 .repository-deployment-log {
   grid-column: 1 / -1;
   margin-top: 0.7rem;

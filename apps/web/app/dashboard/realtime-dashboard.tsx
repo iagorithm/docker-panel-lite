@@ -236,7 +236,7 @@ function ProjectMark({ tooltip }: { tooltip?: string } = {}) {
   );
 }
 
-function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "bug" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" | "minus" }) {
+function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "settings" | "more" | "document" | "play" | "stop" | "logs" | "bug" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" | "minus" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -245,6 +245,8 @@ function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "
       {name === "key" ? <path {...common} d="M7.75 14.25a4.25 4.25 0 1 1 3.7-6.34 4.25 4.25 0 0 1-3.7 6.34Zm4.05-4.25h8.2m-2.7 0v2.2m-2.55-2.2v1.55M6.55 10h.01" /> : null}
       {name === "sync" ? <path {...common} d="M17.6 6.2A7.25 7.25 0 0 0 5.35 9.05M17.6 6.2V3.45m0 2.75h-2.75M6.4 17.8a7.25 7.25 0 0 0 12.25-2.85M6.4 17.8v2.75m0-2.75h2.75" /> : null}
       {name === "sliders" ? <path {...common} d="M4.25 7.1h6.9m4.45 0h4.15M13.3 7.1a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0ZM4.25 16.9h4.15m4.45 0h6.9M8.4 16.9a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Z" /> : null}
+      {name === "settings" ? <path {...common} d="M12 8.35A3.65 3.65 0 1 0 12 15.65 3.65 3.65 0 0 0 12 8.35Zm7.05 3.65c0-.45-.04-.89-.12-1.31l2.02-1.58-2-3.46-2.52 1.01a7.5 7.5 0 0 0-2.27-1.31L13.78 2.7h-4l-.38 2.65a7.5 7.5 0 0 0-2.27 1.31L4.61 5.65l-2 3.46 2.02 1.58a7.08 7.08 0 0 0 0 2.62l-2.02 1.58 2 3.46 2.52-1.01A7.5 7.5 0 0 0 9.4 18.65l.38 2.65h4l.38-2.65a7.5 7.5 0 0 0 2.27-1.31l2.52 1.01 2-3.46-2.02-1.58c.08-.42.12-.86.12-1.31Z" /> : null}
+      {name === "more" ? <path d="M6.25 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm5.75 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm5.75 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="currentColor" /> : null}
       {name === "document" ? <path {...common} d="M7 3.75h6.2l3.8 3.8V20a1.25 1.25 0 0 1-1.25 1.25H7A1.25 1.25 0 0 1 5.75 20V5A1.25 1.25 0 0 1 7 3.75Zm6 0v4h4M8.9 12.15h6.2M8.9 16.1h6.2" /> : null}
       {name === "play" ? <path d="M8.75 6.45v11.1a1 1 0 0 0 1.55.84l8.15-5.55a1 1 0 0 0 0-1.68L10.3 5.61a1 1 0 0 0-1.55.84Z" fill="currentColor" /> : null}
       {name === "stop" ? <rect x="7.75" y="7.75" width="8.5" height="8.5" rx="1.45" fill="currentColor" /> : null}
@@ -938,6 +940,8 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
       : ["container_start"];
     const actions = baseActions.filter((action) => !isProtectedContainerAction(container, action));
     const primaryAction = workerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
+    const visiblePrimaryAction = actions.find((action) => action === primaryAction);
+    const secondaryActions = actions.filter((action) => action !== visiblePrimaryAction);
     const canUseRunningTools = displayStatus === "running" && workerOnline && !workerContainer;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const primaryName = workerContainer ? workerName : container.name;
@@ -962,7 +966,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
             </div>
           ) : <span className="runtime-endpoint" title={(container.ports || []).length ? `Published ports: ${(container.ports || []).join(", ")}` : "This container has no published ports"}>{(container.ports || []).join(", ") || "No ports"}</span>}
         </div>
-        <div className="row-actions">
+        <div className="row-actions deployment-row-actions">
           {commandPresets.length && canUseRunningTools ? (
             <form action={enqueueContainerCommand} className="container-command-form">
               <input type="hidden" name="containerId" value={container.id} />
@@ -971,27 +975,43 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
               <select className="container-command-select" name="command" required title={`Command for ${container.name}`} aria-label={`Command for ${container.name}`}>
                 {commandPresets.map((preset) => <option value={preset.command} key={preset.id}>{preset.name}</option>)}
               </select>
-              <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="play" /></PendingIconButton>
+              <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="terminal" /><span>Command</span></PendingIconButton>
             </form>
           ) : null}
-          {canRegenerateTunnel ? (
-            <form action={enqueueContainerTunnelRefresh}>
-              <input type="hidden" name="containerId" value={container.id} />
-              <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
-              <PendingIconButton title={publicLinks.length ? "Regenerate public URL" : "Create public URL"} busy={isContainerTunnelBusy(container)}><Icon name="link" /></PendingIconButton>
-            </form>
-          ) : null}
-          {actions.map((action) => {
-            const meta = containerActionMeta(action);
-            return (
-              <form action={enqueueContainerAction} key={action}>
+          {visiblePrimaryAction ? (() => {
+            const meta = containerActionMeta(visiblePrimaryAction);
+            return <form action={enqueueContainerAction}>
                 <input type="hidden" name="containerId" value={container.id} />
                 <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
-                <input type="hidden" name="action" value={action} />
-                <PendingIconButton title={meta.title} primary={action === primaryAction} busy={isContainerActionBusy(container, action, displayStatus)} onClick={action === "container_logs" ? () => openLogs(container.id) : undefined}><Icon name={meta.icon} /></PendingIconButton>
-              </form>
-            );
-          })}
+                <input type="hidden" name="action" value={visiblePrimaryAction} />
+                <PendingIconButton title={meta.title} busy={isContainerActionBusy(container, visiblePrimaryAction, displayStatus)}><Icon name={meta.icon} /><span>{meta.title.replace(" container", "")}</span></PendingIconButton>
+              </form>;
+          })() : null}
+          {canRegenerateTunnel || secondaryActions.length ? (
+            <details className="project-actions-overflow deployment-actions-overflow">
+              <summary aria-label="More deployment actions" title="More deployment actions"><Icon name="more" /><span>More</span></summary>
+              <div className="project-actions-menu deployment-actions-menu" role="menu" onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; }}>
+                {canRegenerateTunnel ? (
+                  <form action={enqueueContainerTunnelRefresh}>
+                    <input type="hidden" name="containerId" value={container.id} />
+                    <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
+                    <PendingIconButton title={publicLinks.length ? "Regenerate public URL" : "Create public URL"} busy={isContainerTunnelBusy(container)}><Icon name="link" /><span>{publicLinks.length ? "Regenerate public URL" : "Create public URL"}</span></PendingIconButton>
+                  </form>
+                ) : null}
+                {secondaryActions.map((action) => {
+                  const meta = containerActionMeta(action);
+                  return (
+                    <form action={enqueueContainerAction} key={action}>
+                      <input type="hidden" name="containerId" value={container.id} />
+                      <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
+                      <input type="hidden" name="action" value={action} />
+                      <PendingIconButton title={meta.title} busy={isContainerActionBusy(container, action, displayStatus)} onClick={action === "container_logs" ? () => openLogs(container.id) : undefined}><Icon name={meta.icon} /><span>{meta.title}</span></PendingIconButton>
+                    </form>
+                  );
+                })}
+              </div>
+            </details>
+          ) : null}
         </div>
       </article>
     );
@@ -1385,41 +1405,40 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                 <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`} data-tooltip={`Latest deployment status: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "minus" : "sync"} /></span>
               </div>
               <div className="row-actions project-row-actions">
-                <QueueButton repositoryId={repository.id} action="sync" title="Pull latest changes from the repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
+                <QueueButton repositoryId={repository.id} action="sync" title="Pull latest changes from the repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /><span>Refresh</span></QueueButton>
                 {isOwner ? (
                   <IconButton
                     title={editingRepositoryId === repository.id ? "Close settings" : "Edit project"}
                     onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
                   >
-                    <Icon name="sliders" />
+                    <Icon name="settings" /><span>{editingRepositoryId === repository.id ? "Close settings" : "Settings"}</span>
                   </IconButton>
                 ) : null}
-                {repository.mode === "compose" ? (
-                  viewingComposeRepositoryId === repository.id ? (
-                    <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /></IconButton>
-                  ) : !workerSelected ? (
-                    <IconButton title="Select a worker first" disabled><Icon name="document" /></IconButton>
-                  ) : (
-                    <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></QueueButton>
-                  )
-                ) : (
-                  viewingDockerfileRepositoryId === repository.id ? (
-                    <IconButton title="Close Dockerfile" onClick={() => setViewingDockerfileRepositoryId(null)}><Icon name="close" /></IconButton>
-                  ) : !workerSelected ? (
-                    <IconButton title="Select a worker first" disabled><Icon name="document" /></IconButton>
-                  ) : (
-                    <QueueButton repositoryId={repository.id} action="read_dockerfile" title="View Dockerfile" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_dockerfile"))} onClick={() => setViewingDockerfileRepositoryId(repository.id)}><Icon name="document" /></QueueButton>
-                  )
-                )}
-                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
-                <IconButton
-                  title={viewingDeploymentLogRepositoryId === repository.id ? "Close deployment events" : "Deployment events"}
-                  active={viewingDeploymentLogRepositoryId === repository.id}
-                  onClick={() => setViewingDeploymentLogRepositoryId((current) => current === repository.id ? null : repository.id)}
-                ><Icon name={viewingDeploymentLogRepositoryId === repository.id ? "close" : "bug"} /></IconButton>
-                <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
-                {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={tunnelStopWorkerId} busy={busyRepositoryActions.has(`${repository.id}:tunnel_stop:${tunnelStopWorkerId}`)} disabled={!tunnelStopWorkerSelected}><Icon name="close" /></QueueButton> : null}
-                <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
+                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Run project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /><span>Run</span></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /><span>Run</span></QueueButton>}
+                <details className="project-actions-overflow">
+                  <summary aria-label="More project actions" title="More project actions"><Icon name="more" /><span>More</span></summary>
+                  <div className="project-actions-menu" role="menu" onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; }}>
+                    {repository.mode === "compose" ? (
+                      viewingComposeRepositoryId === repository.id ? (
+                        <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /><span>Close Compose</span></IconButton>
+                      ) : !workerSelected ? (
+                        <IconButton title="Select a worker first" disabled><Icon name="document" /><span>View Compose</span></IconButton>
+                      ) : (
+                        <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /><span>View Compose</span></QueueButton>
+                      )
+                    ) : viewingDockerfileRepositoryId === repository.id ? (
+                      <IconButton title="Close Dockerfile" onClick={() => setViewingDockerfileRepositoryId(null)}><Icon name="close" /><span>Close Dockerfile</span></IconButton>
+                    ) : !workerSelected ? (
+                      <IconButton title="Select a worker first" disabled><Icon name="document" /><span>View Dockerfile</span></IconButton>
+                    ) : (
+                      <QueueButton repositoryId={repository.id} action="read_dockerfile" title="View Dockerfile" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_dockerfile"))} onClick={() => setViewingDockerfileRepositoryId(repository.id)}><Icon name="document" /><span>View Dockerfile</span></QueueButton>
+                    )}
+                    <IconButton title={viewingDeploymentLogRepositoryId === repository.id ? "Close deployment events" : "Deployment events"} active={viewingDeploymentLogRepositoryId === repository.id} onClick={() => setViewingDeploymentLogRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={viewingDeploymentLogRepositoryId === repository.id ? "close" : "bug"} /><span>{viewingDeploymentLogRepositoryId === repository.id ? "Close events" : "Deployment events"}</span></IconButton>
+                    <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /><span>{publicUrls.length ? "Refresh public URLs" : "Open public URLs"}</span></QueueButton>
+                    {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={tunnelStopWorkerId} busy={busyRepositoryActions.has(`${repository.id}:tunnel_stop:${tunnelStopWorkerId}`)} disabled={!tunnelStopWorkerSelected}><Icon name="close" /><span>Close public URLs</span></QueueButton> : null}
+                    <QueueButton repositoryId={repository.id} action="stop" title="Stop project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /><span>Stop project</span></QueueButton>
+                  </div>
+                </details>
               </div>
               {isOwner ? <RepositorySettings repository={repository} credentials={credentials} workers={projectWorkers} deployedWorkers={deployedWorkers} latestDeployment={latestDeployment} latestWorker={latestWorker} now={now} open={editingRepositoryId === repository.id} /> : null}
               <ComposeViewer repository={repository} deployment={latestComposeRead} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
