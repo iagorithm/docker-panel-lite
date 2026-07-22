@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1480" height="760" viewBox="0 0 1480 760" role="img" aria-labelledby="title desc">
-  <title id="title">Docker Panel Lite platform architecture</title>
+  <title id="title">devploy.com platform architecture</title>
   <desc id="desc">The control panel connects developers and Git projects with Docker workers, running containers and optional public URLs.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">

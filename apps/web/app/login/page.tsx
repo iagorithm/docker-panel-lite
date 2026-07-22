@@ -8,14 +8,13 @@ export default async function LoginPage() {
   return (
     <main className="public-landing">
       <nav className="landing-nav" aria-label="Public navigation">
-        <a className="landing-brand" href="#top" aria-label="Docker Panel Lite">
+        <a className="landing-brand" href="#top" aria-label="devploy.com">
           <span className="brand-mark" aria-hidden="true"><span /></span>
-          <span>Docker Panel Lite</span>
+          <span>devploy.com</span>
         </a>
         <div>
           <a href="#architecture">Architecture</a>
           <a href="/docs">Docs</a>
-          <a className="landing-nav-cta" href="#login">Get started</a>
         </div>
       </nav>
 
@@ -24,7 +23,7 @@ export default async function LoginPage() {
           <p className="eyebrow">Ship from your own infrastructure</p>
           <h1>Your private deployment cockpit for Docker teams.</h1>
           <p>
-            Docker Panel Lite gives small teams the feeling of a polished platform
+            devploy.com gives small teams the feeling of a polished platform
             without giving up their own servers. Connect a worker, choose a repo,
             launch the service, and keep operations visible from the first sync to
             the live URL.
@@ -147,7 +146,7 @@ export default async function LoginPage() {
           </p>
         </div>
         <div className="architecture-frame">
-          <img src="/platform-architecture.svg" alt="Docker Panel Lite architecture diagram" />
+          <img src="/platform-architecture.svg" alt="devploy.com architecture diagram" />
         </div>
       </section>
 

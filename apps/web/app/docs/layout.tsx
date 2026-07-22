@@ -18,7 +18,7 @@ const groups = [
 export default function DocsLayout({ children }: { children: ReactNode }) {
   return <div className="docs-site">
     <aside className="docs-sidebar">
-      <a className="docs-sidebar-brand" href="/docs"><span className="brand-mark" aria-hidden="true"><span /></span><span><strong>Docker Panel Lite</strong><small>Documentation</small></span></a>
+      <a className="docs-sidebar-brand" href="/docs"><span className="brand-mark" aria-hidden="true"><span /></span><span><strong>devploy.com</strong><small>Documentation</small></span></a>
       <nav aria-label="Documentation index">{groups.map((group, index) => <details key={group.label} open={index === 0}><summary><span>{group.label}</span><i aria-hidden="true" /></summary><div>{group.links.map(([label, href]) => <a href={href} key={href}>{label}</a>)}</div></details>)}</nav>
       <div className="docs-sidebar-footer"><a href="/login">Open application</a></div>
     </aside>

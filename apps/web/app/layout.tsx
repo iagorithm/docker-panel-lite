@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Docker Control Panel v1.0.0",
-  description: "Realtime Docker deployment control panel",
+  title: "devploy.com",
+  description: "Deploy and operate Docker applications from your own infrastructure",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

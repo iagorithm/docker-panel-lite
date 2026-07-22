@@ -689,7 +689,7 @@ export function RealtimeDashboard(props: Props) {
       <aside className="app-sidebar">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true"><span /></span>
-          <div><strong>Control</strong><span>Deployment workspace</span></div>
+          <div><strong>devploy.com</strong><span>Deployment workspace</span></div>
         </div>
 
         <p className="sidebar-label">Workspace</p>
