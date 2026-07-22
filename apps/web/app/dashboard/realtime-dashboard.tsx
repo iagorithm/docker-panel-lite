@@ -529,7 +529,7 @@ function repositorySharingLabel(repository: Repository) {
   return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
 }
 
-function SidebarWorkers({ agents, now, active, onOpenWorkers }: { agents: Agent[]; now: number; active: boolean; onOpenWorkers: () => void }) {
+function SidebarWorkers({ agents, now, active, loading, onOpenWorkers }: { agents: Agent[]; now: number; active: boolean; loading?: boolean; onOpenWorkers: () => void }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
     const bOnline = Number(isWorkerOnline(b, now));
@@ -539,8 +539,8 @@ function SidebarWorkers({ agents, now, active, onOpenWorkers }: { agents: Agent[
   const onlineCount = sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length;
   return (
     <section className="sidebar-workers" aria-label="Workers">
-      <button className={`sidebar-workers-header ${active ? "is-active" : ""}`} type="button" title="Open workers" data-tooltip="Open workers" aria-pressed={active} onClick={onOpenWorkers}>
-        <span><Icon name="worker" /></span>
+      <button className={`sidebar-workers-header ${active ? "is-active" : ""}`} type="button" title="Open workers" data-tooltip="Open workers" aria-pressed={active} aria-busy={loading || undefined} onClick={onOpenWorkers} disabled={loading}>
+        <span>{loading ? <Spinner /> : <Icon name="worker" />}</span>
         <strong>Workers</strong>
         <small>{onlineCount}/{sortedAgents.length}</small>
       </button>
@@ -551,7 +551,7 @@ function SidebarWorkers({ agents, now, active, onOpenWorkers }: { agents: Agent[
             const label = workerDisplayName(agent);
             const status = workerStatusLabel(agent, now);
             return (
-              <button className="sidebar-worker-item" type="button" title={`${label} · ${status}`} data-tooltip={`${label} · ${status}`} onClick={onOpenWorkers} key={agent.id}>
+              <button className="sidebar-worker-item" type="button" title={`${label} · ${status}`} data-tooltip={`${label} · ${status}`} onClick={onOpenWorkers} disabled={loading} key={agent.id}>
                 <span className={`sidebar-worker-dot ${online ? "is-online" : ""}`} aria-hidden="true" />
                 <span>
                   <strong>{label}</strong>
@@ -613,8 +613,11 @@ export function RealtimeDashboard(props: Props) {
   const commandPresets = useCollection<CommandPreset>(`${base}/commandPresets`, props.initialCommandPresets);
   const routeView: Record<string, View> = { deployments: "containers", projects: "repositories", logs: "logs", workers: "workers", settings: "settings" };
   const view = routeView[pathname.split("/").filter(Boolean).at(-1) || ""] || props.initialView || "containers";
+  const [navigatingView, setNavigatingView] = useState<View | null>(null);
   const navigateTo = (nextView: View) => {
+    if (nextView === view || navigatingView) return;
     const route = nextView === "containers" ? "deployments" : nextView === "repositories" ? "projects" : nextView;
+    setNavigatingView(nextView);
     router.push(`/dashboard/${route}`);
   };
   const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
@@ -624,6 +627,8 @@ export function RealtimeDashboard(props: Props) {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => setNavigatingView(null), [pathname]);
 
   useEffect(() => {
     const recentlyReported = new Map<string, number>();
@@ -668,16 +673,16 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} title="View deployments" data-tooltip="View deployments" onClick={() => navigateTo("containers")}><SidebarContainerMark />Deployments</button>
-          <button className={view === "repositories" ? "is-active" : ""} title="View projects" data-tooltip="View projects" onClick={() => navigateTo("repositories")}><ProjectMark />Projects</button>
-          <button className={view === "logs" ? "is-active" : ""} title="View deployment logs" data-tooltip="View deployment logs" onClick={() => navigateTo("logs")}><Icon name="logs" />Logs</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View deployments" data-tooltip="View deployments" aria-busy={navigatingView === "containers" || undefined} disabled={Boolean(navigatingView)} onClick={() => navigateTo("containers")}>{navigatingView === "containers" ? <Spinner /> : <SidebarContainerMark />}Deployments</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View projects" data-tooltip="View projects" aria-busy={navigatingView === "repositories" || undefined} disabled={Boolean(navigatingView)} onClick={() => navigateTo("repositories")}>{navigatingView === "repositories" ? <Spinner /> : <ProjectMark />}Projects</button>
+          <button className={view === "logs" ? "is-active" : ""} title="View deployment logs" data-tooltip="View deployment logs" aria-busy={navigatingView === "logs" || undefined} disabled={Boolean(navigatingView)} onClick={() => navigateTo("logs")}>{navigatingView === "logs" ? <Spinner /> : <Icon name="logs" />}Logs</button>
         </nav>
 
-        <SidebarWorkers agents={agents} now={now} active={view === "workers"} onOpenWorkers={() => navigateTo("workers")} />
+        <SidebarWorkers agents={agents} now={now} active={view === "workers"} loading={navigatingView === "workers"} onOpenWorkers={() => navigateTo("workers")} />
 
         <div className="sidebar-utility-nav">
-          <button className={`sidebar-doc-link ${view === "settings" ? "is-active" : ""}`} type="button" title="Open settings" data-tooltip="Open settings" onClick={() => navigateTo("settings")}>
-            <span><Icon name="sliders" /></span>
+          <button className={`sidebar-doc-link ${view === "settings" ? "is-active" : ""}`} type="button" title="Open settings" data-tooltip="Open settings" aria-busy={navigatingView === "settings" || undefined} disabled={Boolean(navigatingView)} onClick={() => navigateTo("settings")}>
+            <span>{navigatingView === "settings" ? <Spinner /> : <Icon name="sliders" />}</span>
             Settings
           </button>
           <a className="sidebar-doc-link" href="/docs" title="Open documentation" data-tooltip="Open documentation">

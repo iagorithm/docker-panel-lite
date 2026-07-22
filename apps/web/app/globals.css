@@ -112,6 +112,12 @@ a:hover { text-decoration-color: var(--ui-text); }
 }
 .sidebar-nav button > span { display: inline-grid; width: 1rem; height: 1rem; flex: 0 0 1rem; color: var(--ui-text-tertiary); place-items: center; }
 .sidebar-nav button > span .ui-icon { width: 1rem; height: 1rem; }
+.sidebar-nav button > .button-spinner,
+.sidebar-workers-header .button-spinner,
+.sidebar-doc-link .button-spinner { width: 0.9rem; height: 0.9rem; border-width: 1.5px; }
+.sidebar-nav button[aria-busy="true"],
+.sidebar-workers-header[aria-busy="true"],
+.sidebar-doc-link[aria-busy="true"] { color: var(--ui-text); opacity: 1; }
 .sidebar-nav .sidebar-container-mark,
 .sidebar-nav .project-mark {
   display: inline-grid;
