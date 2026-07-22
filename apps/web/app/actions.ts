@@ -30,7 +30,7 @@ const aliasPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const branchPattern = /^(?![-./])(?!.*(?:\.\.|@\{|\/\/|\.lock(?:\/|$)))[^\s~^:?*[\\]+$/;
 const hostnamePattern = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const defaultComposeFile = "compose.yml";
+const defaultComposeFile = "docker-compose.yaml";
 const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60_000;
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
@@ -647,7 +647,19 @@ export async function saveRepositoryDefaultWorker(formData: FormData) {
 export async function saveRepositoryWithState(_previousState: RepositorySaveState, formData: FormData): Promise<RepositorySaveState> {
   try {
     const isEditing = Boolean(formData.get("repositoryId"));
+    const registrationMode = String(formData.get("registrationMode") || "register");
     await saveRepository(formData);
+    if (!isEditing && registrationMode === "register_clone") {
+      const cloneRequest = new FormData();
+      cloneRequest.set("repositoryId", String(formData.get("alias") || ""));
+      cloneRequest.set("action", "sync");
+      cloneRequest.set("targetWorkerId", String(formData.get("defaultWorkerId") || ""));
+      const cloneResult = await enqueueDeploymentRequest(cloneRequest);
+      if (cloneResult.status === "error") {
+        return { status: "error", message: `Project registered, but clone could not start: ${cloneResult.message}` };
+      }
+      return { status: "success", message: "Project registered. Clone queued on the selected worker." };
+    }
     return { status: "success", message: isEditing ? "Project settings saved." : "Project registered." };
   } catch (error) {
     console.error("saveRepository failed", error);

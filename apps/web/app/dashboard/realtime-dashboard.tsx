@@ -53,7 +53,7 @@ type Props = {
 type View = "containers" | "repositories" | "logs" | "workers" | "settings";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
-const defaultComposeFile = "compose.yml";
+const defaultComposeFile = "docker-compose.yaml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
 const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60 * 1000;
@@ -312,10 +312,10 @@ function PendingIconButton({ title, children, onClick, primary = false, busy = f
   return <IconButton type="submit" title={isBusy ? `${title}...` : title} primary={primary} onClick={onClick} disabled={disabled || isBusy}>{isBusy ? <Spinner /> : children}</IconButton>;
 }
 
-function PendingSubmitButton({ children, className = "primary", formAction, tooltip, disabled = false }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string; disabled?: boolean }) {
+function PendingSubmitButton({ children, className = "primary", formAction, tooltip, disabled = false, name, value }: { children: React.ReactNode; className?: string; formAction?: (formData: FormData) => void | Promise<void>; tooltip?: string; disabled?: boolean; name?: string; value?: string }) {
   const { pending } = useFormStatus();
   const visiblePending = useVisiblePending(pending);
-  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} disabled={disabled || visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
+  return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} name={name} value={value} disabled={disabled || visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
 }
 
 function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, disabled = false, targetWorkerId = "" }: {
@@ -1305,7 +1305,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
         </div>
       </div>
 
-      {showAddRepository ? <AddRepositoryPanel credentials={credentials} /> : null}
+      {showAddRepository ? <AddRepositoryPanel credentials={credentials} workers={availableWorkers} /> : null}
 
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
@@ -1322,7 +1322,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
               {index ? <div className="resource-divider" /> : null}
-              <div className="resource-identity project-identity"><ProjectMark tooltip={`Project: ${repository.alias}`} /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
+              <div className="resource-identity project-identity"><ProjectMark tooltip={repository.alias} /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
               <div className="project-source-status">
                 <span className="project-source-pill" title={repository.url} data-tooltip={`Source repository: ${repository.url}`}><Icon name="branch" />{repositorySlug(repository.url)}</span>
                 <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`} data-tooltip={`Latest deployment status: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "minus" : "sync"} /></span>
@@ -1372,7 +1372,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
   );
 }
 
-function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] }) {
+function AddRepositoryPanel({ credentials, workers }: { credentials: CredentialSummary[]; workers: Agent[] }) {
   const [saveState, saveAction] = useActionState(saveRepositorySafely, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
@@ -1381,6 +1381,11 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [targetWorkerId, setTargetWorkerId] = useState(workers[0]?.id || "");
+  const [step, setStep] = useState(0);
+  const [dockerfileName, setDockerfileName] = useState("Dockerfile");
+  const [composeFileName, setComposeFileName] = useState(defaultComposeFile);
+  const wizardSteps = ["Source", "Build", "Environment"];
 
   async function discoverBranches() {
     if (!repositoryUrl.trim()) {
@@ -1411,44 +1416,48 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 
   return (
     <section className="panel add-repository-panel">
+      <header className="add-project-header">
+        <span className="add-project-mark"><ProjectMark /></span>
+        <div><span>New project</span><h2>Import a Git repository</h2><p>Connect the source and choose how it runs. Domain access can be configured later.</p></div>
+      </header>
       <form action={saveAction} className="add-repository-form">
         <input type="hidden" name="poolId" value="default" />
         <input type="hidden" name="domain" value="" />
         <input type="hidden" name="service" value="web" />
         <input type="hidden" name="internalPort" value="3000" />
 
-        <div className="add-repository-top">
-          <fieldset className="mode-control">
-            <legend>Deployment mode <Icon name="help" /></legend>
-            <div className="segmented-radio">
-              <label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => setDeployMode("dockerfile")} /><span>Single Dockerfile</span></label>
-              <label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => setDeployMode("compose")} /><span>Docker Compose</span></label>
-            </div>
-          </fieldset>
-          <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+        <div className="project-wizard-progress" aria-label="Project setup progress">
+          {wizardSteps.map((label, index) => (
+            <button type="button" key={label} className={index === step ? "is-active" : index < step ? "is-complete" : ""} onClick={() => index <= step && setStep(index)} aria-current={index === step ? "step" : undefined}>
+              <span>{index + 1}</span>{label}
+            </button>
+          ))}
         </div>
 
         <div className="repository-input-card">
-          <label className="url-field">Source repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
-          <label>Display name<input name="alias" required placeholder="my-service" /></label>
-          <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branches.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
-          {deployMode === "dockerfile" ? (
-            <>
-              <label>Dockerfile<input name="dockerfile" defaultValue="Dockerfile" /></label>
-              <label>Host:container ports<input name="ports" placeholder="8080:80" /></label>
-            </>
-          ) : (
-            <>
-              <label>Compose file<input name="composeFile" defaultValue={defaultComposeFile} /></label>
-              <div className="compose-port-note"><span>Ports are read from the Compose file.</span></div>
-            </>
-          )}
-          <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" /><span>Public ngrok URL</span></label>
-          <label>Ngrok domain<input name="publicTunnelDomain" placeholder="optional-domain.ngrok.app" /></label>
-          <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder="Optional per repository token" /></label>
-          <EnvironmentEditor initialEnvText="" />
-          <div className="register-action"><PendingSubmitButton tooltip="Clone source and register this project"><Icon name="download" />Clone and register</PendingSubmitButton></div>
-          {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
+          <div className={`project-wizard-step ${step === 0 ? "is-active" : ""}`} aria-hidden={step !== 0}>
+            <div className="project-form-section-heading"><span>01</span><div><strong>Source</strong><small>Repository identity and branch</small></div></div>
+            <label>Project name<input name="alias" required placeholder="my-service" /></label>
+            <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+            <label className="url-field">Source repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
+            <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branches.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
+          </div>
+          <div className={`project-wizard-step ${step === 1 ? "is-active" : ""}`} aria-hidden={step !== 1}>
+            <div className="project-form-section-heading"><span>02</span><div><strong>Build</strong><small>{deployMode === "compose" ? "Compose configuration" : "Dockerfile configuration"}</small></div></div>
+            <fieldset className="mode-control"><legend>Deployment mode <Icon name="help" /></legend><div className="segmented-radio"><label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => { setDeployMode("dockerfile"); setDockerfileName("Dockerfile"); }} /><span>Dockerfile</span></label><label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => { setDeployMode("compose"); setComposeFileName(defaultComposeFile); }} /><span>Compose</span></label></div></fieldset>
+            {deployMode === "dockerfile" ? <><label>Dockerfile<input key="dockerfile-name" name="dockerfile" value={dockerfileName} onChange={(event) => setDockerfileName(event.target.value)} /></label><label>Host:container ports<input name="ports" placeholder="8080:80" /></label></> : <><label>Compose file<input key="compose-file-name" name="composeFile" value={composeFileName} onChange={(event) => setComposeFileName(event.target.value)} /></label><div className="compose-port-note"><span>Ports are read from the Compose file.</span></div></>}
+          </div>
+          <div className={`project-wizard-step ${step === 2 ? "is-active" : ""}`} aria-hidden={step !== 2}>
+            <div className="project-form-section-heading"><span>03</span><div><strong>Environment</strong><small>Runtime variables, worker and registration</small></div></div>
+            <EnvironmentEditor initialEnvText="" />
+            <label className="credential-select">Clone on worker<select name="defaultWorkerId" value={targetWorkerId} onChange={(event) => setTargetWorkerId(event.target.value)}><option value="">Select a worker</option>{workers.map((worker) => <option key={worker.id} value={worker.id}>{workerDisplayName(worker)}</option>)}</select></label>
+          </div>
+          <div className="project-wizard-footer">
+            <button type="button" className="secondary wizard-button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}>Back</button>
+            <span>{step + 1} / {wizardSteps.length}</span>
+            {step < wizardSteps.length - 1 ? <button type="button" className="primary wizard-button" onClick={() => setStep((current) => Math.min(wizardSteps.length - 1, current + 1))}>Next</button> : <div className="register-action"><PendingSubmitButton className="secondary" name="registrationMode" value="register" tooltip="Register without cloning the repository">Register only</PendingSubmitButton><PendingSubmitButton name="registrationMode" value="register_clone" tooltip={targetWorkerId ? "Register and clone on the selected worker" : "Select a worker to clone the repository"} disabled={!targetWorkerId}>Register &amp; clone</PendingSubmitButton></div>}
+          </div>
+          {saveState.status !== "idle" ? <p className={`form-action-feedback add-project-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
         </div>
       </form>
     </section>
