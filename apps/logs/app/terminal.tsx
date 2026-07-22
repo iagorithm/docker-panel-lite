@@ -58,6 +58,7 @@ export function LogsTerminal() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [agentMarkdown, setAgentMarkdown] = useState(true);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [analyzingLogIds, setAnalyzingLogIds] = useState<Set<string>>(() => new Set());
   const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
   const [agentResultKind, setAgentResultKind] = useState<"analysis" | "solution">("analysis");
   const [agentSourceLogs, setAgentSourceLogs] = useState<AppLog[]>([]);
@@ -183,6 +184,7 @@ export function LogsTerminal() {
       return;
     }
     setAgentRunning(true);
+    setAnalyzingLogIds(new Set(logsToAnalyze.map((log) => log.id)));
     setError("");
     setAgentNotice("");
     try {
@@ -201,6 +203,7 @@ export function LogsTerminal() {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setAgentRunning(false);
+      setAnalyzingLogIds(new Set());
     }
   };
 
@@ -344,7 +347,7 @@ export function LogsTerminal() {
                   return next;
                 })}
               />
-              <button className="icon-control" title="Analyze this log" aria-label="Analyze this log" disabled={agentRunning || needsLogin} onClick={() => void runAgent([log])}><Icon name="analyze" /></button>
+              <button className="icon-control" title={analyzingLogIds.has(log.id) ? "Analizando este log" : "Analizar este log"} aria-label={analyzingLogIds.has(log.id) ? "Analizando este log" : "Analizar este log"} disabled={agentRunning || needsLogin} onClick={() => void runAgent([log])}>{analyzingLogIds.has(log.id) ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="analyze" />}</button>
               <button
                 className="icon-control expand-control"
                 title={expandedLogIds.has(log.id) ? "Hide details" : "Show details"}
