@@ -9,9 +9,12 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 URL_PATTERN = re.compile(r"https://[^\s\"']+")
+NGROK_ERROR_PATTERN = re.compile(r"ERR_NGROK_\d+", re.IGNORECASE)
+NGROK_CONTROL_HOSTS = {"dashboard.ngrok.com", "ngrok.com", "www.ngrok.com"}
 
 
 class NgrokError(RuntimeError):
@@ -38,6 +41,20 @@ def _safe_project(value: str) -> str:
 def _pid_running(pid: int) -> bool:
     if pid <= 0:
         return False
+
+
+def _public_tunnel_url(candidate: str, domain: str = "") -> bool:
+    try:
+        parsed = urlparse(candidate.rstrip(","))
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    requested_host = (urlparse(f"https://{domain.removeprefix('https://').removeprefix('http://')}").hostname or "").lower().rstrip(".") if domain else ""
+    if parsed.scheme != "https" or not hostname or hostname in NGROK_CONTROL_HOSTS or "/billing/" in parsed.path.lower():
+        return False
+    if requested_host:
+        return hostname == requested_host
+    return hostname.endswith((".ngrok.app", ".ngrok-free.app", ".ngrok.io"))
     try:
         os.kill(pid, 0)
         return True
@@ -168,11 +185,12 @@ class NgrokService:
         while time.time() < deadline:
             if log_path.exists():
                 log_text = log_path.read_text(encoding="utf-8", errors="replace")[-20_000:]
+                error_code = NGROK_ERROR_PATTERN.search(log_text)
+                if error_code:
+                    process.terminate()
+                    raise NgrokError(f"ngrok failed with {error_code.group(0).upper()}: account or billing action is required")
                 urls = [item.rstrip(",") for item in URL_PATTERN.findall(log_text)]
-                public_url = next((item for item in urls if domain and domain in item), "") or next(
-                    (item for item in urls if "ngrok" in item.lower()),
-                    "",
-                )
+                public_url = next((item for item in urls if _public_tunnel_url(item, domain)), "")
                 if public_url:
                     break
             if process.poll() is not None:

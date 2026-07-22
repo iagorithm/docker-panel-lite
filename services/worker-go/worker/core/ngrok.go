@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,24 @@ import (
 	"syscall"
 	"time"
 )
+
+var ngrokErrorPattern = regexp.MustCompile(`(?i)ERR_NGROK_\d+`)
+
+func publicTunnelURL(candidate string, domain string) bool {
+	parsed, err := url.Parse(strings.TrimRight(candidate, ","))
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return false
+	}
+	hostname := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if hostname == "dashboard.ngrok.com" || hostname == "ngrok.com" || hostname == "www.ngrok.com" || strings.Contains(strings.ToLower(parsed.Path), "/billing/") {
+		return false
+	}
+	if strings.TrimSpace(domain) != "" {
+		requested, err := url.Parse("https://" + strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(domain), "https://"), "http://"))
+		return err == nil && hostname == strings.ToLower(strings.TrimSuffix(requested.Hostname(), "."))
+	}
+	return strings.HasSuffix(hostname, ".ngrok.app") || strings.HasSuffix(hostname, ".ngrok-free.app") || strings.HasSuffix(hostname, ".ngrok.io")
+}
 
 type Tunnel struct {
 	URL       string
@@ -116,15 +135,16 @@ func (s NgrokService) Start(project string, target string, domain string) (Tunne
 	for time.Now().Before(deadline) {
 		data, _ := os.ReadFile(logPath)
 		logText = tailText(string(data), 20000)
+		if errorCode := ngrokErrorPattern.FindString(logText); errorCode != "" {
+			_ = cmd.Process.Kill()
+			return Tunnel{}, fmt.Errorf("ngrok failed with %s: account or billing action is required", strings.ToUpper(errorCode))
+		}
 		urls := urlPattern.FindAllString(logText, -1)
 		for _, item := range urls {
 			candidate := strings.TrimRight(item, ",")
-			if domain != "" && strings.Contains(candidate, domain) {
+			if publicTunnelURL(candidate, domain) {
 				publicURL = candidate
 				break
-			}
-			if publicURL == "" && strings.Contains(strings.ToLower(candidate), "ngrok") {
-				publicURL = candidate
 			}
 		}
 		if publicURL != "" {
