@@ -1665,7 +1665,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <label>Production domain<input name="domain" defaultValue={repository.domain} placeholder="app.example.com" /></label>
             <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
             <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
-            <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
+            <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} /><small className="field-hint ngrok-token-hint">{repository.ngrokTokenMask ? <span>Leave empty to keep saved token.</span> : <span>Optional repository token.</span>}<a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank" rel="noreferrer">Get an authtoken ↗</a></small></label>
           </div>
         </div>
         <div className={tabClass("access")} role="tabpanel" aria-label="Project access settings">

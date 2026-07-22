@@ -759,6 +759,26 @@ a:hover { text-decoration-color: var(--ui-text); }
   font-weight: 560;
   line-height: 1.2;
 }
+.ngrok-token-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ngrok-token-hint a {
+  color: inherit;
+  font-size: 0.64rem;
+  font-weight: 600;
+  opacity: 0.78;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.15rem;
+  white-space: nowrap;
+}
+.ngrok-token-hint a:hover {
+  opacity: 1;
+  text-decoration-color: currentColor;
+}
 .repository-input-card input,
 .repository-input-card textarea {
   min-height: 3.05rem;
