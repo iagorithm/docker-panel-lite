@@ -1377,7 +1377,7 @@ function AddRepositoryPanel({ credentials, workers }: { credentials: CredentialS
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
-  const [deployMode, setDeployMode] = useState<"dockerfile" | "compose">("dockerfile");
+  const [deployMode, setDeployMode] = useState<"dockerfile" | "compose">("compose");
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
