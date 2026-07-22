@@ -115,6 +115,13 @@ export type AppLog = {
   analysisCount?: number;
   lastAnalyzedAt?: number;
   lastAnalyzedBy?: string;
+  fixed?: boolean;
+  fixedAt?: number;
+  fixedBy?: string;
+  fixRunId?: string;
+  fixBranch?: string;
+  fixCommits?: string[];
+  fixCommitMessage?: string;
   createdAt: number;
 };
 

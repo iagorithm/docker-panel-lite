@@ -130,8 +130,9 @@ export function LogsTerminal() {
   const [agentMarkdown, setAgentMarkdown] = useState(true);
   const [agentRunning, setAgentRunning] = useState(false);
   const [preparingMode, setPreparingMode] = useState<"fix" | "hotfix" | null>(null);
+  const [commitTarget, setCommitTarget] = useState<"branch" | "hotfix">("branch");
   const [analyzingLogIds, setAnalyzingLogIds] = useState<Set<string>>(() => new Set());
-  const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
+  const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; baseBranch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
   const [agentResultKind, setAgentResultKind] = useState<"analysis" | "solution">("analysis");
   const [agentTab, setAgentTab] = useState<"problem" | "preview">("problem");
   const [agentSourceLogs, setAgentSourceLogs] = useState<AppLog[]>([]);
@@ -290,9 +291,9 @@ export function LogsTerminal() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ logs: logsToAnalyze, instruction: options.instruction ?? "", format: agentMarkdown ? "markdown" : "summary", apply: options.apply ?? false, hotfix: options.hotfix ?? false, preview: options.preview ?? false }),
       });
-      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
+      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; baseBranch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
       if (!response.ok || !body.report || !body.runId) throw new Error(body.error || `CrewAI agent returned HTTP ${response.status}`);
-      setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, plannedBranch: body.plannedBranch, commitMessage: body.commitMessage, changes: body.changes, previews: body.previews, hotfix: body.hotfix });
+      setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, baseBranch: body.baseBranch, plannedBranch: body.plannedBranch, commitMessage: body.commitMessage, changes: body.changes, previews: body.previews, hotfix: body.hotfix });
       setAgentTab(body.previews?.length ? "preview" : "problem");
       setAgentResultKind(options.kind || "analysis");
       setAgentSourceLogs(logsToAnalyze);
@@ -353,6 +354,7 @@ export function LogsTerminal() {
       if (!response.ok || !body.branch) throw new Error(body.error || `Commit returned HTTP ${response.status}`);
       setAgentResult((current) => current ? { ...current, branch: body.branch, changes: body.changes, hotfix } : current);
       setAgentNotice(`Fix committed on ${body.branch}`);
+      await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -412,6 +414,7 @@ export function LogsTerminal() {
           <span>Action</span>
           <span>Error</span>
           <span>Count</span>
+          <span>Status</span>
           <span>Rev.</span>
         </div>
         {logGroups.length ? logGroups.map(({ key, occurrences, log }) => (
@@ -461,6 +464,7 @@ export function LogsTerminal() {
             <span className="log-action" title={log.action}>{log.action}</span>
             <code className="log-preview" title={String(log.message)}>{String(log.message)}</code>
             <strong className="occurrence-count" title={`${occurrences.length} occurrences`}>{occurrences.length}</strong>
+            <span className={`fix-status ${occurrences.every((item) => item.fixed) ? "is-fixed" : occurrences.some((item) => item.fixed) ? "is-partial" : ""}`} title={occurrences.every((item) => item.fixed) ? `Fixed on ${log.fixBranch || "Git"}` : occurrences.some((item) => item.fixed) ? "Some occurrences are fixed" : "Open error"}>{occurrences.every((item) => item.fixed) ? "fixed" : occurrences.some((item) => item.fixed) ? "mixed" : "open"}</span>
             <small className="analysis-count" title={log.lastAnalyzedAt ? `Last review ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Not reviewed"}>{log.analyzed ? `${log.analysisCount || 1}×` : "—"}</small>
             {expandedLogIds.has(log.id) ? <div className="log-details">
               <pre className="log-code"><code>{formattedCode(log.message)}</code></pre>
@@ -487,8 +491,13 @@ export function LogsTerminal() {
                   {agentTab === "problem" ? <>
                     <pre><code>{agentResult.report}</code></pre>
                     {!agentResult.branch && !agentResult.previews?.length ? <div className="problem-actions">
-                      <button className="result-action agent-apply-button" title="Prepare the exact change for review before committing" disabled={agentRunning} onClick={() => void applySolution(false)}>{preparingMode === "fix" ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="apply" />}<span>{preparingMode === "fix" ? "Preparing…" : "Prepare fix"}</span></button>
-                      <button className="result-action hotfix-control" title="Prepare a one-file hotfix for review before committing" disabled={agentRunning} onClick={() => void applySolution(true)}>{preparingMode === "hotfix" ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="hotfix" />}<span>{preparingMode === "hotfix" ? "Preparing…" : "Prepare hotfix"}</span></button>
+                      <label className="target-branch-select">Target branch
+                        <select value={commitTarget} disabled={agentRunning} onChange={(event) => setCommitTarget(event.target.value as "branch" | "hotfix")}>
+                          <option value="branch">New descriptive fix branch</option>
+                          <option value="hotfix">{agentResult.baseBranch || "main"} (hotfix)</option>
+                        </select>
+                      </label>
+                      <button className={`result-action ${commitTarget === "hotfix" ? "hotfix-control" : "agent-apply-button"}`} title={commitTarget === "hotfix" ? `Prepare a one-file hotfix for ${agentResult.baseBranch || "main"}` : "Prepare the exact change for a new descriptive branch"} disabled={agentRunning} onClick={() => void applySolution(commitTarget === "hotfix")}>{preparingMode ? <span className="row-spinner" aria-hidden="true" /> : <Icon name={commitTarget === "hotfix" ? "hotfix" : "apply"} />}<span>{preparingMode ? "Preparing…" : "Prepare change"}</span></button>
                     </div> : null}
                   </> : <>
                     {agentResult.previews?.length ? <div className="change-preview">
