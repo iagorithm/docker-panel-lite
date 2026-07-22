@@ -61,6 +61,13 @@ class CommitRequest(BaseModel):
     hotfix: bool = False
     commitMessage: str = Field(min_length=3, max_length=120)
 
+    @model_validator(mode="after")
+    def validate_commit_message(self):
+        self.commitMessage = " ".join(self.commitMessage.split())
+        if len(self.commitMessage) < 3:
+            raise ValueError("commitMessage must contain at least 3 visible characters")
+        return self
+
 
 def firebase_app():
     if firebase_admin._apps:
@@ -212,9 +219,11 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
     existing = trace.transaction(claim) or {}
     if existing.get("commitAttemptId") != attempt_id:
         raise HTTPException(status_code=409, detail="This preview is already being committed or is no longer available")
+    git_committed = False
     try:
         github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), request.runId, True, request.hotfix)
         github.commit_preview_batch(existing["previewChanges"], request.commitMessage, existing.get("report", ""), request.requestedByEmail or request.requestedBy)
+        git_committed = True
         result = {"runId": request.runId, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix, "commitMessage": request.commitMessage}
         trace.update({**result, "status": "completed", "committedAt": {".sv": "timestamp"}, "previewChanges": None})
         try:
@@ -225,7 +234,8 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
             result["warning"] = "Commit succeeded, but log fixed status could not be updated"
         return result
     except Exception as error:
-        trace.update({"status": "preview", "commitAttemptId": None, "commitError": str(error)[:2000]})
+        next_status = "commit_unknown" if git_committed else "preview"
+        trace.update({"status": next_status, "commitAttemptId": None, "commitError": str(error)[:2000]})
         raise HTTPException(status_code=500, detail=str(error)[:2000]) from error
 
 

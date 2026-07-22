@@ -22,6 +22,13 @@ GitHub source tree under `services/**`.
 - Applying is two-phase: the agent first stores and returns an exact validated
   diff without writing GitHub; an explicit confirmation commits that same
   preview to a descriptive branch or, for one file, directly to the base branch.
+- Preview commits are atomic: source changes and `CHANGELOGS.md` share one Git
+  commit. A stale source SHA, expired preview, or concurrent confirmation is
+  rejected before updating a branch.
+- Production guards include constant-time service authentication, bounded agent
+  concurrency, request-size limits, LLM timeouts/retries, mandatory source reads,
+  no-op/destructive-change rejection, safe GitHub read retries, readiness checks,
+  a non-root read-only container, dropped capabilities, and a writable tmpfs only.
 - Runs are stored at `workspaces/<workspaceId>/agent_runs/<runId>`.
 
 ## API
