@@ -860,6 +860,21 @@ a:hover { text-decoration-color: var(--ui-text); }
 .project-wizard-footer .register-action { display: flex; gap: 0.35rem; }
 .project-wizard-footer .wizard-button,
 .project-wizard-footer .register-action button { min-height: 1.85rem; padding: 0.28rem 0.52rem; font-size: 0.62rem; border-radius: 0.42rem; }
+.project-wizard-footer button[data-tooltip]::before {
+  top: auto;
+  bottom: calc(100% + 0.3rem);
+}
+.project-wizard-footer button[data-tooltip]::after {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 0.48rem);
+  left: auto;
+  transform: translateY(0.15rem);
+}
+.project-wizard-footer button[data-tooltip]:hover::after,
+.project-wizard-footer button[data-tooltip]:focus-visible::after { transform: translateY(0); }
+.project-wizard-footer button[data-tooltip]:disabled::before,
+.project-wizard-footer button[data-tooltip]:disabled::after { display: block; }
 .input-with-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 2.75rem;
