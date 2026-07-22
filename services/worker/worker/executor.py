@@ -513,6 +513,12 @@ def _stop_public_tunnel(repository: dict, settings: Settings) -> dict:
     }
 
 
+def _public_urls_message(public_urls: object) -> str:
+    urls = public_urls if isinstance(public_urls, dict) else {}
+    rendered = ", ".join(f"{service}: {url}" for service, url in sorted(urls.items()) if url)
+    return f"Public URLs ready: {len(urls)}" + (f". {rendered}" if rendered else "")
+
+
 def execute_container_tunnel(job: dict, settings: Settings) -> tuple[str, dict]:
     client = docker_ops.connect()
     last_error = None
@@ -540,7 +546,7 @@ def execute_container_tunnel(job: dict, settings: Settings) -> tuple[str, dict]:
     if job.get("tunnelReset"):
         service.stop(tunnel_key)
     tunnel = service.start(tunnel_key, target)
-    return f"Public URL ready for local container '{container.name}'", {
+    return f"Public URL ready for local container '{container.name}': {tunnel.url}", {
         "publicUrl": tunnel.url,
         "publicUrls": {"container": tunnel.url},
         "publicTunnelStatus": "online",
@@ -767,7 +773,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
             only_service=str(job.get("tunnelService") or "").strip(),
             reset=bool(job.get("tunnelReset")),
         )
-        return f"Public URLs ready: {len(updates.get('publicUrls') or {})}", updates
+        return _public_urls_message(updates.get("publicUrls")), updates
     path = _sync(repository, workspace_id, settings)
     if action in {"sync", "read_compose"}:
         updates = {}
@@ -791,7 +797,7 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
         message = _run_dockerfile(repository, path, settings, environment)
     updates = _start_public_tunnel(repository, workspace_id, settings) if _repository_public_tunnel_enabled(repository) else {}
     if updates.get("publicUrls"):
-        message = f"{message}. Public URLs ready: {len(updates['publicUrls'])}"
+        message = f"{message}. {_public_urls_message(updates['publicUrls'])}"
     return message, updates
 
 

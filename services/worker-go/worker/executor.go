@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,26 @@ type Result struct {
 	Message string
 	Updates map[string]interface{}
 	Command *core.CommandResult
+}
+
+func publicURLsMessage(value interface{}) string {
+	urls := mapValue(value)
+	services := make([]string, 0, len(urls))
+	for service := range urls {
+		services = append(services, service)
+	}
+	sort.Strings(services)
+	parts := make([]string, 0, len(services))
+	for _, service := range services {
+		if url := stringValue(urls[service]); url != "" {
+			parts = append(parts, fmt.Sprintf("%s: %s", service, url))
+		}
+	}
+	message := fmt.Sprintf("Public URLs ready: %d", len(urls))
+	if len(parts) > 0 {
+		message += ". " + strings.Join(parts, ", ")
+	}
+	return message
 }
 
 func Execute(ctx context.Context, client *Client, job map[string]interface{}, repository map[string]interface{}, settings Settings) (Result, error) {
@@ -103,7 +124,7 @@ func Execute(ctx context.Context, client *Client, job map[string]interface{}, re
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Message: fmt.Sprintf("Public URLs ready: %d", len(mapValue(updates["publicUrls"]))), Updates: updates}, nil
+		return Result{Message: publicURLsMessage(updates["publicUrls"]), Updates: updates}, nil
 	case "deploy", "build":
 		path, err := syncRepository(ctx, client, repository, workspaceID, settings)
 		if err != nil {
@@ -134,7 +155,7 @@ func Execute(ctx context.Context, client *Client, job map[string]interface{}, re
 				}
 				updates = tunnelUpdates
 				if len(mapValue(updates["publicUrls"])) > 0 {
-					message = fmt.Sprintf("%s. Public URLs ready: %d", message, len(mapValue(updates["publicUrls"])))
+					message = fmt.Sprintf("%s. %s", message, publicURLsMessage(updates["publicUrls"]))
 				}
 			}
 			return Result{Message: message, Updates: updates}, nil
@@ -159,7 +180,7 @@ func Execute(ctx context.Context, client *Client, job map[string]interface{}, re
 			}
 			updates = tunnelUpdates
 			if len(mapValue(updates["publicUrls"])) > 0 {
-				message = fmt.Sprintf("%s. Public URLs ready: %d", message, len(mapValue(updates["publicUrls"])))
+				message = fmt.Sprintf("%s. %s", message, publicURLsMessage(updates["publicUrls"]))
 			}
 		}
 		return Result{Message: message, Updates: updates}, nil

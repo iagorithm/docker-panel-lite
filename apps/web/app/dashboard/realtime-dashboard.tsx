@@ -345,6 +345,7 @@ function RepositoryDeploymentLog({ repository, deployments, open, onClose }: {
     .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0))
     .slice(0, 20);
   const tunnelUrls = repositoryDebugTunnelUrls(repository);
+  const tunnelSummary = tunnelUrls.map(([service, url]) => `${service}: ${url}`).join(", ");
   return (
     <section className="repository-deployment-log" aria-label={`Deployment log for ${repository.alias}`}>
       <div className="repository-deployment-log-header">
@@ -372,7 +373,11 @@ function RepositoryDeploymentLog({ repository, deployments, open, onClose }: {
                 <span>{deployment.status}</span>
                 <time dateTime={new Date(deployment.createdAt).toISOString()}>{new Date(deployment.createdAt).toLocaleString()}</time>
               </div>
-              <p>{deployment.message || (isActiveJob(deployment, Date.now()) ? "Worker is processing this job…" : "No additional message was published.")}</p>
+              <p>{(() => {
+                const message = deployment.message || (isActiveJob(deployment, Date.now()) ? "Worker is processing this job…" : "No additional message was published.");
+                if (deployment.action !== "tunnel_start" || deployment.status !== "completed" || !tunnelSummary || tunnelUrls.some(([, url]) => message.includes(url))) return message;
+                return `${message}\n${tunnelSummary}`;
+              })()}</p>
               {deployment.targetWorkerId ? <small>Worker: {deployment.targetWorkerId}</small> : null}
             </article>
           ))}
