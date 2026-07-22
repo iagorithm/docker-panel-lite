@@ -129,6 +129,7 @@ export function LogsTerminal() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [agentMarkdown, setAgentMarkdown] = useState(true);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [preparingMode, setPreparingMode] = useState<"fix" | "hotfix" | null>(null);
   const [analyzingLogIds, setAnalyzingLogIds] = useState<Set<string>>(() => new Set());
   const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
   const [agentResultKind, setAgentResultKind] = useState<"analysis" | "solution">("analysis");
@@ -323,13 +324,20 @@ export function LogsTerminal() {
     }
   };
 
-  const applySolution = (hotfix: boolean) => runAgent(agentSourceLogs, {
-    kind: "solution",
-    apply: true,
-    hotfix,
-    preview: true,
-    instruction: `Apply the diagnosed correction exactly when supported by the code. The tool reason and Git commit message must be concise English describing what the fix resolves. Keep the final report brief. Diagnosis: ${agentResult?.report || ""}`.slice(0, 9500),
-  });
+  const applySolution = async (hotfix: boolean) => {
+    setPreparingMode(hotfix ? "hotfix" : "fix");
+    try {
+      await runAgent(agentSourceLogs, {
+        kind: "solution",
+        apply: true,
+        hotfix,
+        preview: true,
+        instruction: `Apply the diagnosed correction exactly when supported by the code. The tool reason and Git commit message must be concise English describing what the fix resolves. Keep the final report brief. Diagnosis: ${agentResult?.report || ""}`.slice(0, 9500),
+      });
+    } finally {
+      setPreparingMode(null);
+    }
+  };
 
   const commitPreview = async (hotfix: boolean) => {
     if (!agentResult?.previews?.length) return;
@@ -479,8 +487,8 @@ export function LogsTerminal() {
                   {agentTab === "problem" ? <>
                     <pre><code>{agentResult.report}</code></pre>
                     {!agentResult.branch && !agentResult.previews?.length ? <div className="problem-actions">
-                      <button className="result-action agent-apply-button" title="Prepare the exact change for review before committing" disabled={agentRunning} onClick={() => void applySolution(false)}><Icon name="apply" /><span>Prepare fix</span></button>
-                      <button className="result-action hotfix-control" title="Prepare a one-file hotfix for review before committing" disabled={agentRunning} onClick={() => void applySolution(true)}><Icon name="hotfix" /><span>Prepare hotfix</span></button>
+                      <button className="result-action agent-apply-button" title="Prepare the exact change for review before committing" disabled={agentRunning} onClick={() => void applySolution(false)}>{preparingMode === "fix" ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="apply" />}<span>{preparingMode === "fix" ? "Preparing…" : "Prepare fix"}</span></button>
+                      <button className="result-action hotfix-control" title="Prepare a one-file hotfix for review before committing" disabled={agentRunning} onClick={() => void applySolution(true)}>{preparingMode === "hotfix" ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="hotfix" />}<span>{preparingMode === "hotfix" ? "Preparing…" : "Prepare hotfix"}</span></button>
                     </div> : null}
                   </> : <>
                     {agentResult.previews?.length ? <div className="change-preview">
