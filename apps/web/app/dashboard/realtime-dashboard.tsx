@@ -1277,6 +1277,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
   const filteredRepositories = repositories.filter((repository) =>
     matchesQuery([
       repository.alias,
+      repository.description,
       repository.url,
       repository.branch,
       repository.mode,
@@ -1313,7 +1314,8 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           const deployedWorkerNames = deployedWorkers.map((worker) => worker.name);
           const publicUrls = repositoryPublicUrls(repository);
           const latestDeployment = deployments.filter((deployment) => deployment.repositoryId === repository.id).sort((a, b) => b.createdAt - a.createdAt)[0];
-          const projectUrl = publicUrls[0]?.[1] || repository.domain || repository.publicTunnelDomain || "Not deployed publicly";
+          const projectUrl = publicUrls[0]?.[1] || repository.publicTunnelDomain || "Not deployed publicly";
+          const productionDomainUrl = repository.domain ? (repository.domain.startsWith("http") ? repository.domain : `https://${repository.domain}`) : "";
           const latestWorker = latestDeployment?.targetWorkerId ? agentById.get(latestDeployment.targetWorkerId) : undefined;
           const status = latestDeployment?.status || "idle";
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
@@ -1324,6 +1326,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
               <div className="project-source-status">
                 <span className="project-source-pill" title={repository.url} data-tooltip={`Source repository: ${repository.url}`}><Icon name="branch" />{repositorySlug(repository.url)}</span>
                 {deployedWorkers.length ? <span className="project-worker-pill" title={`Deployed on: ${deployedWorkerNames.join(", ")}`}><Icon name="worker" /><span>{deployedWorkers[0].name}</span>{deployedWorkers.length > 1 ? <b>+{deployedWorkers.length - 1}</b> : null}</span> : null}
+                {repository.domain ? <a className="project-domain-pill" href={productionDomainUrl} target="_blank" rel="noreferrer" title={`Production domain: ${repository.domain}`}><Icon name="external" /><span>{repository.domain}</span></a> : null}
                 <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`} data-tooltip={`Latest deployment status: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "minus" : "sync"} /></span>
               </div>
               <div className="row-actions project-row-actions">
@@ -1546,6 +1549,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
         <div className={tabClass("configuration")} role="tabpanel" aria-label="Project configuration">
           <div className="form-grid">
             <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
+            <label className="wide">Description<textarea name="description" rows={2} defaultValue={repository.description || ""} placeholder="Briefly describe what this project deploys" /></label>
             <label className="wide">Source repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
@@ -1568,7 +1572,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
         </div>
         <div className={tabClass("networking")} role="tabpanel" aria-label="Domain settings">
           <div className="form-grid">
-            <label>Domain<input name="domain" defaultValue={repository.domain} /></label>
+            <label>Production domain<input name="domain" defaultValue={repository.domain} placeholder="app.example.com" /></label>
             <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
             <label>Ngrok domain<input name="publicTunnelDomain" defaultValue={repository.publicTunnelDomain || ""} placeholder="optional-domain.ngrok.app" /></label>
             <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>

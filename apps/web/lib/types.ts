@@ -1,6 +1,7 @@
 export type Repository = {
   id: string;
   alias: string;
+  description?: string;
   url: string;
   branch: string;
   mode: "compose" | "dockerfile";

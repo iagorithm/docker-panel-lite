@@ -37,6 +37,18 @@ type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branche
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec" | "container_tunnel_start";
 type JobAction = RepositoryAction | ContainerJobAction;
 
+function normalizeProductionDomain(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return raw;
+    return parsed.hostname.toLowerCase();
+  } catch {
+    return raw;
+  }
+}
+
 function sanitizeAppLogMessage(value: unknown) {
   return String(value || "Unknown error")
     .replace(/([?&](?:access_token|token|key)=)[^&\s]+/gi, "$1[REDACTED]")
@@ -52,6 +64,7 @@ async function writeUiAppLog(input: { workspaceId: string; user: { uid: string; 
 const repositorySchema = z.object({
   repositoryId: z.string().optional(),
   alias: z.string().trim().regex(aliasPattern, "Invalid alias"),
+  description: z.string().trim().max(500).default(""),
   url: z.string().trim().refine((value) => /^(https:\/\/|git@|ssh:\/\/)/.test(value), "Invalid Git URL"),
   branch: z.string().trim().refine((value) => !value || branchPattern.test(value), "Invalid branch"),
   mode: z.enum(["compose", "dockerfile"]),
@@ -60,7 +73,7 @@ const repositorySchema = z.object({
   credentialId: z.string().trim().default(""),
   environmentJson: z.string().default("{}"),
   environmentFormat: z.enum(["env", "json"]).default("env"),
-  domain: z.string().trim().refine((value) => !value || hostnamePattern.test(value), "Invalid domain"),
+  domain: z.string().trim().transform(normalizeProductionDomain).refine((value) => !value || hostnamePattern.test(value), "Enter a valid production domain, for example app.example.com"),
   service: z.string().trim().default("web"),
   internalPort: z.coerce.number().int().min(1).max(65535).default(3000),
   ports: z.string().trim().default(""),
@@ -108,6 +121,7 @@ const repositoryImportSchema = z.object({
   alias: z.string().trim().optional(),
   id: z.string().trim().optional(),
   name: z.string().trim().optional(),
+  description: z.string().trim().max(500).optional().default(""),
   url: z.string().trim().refine((value) => /^(https:\/\/|git@|ssh:\/\/)/.test(value), "Invalid Git URL"),
   branch: z.string().trim().optional().default(""),
   mode: z.enum(["compose", "dockerfile"]).optional().default("compose"),
@@ -569,6 +583,7 @@ export async function saveRepository(formData: FormData) {
   const repositoryPayload = {
     id: repositoryId,
     alias: input.alias,
+    description: input.description,
     url: input.url,
     branch: input.branch,
     mode: input.mode,
@@ -718,6 +733,7 @@ export async function importRepositoriesJson(formData: FormData) {
     const repositoryPayload = {
       id: repositoryId,
       alias: repositoryId,
+      description: input.description || "",
       url: input.url,
       branch,
       mode: input.mode,
@@ -726,7 +742,7 @@ export async function importRepositoriesJson(formData: FormData) {
       credentialId,
       environment,
       env: typeof input.env === "string" ? input.env : "",
-      domain: input.domain || "",
+      domain: normalizeProductionDomain(input.domain || ""),
       service: input.service || "web",
       internalPort: input.internalPort || input.internal_port || 3000,
       ports: input.ports || "",
