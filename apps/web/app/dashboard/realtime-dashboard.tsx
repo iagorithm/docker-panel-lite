@@ -1529,7 +1529,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
   const [deploymentMode, setDeploymentMode] = useState<"compose" | "dockerfile">(repository.mode);
-  const [settingsTab, setSettingsTab] = useState<"overview" | "configuration" | "environment" | "networking" | "access">("overview");
+  const [settingsTab, setSettingsTab] = useState<"overview" | "configuration" | "build" | "environment" | "networking" | "access">("overview");
   const [sharing, setSharing] = useState(repositorySharingMode(repository as RepositoryAccessRecord));
   const [sharedEmails, setSharedEmails] = useState((repository.sharedEmails || []).join(", "));
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
@@ -1591,6 +1591,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
           {[
             ["overview", "Overview"],
             ["configuration", "Configuration"],
+            ["build", "Build"],
             ["environment", "Environment"],
             ["networking", "Domain"],
             ["access", "Access"],
@@ -1613,6 +1614,14 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
             <label>Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select></label>
+          </div>
+          <div className="danger-tab-panel access-danger-zone">
+            <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
+            <button type="button" className="danger" title="Permanently remove this project registration" data-tooltip="Permanently remove this project registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel removal" : "Remove project"}</button>
+          </div>
+        </div>
+        <div className={tabClass("build")} role="tabpanel" aria-label="Project build settings">
+          <div className="form-grid">
             <fieldset className="mode-control wide deployment-mode-settings">
               <legend>What should this project run?</legend>
               <div className="segmented-radio" role="radiogroup" aria-label="Project deployment mode">
@@ -1646,10 +1655,6 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
                 <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} placeholder="8080:80" /><small className="field-hint">Port mappings for the individual container.</small></label>
               </>
             )}
-          </div>
-          <div className="danger-tab-panel access-danger-zone">
-            <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
-            <button type="button" className="danger" title="Permanently remove this project registration" data-tooltip="Permanently remove this project registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel removal" : "Remove project"}</button>
           </div>
         </div>
         <div className={tabClass("environment")} role="tabpanel" aria-label="Environment variables">
