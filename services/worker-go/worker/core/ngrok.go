@@ -32,6 +32,14 @@ func IsPublicTunnelURL(candidate string, domain string) bool {
 	return strings.HasSuffix(hostname, ".ngrok.app") || strings.HasSuffix(hostname, ".ngrok-free.app") || strings.HasSuffix(hostname, ".ngrok.io")
 }
 
+func ngrokErrorMessage(errorCode string) string {
+	code := strings.ToUpper(errorCode)
+	if code == "ERR_NGROK_314" {
+		return "ERR_NGROK_314: the ngrok account is on the Free plan, so it cannot create a custom hostname. Clear the configured Ngrok domain to use an automatically generated *.ngrok-free.app URL, or upgrade the ngrok account to a paid plan."
+	}
+	return fmt.Sprintf("ngrok failed with %s: review the ngrok account and billing configuration", code)
+}
+
 type Tunnel struct {
 	URL       string
 	Target    string
@@ -138,7 +146,7 @@ func (s NgrokService) Start(project string, target string, domain string) (Tunne
 		logText = tailText(string(data), 20000)
 		if errorCode := ngrokErrorPattern.FindString(logText); errorCode != "" {
 			_ = cmd.Process.Kill()
-			return Tunnel{}, fmt.Errorf("ngrok failed with %s: account or billing action is required", strings.ToUpper(errorCode))
+			return Tunnel{}, fmt.Errorf("%s", ngrokErrorMessage(errorCode))
 		}
 		urls := urlPattern.FindAllString(logText, -1)
 		for _, item := range urls {

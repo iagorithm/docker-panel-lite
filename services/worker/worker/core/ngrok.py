@@ -55,6 +55,17 @@ def _public_tunnel_url(candidate: str, domain: str = "") -> bool:
     if requested_host:
         return hostname == requested_host
     return hostname.endswith((".ngrok.app", ".ngrok-free.app", ".ngrok.io"))
+
+
+def _ngrok_error_message(error_code: str) -> str:
+    code = error_code.upper()
+    if code == "ERR_NGROK_314":
+        return (
+            "ERR_NGROK_314: the ngrok account is on the Free plan, so it cannot create a custom hostname. "
+            "Clear the configured Ngrok domain to use an automatically generated *.ngrok-free.app URL, "
+            "or upgrade the ngrok account to a paid plan."
+        )
+    return f"ngrok failed with {code}: review the ngrok account and billing configuration"
     try:
         os.kill(pid, 0)
         return True
@@ -189,7 +200,7 @@ class NgrokService:
                 error_code = NGROK_ERROR_PATTERN.search(log_text)
                 if error_code:
                     process.terminate()
-                    raise NgrokError(f"ngrok failed with {error_code.group(0).upper()}: account or billing action is required")
+                    raise NgrokError(_ngrok_error_message(error_code.group(0)))
                 urls = [item.rstrip(",") for item in URL_PATTERN.findall(log_text)]
                 public_url = next((item for item in urls if _public_tunnel_url(item, domain)), "")
                 if public_url:

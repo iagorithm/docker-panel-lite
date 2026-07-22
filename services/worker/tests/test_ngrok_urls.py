@@ -1,6 +1,6 @@
 import unittest
 
-from worker.core.ngrok import _public_tunnel_url
+from worker.core.ngrok import _ngrok_error_message, _public_tunnel_url
 
 
 class NgrokPublicUrlTests(unittest.TestCase):
@@ -15,6 +15,13 @@ class NgrokPublicUrlTests(unittest.TestCase):
 
     def test_rejects_error_text_appended_to_url(self):
         self.assertFalse(_public_tunnel_url("https://dashboard.ngrok.com/billing/choose-a-plan\\r\\nERR_NGROK_314"))
+
+    def test_free_plan_error_explains_how_to_use_generated_domain(self):
+        message = _ngrok_error_message("ERR_NGROK_314")
+
+        self.assertIn("Free plan", message)
+        self.assertIn("Clear the configured Ngrok domain", message)
+        self.assertIn("*.ngrok-free.app", message)
 
 
 if __name__ == "__main__":
