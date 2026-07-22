@@ -471,10 +471,6 @@ function repositoryDebugTunnelUrls(repository: Repository) {
   return [...urls.entries()];
 }
 
-function containerPrimaryAction(status: string): ContainerAction {
-  return status === "running" ? "container_stop" : "container_start";
-}
-
 function isWorkerControlContainer(container: ManagedContainer) {
   const name = container.name.toLowerCase();
   const composeService = (container.composeService || "").toLowerCase();
@@ -939,10 +935,10 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
       ? ["container_stop", "container_logs", "container_restart", "container_delete"]
       : ["container_start"];
     const actions = baseActions.filter((action) => !isProtectedContainerAction(container, action));
-    const primaryAction = workerContainer && displayStatus === "running" ? "container_restart" : containerPrimaryAction(displayStatus);
-    const visiblePrimaryAction = actions.find((action) => action === primaryAction);
+    const visiblePrimaryAction = displayStatus === "running" ? actions.find((action) => action === "container_restart") : undefined;
     const secondaryActions = actions.filter((action) => action !== visiblePrimaryAction);
     const canUseRunningTools = displayStatus === "running" && workerOnline && !workerContainer;
+    const canRunCommand = commandPresets.length > 0 && canUseRunningTools;
     const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
     const primaryName = workerContainer ? workerName : container.name;
     const secondaryText = workerContainer
@@ -967,15 +963,11 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
           ) : <span className="runtime-endpoint" title={(container.ports || []).length ? `Published ports: ${(container.ports || []).join(", ")}` : "This container has no published ports"}>{(container.ports || []).join(", ") || "No ports"}</span>}
         </div>
         <div className="row-actions deployment-row-actions">
-          {commandPresets.length && canUseRunningTools ? (
-            <form action={enqueueContainerCommand} className="container-command-form">
+          {canRegenerateTunnel ? (
+            <form action={enqueueContainerTunnelRefresh}>
               <input type="hidden" name="containerId" value={container.id} />
               <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
-              <input type="hidden" name="timeoutSeconds" value="600" />
-              <select className="container-command-select" name="command" required title={`Command for ${container.name}`} aria-label={`Command for ${container.name}`}>
-                {commandPresets.map((preset) => <option value={preset.command} key={preset.id}>{preset.name}</option>)}
-              </select>
-              <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="terminal" /><span>Command</span></PendingIconButton>
+              <PendingIconButton title={publicLinks.length ? "Regenerate public URL" : "Create public URL"} busy={isContainerTunnelBusy(container)}><Icon name="link" /><span>Public URL</span></PendingIconButton>
             </form>
           ) : null}
           {visiblePrimaryAction ? (() => {
@@ -987,15 +979,19 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
                 <PendingIconButton title={meta.title} busy={isContainerActionBusy(container, visiblePrimaryAction, displayStatus)}><Icon name={meta.icon} /><span>{meta.title.replace(" container", "")}</span></PendingIconButton>
               </form>;
           })() : null}
-          {canRegenerateTunnel || secondaryActions.length ? (
-            <details className="project-actions-overflow deployment-actions-overflow">
-              <summary aria-label="More deployment actions" title="More deployment actions"><Icon name="more" /><span>More</span></summary>
-              <div className="project-actions-menu deployment-actions-menu" role="menu" onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; }}>
-                {canRegenerateTunnel ? (
-                  <form action={enqueueContainerTunnelRefresh}>
+          {canRunCommand || secondaryActions.length ? (
+            <details className="project-actions-overflow deployment-actions-overflow is-compact">
+              <summary aria-label="More deployment actions" title="More deployment actions"><Icon name="more" /></summary>
+              <div className="project-actions-menu deployment-actions-menu" role="menu" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; } }}>
+                {canRunCommand ? (
+                  <form action={enqueueContainerCommand} className="container-command-form deployment-menu-command">
                     <input type="hidden" name="containerId" value={container.id} />
                     <input type="hidden" name="containerRef" value={container.dockerId || container.name || container.id} />
-                    <PendingIconButton title={publicLinks.length ? "Regenerate public URL" : "Create public URL"} busy={isContainerTunnelBusy(container)}><Icon name="link" /><span>{publicLinks.length ? "Regenerate public URL" : "Create public URL"}</span></PendingIconButton>
+                    <input type="hidden" name="timeoutSeconds" value="600" />
+                    <select className="container-command-select" name="command" required title={`Command for ${container.name}`} aria-label={`Command for ${container.name}`}>
+                      {commandPresets.map((preset) => <option value={preset.command} key={preset.id}>{preset.name}</option>)}
+                    </select>
+                    <PendingIconButton title="Run command in container" busy={isContainerActionBusy(container, "container_exec", displayStatus)}><Icon name="terminal" /><span>Run command</span></PendingIconButton>
                   </form>
                 ) : null}
                 {secondaryActions.map((action) => {
@@ -1374,7 +1370,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
         </div>
       </div>
 
-      {showAddRepository ? <AddRepositoryPanel credentials={credentials} workers={availableWorkers} /> : null}
+      {showAddRepository ? <AddRepositoryPanel credentials={credentials} workers={availableWorkers} onClose={() => setShowAddRepository(false)} /> : null}
 
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
@@ -1414,10 +1410,10 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                     <Icon name="settings" /><span>{editingRepositoryId === repository.id ? "Close settings" : "Settings"}</span>
                   </IconButton>
                 ) : null}
-                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Run project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /><span>Run</span></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /><span>Run</span></QueueButton>}
-                <details className="project-actions-overflow">
-                  <summary aria-label="More project actions" title="More project actions"><Icon name="more" /><span>More</span></summary>
-                  <div className="project-actions-menu" role="menu" onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; }}>
+                {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /><span>Deploy</span></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and deploy project" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /><span>Deploy</span></QueueButton>}
+                <details className="project-actions-overflow is-compact">
+                  <summary aria-label="More project actions" title="More project actions"><Icon name="more" /></summary>
+                  <div className="project-actions-menu" role="menu" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; } }}>
                     {repository.mode === "compose" ? (
                       viewingComposeRepositoryId === repository.id ? (
                         <IconButton title="Close Compose" onClick={() => setViewingComposeRepositoryId(null)}><Icon name="close" /><span>Close Compose</span></IconButton>
@@ -1452,8 +1448,12 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
   );
 }
 
-function AddRepositoryPanel({ credentials, workers }: { credentials: CredentialSummary[]; workers: Agent[] }) {
-  const [saveState, saveAction] = useActionState(saveRepositorySafely, initialRepositorySaveState);
+function AddRepositoryPanel({ credentials, workers, onClose }: { credentials: CredentialSummary[]; workers: Agent[]; onClose: () => void }) {
+  const [saveState, saveAction] = useActionState(async (previousState: RepositorySaveState, formData: FormData) => {
+    const nextState = await saveRepositorySafely(previousState, formData);
+    if (nextState.status === "success") onClose();
+    return nextState;
+  }, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
