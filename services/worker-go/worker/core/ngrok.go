@@ -32,12 +32,57 @@ func IsPublicTunnelURL(candidate string, domain string) bool {
 	return strings.HasSuffix(hostname, ".ngrok.app") || strings.HasSuffix(hostname, ".ngrok-free.app") || strings.HasSuffix(hostname, ".ngrok.io")
 }
 
-func ngrokErrorMessage(errorCode string) string {
+func NgrokErrorMessage(errorCode string) string {
 	code := strings.ToUpper(errorCode)
-	if code == "ERR_NGROK_314" {
-		return "ERR_NGROK_314: the ngrok account is on the Free plan, so it cannot create a custom hostname. Clear the configured Ngrok domain to use an automatically generated *.ngrok-free.app URL, or upgrade the ngrok account to a paid plan."
+	exact := map[string]string{
+		"ERR_NGROK_102":  "The last payment for this ngrok account failed. Update the payment method in the ngrok billing dashboard.",
+		"ERR_NGROK_103":  "This ngrok account is suspended. Review the account status or contact ngrok support.",
+		"ERR_NGROK_105":  "The saved value is not a valid ngrok authtoken. Copy a new authtoken from the ngrok dashboard and save the project again.",
+		"ERR_NGROK_106":  "The saved credential is a legacy ngrok v1 token and is not supported. Generate a current authtoken and save the project again.",
+		"ERR_NGROK_107":  "The authtoken is invalid, reset, revoked, or belongs to a team the user can no longer access. Generate and save a new token.",
+		"ERR_NGROK_108":  "The account reached its simultaneous ngrok agent-session limit. Stop an active Public URL or agent at https://dashboard.ngrok.com/agents, then retry; otherwise upgrade the account. Each worker ngrok process counts as one session.",
+		"ERR_NGROK_115":  "This worker's public IP is blocked by the ngrok account's Agent IP Restrictions. Allow the worker IP in the ngrok dashboard.",
+		"ERR_NGROK_120":  "The ngrok agent in the worker image is no longer supported. Rebuild the worker with a current ngrok release.",
+		"ERR_NGROK_247":  "The ngrok account is suspended for non-payment. Pay the outstanding balance in the ngrok billing dashboard.",
+		"ERR_NGROK_300":  "The ngrok authtoken credential has been revoked. Generate and save a new project token.",
+		"ERR_NGROK_307":  "The configured ngrok address must be reserved in this account before it can be used.",
+		"ERR_NGROK_309":  "The configured ngrok address is reserved by another account. Clear it or use a domain owned by this token's account.",
+		"ERR_NGROK_314":  "The ngrok account is on the Free plan or another plan that cannot create a custom hostname. Clear the configured Ngrok domain to use an automatically generated *.ngrok-free.app URL, or upgrade the account.",
+		"ERR_NGROK_319":  "The configured custom hostname is not reserved in this ngrok account. Reserve it first or clear the Ngrok domain field.",
+		"ERR_NGROK_320":  "The configured domain is reserved by another ngrok account. Use the token for the owning account or choose another domain.",
+		"ERR_NGROK_324":  "The ngrok agent session reached its endpoint limit. Stop an endpoint or upgrade the ngrok account.",
+		"ERR_NGROK_334":  "The configured endpoint is already online in another ngrok agent. Stop the existing endpoint before retrying.",
+		"ERR_NGROK_400":  "The configured ngrok region is invalid. Correct or remove NGROK_REGION in the worker configuration.",
+		"ERR_NGROK_8012": "ngrok is online, but it cannot connect to the application upstream. Confirm the container is running, the internal port is correct, and the service is reachable from the worker.",
+		"ERR_NGROK_8013": "This free ngrok account requires a payment card before it can open TCP endpoints.",
+		"ERR_NGROK_8014": "ngrok blocked this agent for a suspected Acceptable Use Policy violation. Review the account and contact ngrok support.",
 	}
-	return fmt.Sprintf("ngrok failed with %s: review the ngrok account and billing configuration", code)
+	if detail, ok := exact[code]; ok {
+		return code + ": " + detail
+	}
+	number, _ := strconv.Atoi(strings.TrimPrefix(code, "ERR_NGROK_"))
+	detail := "ngrok rejected the tunnel request. See https://ngrok.com/docs/errors/" + strings.ToLower(code) + " for the exact account or configuration requirement."
+	switch {
+	case number == 310 || number == 313 || number == 315 || number == 401:
+		detail = "The configured domain feature is not available on this ngrok plan. Clear the Ngrok domain field or upgrade the account."
+	case number == 308 || number == 316:
+		detail = "The authtoken credential policy does not permit using the configured domain. Review the credential ACL or use another token."
+	case number == 311 || number == 317 || number == 322:
+		detail = "The configured domain and worker region do not match. Correct NGROK_REGION or select a domain available in that region."
+	case number == 326 || number == 327 || number == 347 || number == 354 || number == 355 || number == 396 || number == 397:
+		detail = "The configured Ngrok domain is invalid. Correct it or clear the field to request an automatically generated URL."
+	case number == 337 || number == 338:
+		detail = "The ngrok account has a billing or suspension problem. Review the account status and billing dashboard."
+	case number == 348 || number == 349:
+		detail = "The ngrok account reached a session limit or session creation rate limit. Stop an active agent, wait, or upgrade the account."
+	case number == 350 || number == 351:
+		detail = "The ngrok account reached an endpoint limit or endpoint creation rate limit. Stop an endpoint, wait, or upgrade the account."
+	case number == 3208:
+		detail = "The ngrok account was banned for a Terms of Service violation. Contact ngrok support if this is unexpected."
+	case number >= 8000 && number <= 8011:
+		detail = "The worker could not establish ngrok network connectivity. Check DNS, outbound internet, proxy, firewall, TLS inspection, and IPv6 configuration."
+	}
+	return code + ": " + detail
 }
 
 type Tunnel struct {
@@ -146,7 +191,7 @@ func (s NgrokService) Start(project string, target string, domain string) (Tunne
 		logText = tailText(string(data), 20000)
 		if errorCode := ngrokErrorPattern.FindString(logText); errorCode != "" {
 			_ = cmd.Process.Kill()
-			return Tunnel{}, fmt.Errorf("%s", ngrokErrorMessage(errorCode))
+			return Tunnel{}, fmt.Errorf("%s", NgrokErrorMessage(errorCode))
 		}
 		urls := urlPattern.FindAllString(logText, -1)
 		for _, item := range urls {

@@ -23,6 +23,25 @@ class NgrokPublicUrlTests(unittest.TestCase):
         self.assertIn("Clear the configured Ngrok domain", message)
         self.assertIn("*.ngrok-free.app", message)
 
+    def test_agent_limit_error_explains_sessions_and_resolution(self):
+        message = _ngrok_error_message("err_ngrok_108")
+
+        self.assertIn("agent-session limit", message)
+        self.assertIn("dashboard.ngrok.com/agents", message)
+        self.assertIn("Each worker ngrok process", message)
+
+    def test_invalid_token_error_does_not_return_generic_billing_advice(self):
+        message = _ngrok_error_message("ERR_NGROK_107")
+
+        self.assertIn("invalid, reset, revoked", message)
+        self.assertNotIn("review the ngrok account and billing configuration", message)
+
+    def test_network_error_explains_worker_connectivity_checks(self):
+        message = _ngrok_error_message("ERR_NGROK_8004")
+
+        self.assertIn("outbound internet", message)
+        self.assertIn("firewall", message)
+
 
 if __name__ == "__main__":
     unittest.main()
