@@ -4,11 +4,14 @@ import base64
 import ast
 import difflib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from crewai.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,15 +37,20 @@ class GitHubServices:
     branch: str = ""
     changes: list[dict[str, str]] = field(default_factory=list)
     preview_changes: list[dict[str, str]] = field(default_factory=list)
+    read_paths: set[str] = field(default_factory=set)
+    session: requests.Session = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repository):
             raise ValueError("GITHUB_REPOSITORY must use owner/repository format")
         self.api = f"https://api.github.com/repos/{self.repository}"
         self.headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {self.token}", "X-GitHub-Api-Version": "2022-11-28"}
+        self.session = requests.Session()
+        retries = Retry(total=3, connect=3, read=3, backoff_factor=0.4, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}), respect_retry_after_header=True)
+        self.session.mount("https://", HTTPAdapter(max_retries=retries, pool_connections=4, pool_maxsize=8))
 
     def request(self, method: str, path: str, **kwargs):
-        response = requests.request(method, f"{self.api}{path}", headers=self.headers, timeout=30, **kwargs)
+        response = self.session.request(method, f"{self.api}{path}", headers=self.headers, timeout=(5, 30), **kwargs)
         if response.status_code >= 400:
             try:
                 detail = response.json().get("message", response.text[:500])
@@ -68,6 +76,7 @@ class GitHubServices:
         content = base64.b64decode(value["content"]).decode("utf-8")
         if len(content) > 300_000:
             raise ValueError(f"{safe} is larger than the agent read limit")
+        self.read_paths.add(safe)
         return content
 
     def branch_name(self, reason: str) -> str:
@@ -89,7 +98,13 @@ class GitHubServices:
         if not self.allow_writes:
             return "WRITE BLOCKED: analysis-only run. Recommend the change in the report."
         safe = self.safe_path(path)
+        if safe not in self.read_paths:
+            return f"WRITE BLOCKED: read the complete current {safe} with read_services_file before proposing a change."
         recorded_changes = [*self.changes, *self.preview_changes]
+        changed_files = {change["path"] for change in recorded_changes if change["path"].startswith("services/")}
+        max_files = max(1, int(os.environ.get("LOGS_AGENT_MAX_CHANGED_FILES", "3")))
+        if safe not in changed_files and len(changed_files) >= max_files:
+            return f"WRITE BLOCKED: a fix may change at most {max_files} services files. Reduce scope and prepare separate fixes."
         if self.hotfix and any(change["path"] != safe and change["path"].startswith("services/") for change in recorded_changes):
             return "WRITE BLOCKED: hotfix mode permits changes to only one services/** file. Use a dedicated branch for a larger correction."
         if len(content.encode("utf-8")) > 300_000:
@@ -100,7 +115,7 @@ class GitHubServices:
         if self.preview_writes:
             diff = "\n".join(difflib.unified_diff(previous.splitlines(), content.splitlines(), fromfile=f"a/{safe}", tofile=f"b/{safe}", lineterm=""))
             self.preview_changes = [change for change in self.preview_changes if change["path"] != safe]
-            self.preview_changes.append({"path": safe, "content": content, "reason": reason[:500], "diff": diff})
+            self.preview_changes.append({"path": safe, "content": content, "reason": reason[:500], "diff": diff, "baseSha": current["sha"]})
             return f"Preview ready for {safe}; no commit was created"
         branch = self.ensure_branch(reason)
         message = (commit_message.strip() or f"fix(services): {reason}").replace("\n", " ")[:120]
@@ -109,10 +124,59 @@ class GitHubServices:
         self.changes.append(change)
         return f"Updated {safe} on {branch} in commit {change['commit']}"
 
+    def commit_preview_batch(self, previews: list[dict], commit_message: str, summary: str, requested_by: str) -> tuple[str, list[dict[str, str]]]:
+        if not previews:
+            raise ValueError("No preview changes to commit")
+        reason = str(previews[0].get("reason") or "service error")
+        target_branch = self.base_branch if self.hotfix else self.branch_name(reason)
+        base_ref = self.request("GET", f"/git/ref/heads/{self.base_branch}")
+        parent_sha = base_ref["object"]["sha"]
+        parent_commit = self.request("GET", f"/git/commits/{parent_sha}")
+        tree_entries = []
+        changed_paths = []
+        for preview in previews:
+            safe = self.safe_path(str(preview.get("path") or ""))
+            current = self.request("GET", f"/contents/{safe}?ref={self.base_branch}")
+            if current.get("sha") != preview.get("baseSha"):
+                raise RuntimeError(f"Stale preview blocked: {safe} changed after review; prepare the fix again")
+            previous = base64.b64decode(current["content"]).decode("utf-8")
+            proposed = str(preview.get("content") or "")
+            self.validate_safe_replacement(safe, previous, proposed)
+            blob = self.request("POST", "/git/blobs", json={"content": proposed, "encoding": "utf-8"})
+            tree_entries.append({"path": safe, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+            changed_paths.append((safe, str(preview.get("reason") or reason)[:500]))
+
+        changelog_path = "CHANGELOGS.md"
+        response = self.session.get(f"{self.api}/contents/{changelog_path}", headers=self.headers, params={"ref": self.base_branch}, timeout=(5, 30))
+        if response.status_code == 404:
+            changelog = "# Correction history\n"
+        elif response.status_code >= 400:
+            raise RuntimeError(f"GitHub GET {changelog_path} failed ({response.status_code}): {response.text[:500]}")
+        else:
+            changelog = base64.b64decode(response.json()["content"]).decode("utf-8")
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        delivery = "hotfix" if self.hotfix else "branch"
+        entry = f"\n## {timestamp} · applied\n\n- Run: `{self.run_id}`\n- Requested by: `{requested_by or 'unknown'}`\n- Branch: `{target_branch}`\n- Delivery: `{delivery}`\n\n{summary.strip()[:4000]}\n"
+        changelog_blob = self.request("POST", "/git/blobs", json={"content": changelog.rstrip() + "\n" + entry, "encoding": "utf-8"})
+        tree_entries.append({"path": changelog_path, "mode": "100644", "type": "blob", "sha": changelog_blob["sha"]})
+        tree = self.request("POST", "/git/trees", json={"base_tree": parent_commit["tree"]["sha"], "tree": tree_entries})
+        message = commit_message.strip().replace("\n", " ")[:120]
+        commit = self.request("POST", "/git/commits", json={"message": message, "tree": tree["sha"], "parents": [parent_sha]})
+        if self.hotfix:
+            self.request("PATCH", f"/git/refs/heads/{self.base_branch}", json={"sha": commit["sha"], "force": False})
+        else:
+            self.request("POST", "/git/refs", json={"ref": f"refs/heads/{target_branch}", "sha": commit["sha"]})
+        self.branch = target_branch
+        self.changes = [{"path": path, "commit": commit["sha"], "reason": item_reason} for path, item_reason in changed_paths]
+        self.changes.append({"path": changelog_path, "commit": commit["sha"], "reason": "Record applied correction"})
+        return target_branch, self.changes
+
     @staticmethod
     def validate_safe_replacement(path: str, previous: str, proposed: str) -> None:
         if not proposed.strip():
             raise ValueError("Destructive fix blocked: proposed file is empty")
+        if proposed == previous:
+            raise ValueError("No-op fix blocked: proposed file is identical to the current code")
         if len(proposed.encode("utf-8")) < len(previous.encode("utf-8")) * 0.9:
             raise ValueError("Destructive fix blocked: proposed file removes more than 10% of the existing code")
         diff = difflib.ndiff(previous.splitlines(), proposed.splitlines())
@@ -135,7 +199,7 @@ class GitHubServices:
     def append_changelog(self, *, status: str, summary: str, requested_by: str) -> dict[str, str]:
         branch = self.ensure_branch()
         path = "CHANGELOGS.md"
-        response = requests.get(f"{self.api}/contents/{path}", headers=self.headers, params={"ref": branch}, timeout=30)
+        response = self.session.get(f"{self.api}/contents/{path}", headers=self.headers, params={"ref": branch}, timeout=(5, 30))
         if response.status_code == 404:
             current = None
             content = "# Correction history\n"

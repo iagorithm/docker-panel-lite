@@ -30,6 +30,7 @@ class GitHubServicesBoundaryTests(unittest.TestCase):
     def test_hotfix_blocks_a_second_services_file_before_network(self):
         backend = GitHubServices("token", "owner/repository", "main", "run-id", True, True)
         backend.changes.append({"path": "services/worker/worker/main.py", "commit": "abc", "reason": "first"})
+        backend.read_paths.add("services/worker/worker/config.py")
         result = backend.write_file("services/worker/worker/config.py", "content", "second")
         self.assertIn("only one", result)
 
@@ -59,11 +60,21 @@ class GitHubServicesBoundaryTests(unittest.TestCase):
         backend = GitHubServices("token", "owner/repository", "main", "run-id", True, False, True)
         previous = "def port_open(port):\n    return False\n"
         backend.request = lambda method, path, **kwargs: {"content": base64.b64encode(previous.encode()).decode(), "sha": "current"}
+        backend.read_paths.add("services/worker/main.py")
         result = backend.write_file("services/worker/main.py", "def port_open(port):\n    return port == 3000\n", "Detect occupied port")
         self.assertIn("no commit", result)
         self.assertEqual(backend.branch, "")
         self.assertEqual(backend.changes, [])
         self.assertIn("+    return port == 3000", backend.preview_changes[0]["diff"])
+
+    def test_write_requires_complete_read_first(self):
+        backend = GitHubServices("token", "owner/repository", "main", "run-id", True, False, True)
+        result = backend.write_file("services/worker/main.py", "value = 2\n", "Update value")
+        self.assertIn("read the complete current", result)
+
+    def test_blocks_noop_replacement(self):
+        with self.assertRaisesRegex(ValueError, "No-op fix blocked"):
+            self.backend.validate_safe_replacement("services/worker/main.py", "value = 1\n", "value = 1\n")
 
 
 if __name__ == "__main__":
