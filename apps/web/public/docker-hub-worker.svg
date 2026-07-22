@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="920" viewBox="0 0 1440 920" role="img" aria-labelledby="title desc">
   <title id="title">Docker Hub worker image preview</title>
-  <desc id="desc">A polished Docker Hub style preview for the docker-panel-lite worker image.</desc>
+  <desc id="desc">Docker Hub preview showing the Python and Go worker image tags available for worqer.app.</desc>
   <rect width="1440" height="920" fill="#eef5ff"/>
   <rect x="80" y="70" width="1280" height="780" rx="42" fill="#ffffff"/>
   <rect x="80" y="70" width="1280" height="92" rx="42" fill="#f7fbff"/>
@@ -17,13 +17,13 @@
   <text x="270" y="126" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" fill="#102033">Docker Hub</text>
   <text x="270" y="150" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="600" fill="#5a6b7f">Verified worker image for worqer.app</text>
   <rect x="1108" y="101" width="188" height="38" rx="19" fill="#e8f1ff" stroke="#bdd4f4"/>
-  <text x="1202" y="126" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" fill="#1859c9">latest</text>
+  <text x="1202" y="126" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" fill="#1859c9">py · go</text>
   <text x="124" y="238" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#64748b">IMAGE</text>
   <text x="124" y="294" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="850" fill="#0f172a">cjarn/docker-panel-lite-worker</text>
   <text x="124" y="330" font-family="Inter, Arial, sans-serif" font-size="22" fill="#526175">Remote execution worker for container deployments, sync jobs, logs, and tunnels.</text>
   <rect x="124" y="388" width="1192" height="118" rx="22" fill="#0f172a"/>
-  <text x="164" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#91f0bb">docker run</text>
-  <text x="306" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#e2e8f0">--env-file .env cjarn/docker-panel-lite-worker:latest</text>
+  <text x="164" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#91f0bb">WORKER_TAG=py docker run</text>
+  <text x="440" y="432" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="21" fill="#e2e8f0">cjarn/docker-panel-lite-worker:$WORKER_TAG</text>
   <text x="164" y="468" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#94a3b8"># copy the Worker claim token from the logs and claim it in the panel</text>
   <g transform="translate(124 568)">
     <rect width="360" height="154" rx="24" fill="#f8fbff" stroke="#d7e6f8"/>

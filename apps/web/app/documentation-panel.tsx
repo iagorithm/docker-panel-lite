@@ -19,19 +19,24 @@ const workerSetupDocs = [
     command: "mkdir -p \"$HOME/docker-panel-worker/repos\" \\\n  \"$HOME/docker-panel-worker/data\"",
   },
   {
-    title: "3. Launch the worker",
-    body: "Run the worker on the machine that should build images, start containers, read logs, and execute deployment jobs.",
-    command:
-      "docker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  cjarn/docker-panel-lite-worker:py",
+    title: "3. Choose the worker runtime",
+    body: "Use the :py tag for the stable Python worker or :go for the lightweight compiled Go worker. Both support the same project workflow; each installation needs its own data folder.",
+    command: "WORKER_TAG=py  # Change to go to use the Go worker\nWORKER_IMAGE=\"cjarn/docker-panel-lite-worker:$WORKER_TAG\"",
   },
   {
-    title: "4. Copy the claim token",
+    title: "4. Launch the worker",
+    body: "Run the selected worker image on the machine that should build images, start containers, read logs, and execute deployment jobs.",
+    command:
+      "WORKER_TAG=py # Change to go to use the Go worker\ndocker run -d --pull always \\\n  --name docker-panel-lite-worker \\\n  --restart unless-stopped \\\n  -v /var/run/docker.sock:/var/run/docker.sock \\\n  -v \"$HOME/docker-panel-worker/repos:/app/clones\" \\\n  -v \"$HOME/docker-panel-worker/data:/app/data\" \\\n  \"cjarn/docker-panel-lite-worker:$WORKER_TAG\"",
+  },
+  {
+    title: "5. Copy the claim token",
     body: "The token is printed in local worker logs. It is used once from the dashboard to attach the machine to your workspace.",
     command:
       "docker logs --tail 100 docker-panel-lite-worker\n# Look for: Worker claim token for worker-default-...: <generated-worker-token>",
   },
   {
-    title: "5. Claim it from worqer.app",
+    title: "6. Claim it from worqer.app",
     body: "Open the dashboard, go to Containers, open Workers, paste the token into Worker token, press the add button, then choose Private, Shared, or Public access.",
   },
 ];

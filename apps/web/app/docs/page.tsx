@@ -71,7 +71,10 @@ export default function DocsOverviewPage() {
 
     <section id="worker-install"><h3>Connect a worker</h3><p>You can create a worker on a new Docker host or use one that is already running. In both cases, the worker must appear online and be available to your user before assigning it to a project.</p><div className="docs-two-column"><article><h4>Create a worker</h4><p>Run the worker image on the Docker host, preserve its data directory and claim it using the token printed in its logs.</p><a href="#create-worker">Create a worker →</a></article><article><h4>Use an existing worker</h4><p>Claim an unassigned worker with its token, or select an available worker that is already connected to the workspace.</p><a href="#existing-worker">Use an existing worker →</a></article></div></section>
 
-    <section id="create-worker"><h3>Create a worker</h3><ol><li>On the Docker host, create persistent folders for repositories and worker identity.</li><li>Run the worker image with access to the Docker socket.</li><li>Read the generated worker token from its logs.</li><li>Open <strong>Workers</strong>, paste the token in <strong>Worker token</strong> and select Claim.</li><li>Confirm that the new worker appears online before deploying.</li></ol><pre><code>{`mkdir -p "$HOME/docker-panel-worker/repos" "$HOME/docker-panel-worker/data"
+    <section id="create-worker"><h3>Create a worker</h3><ol><li>On the Docker host, create persistent folders for repositories and worker identity.</li><li>Choose the <code>py</code> or <code>go</code> worker image tag.</li><li>Run the selected worker image with access to the Docker socket.</li><li>Read the generated worker token from its logs.</li><li>Open <strong>Workers</strong>, paste the token in <strong>Worker token</strong> and select Claim.</li><li>Confirm that the new worker appears online before deploying.</li></ol><h4>Choose a worker image</h4><div className="docs-two-column"><article><h4>Python worker · <code>:py</code></h4><p>The stable Python implementation. Choose this tag when you want the reference runtime and broad compatibility.</p><code>cjarn/docker-panel-lite-worker:py</code></article><article><h4>Go worker · <code>:go</code></h4><p>The compiled Go implementation. Choose this tag for a lightweight worker with lower runtime overhead.</p><code>cjarn/docker-panel-lite-worker:go</code></article></div><p>Both tags connect to the same workspace and support the same project workflow. Do not run both with the same mounted data folder; each worker needs its own persistent identity.</p><pre><code>{`mkdir -p "$HOME/docker-panel-worker/repos" "$HOME/docker-panel-worker/data"
+
+# Choose py or go before running the worker.
+WORKER_TAG=py
 
 docker run -d --pull always \\
   --name docker-panel-lite-worker \\
@@ -79,7 +82,7 @@ docker run -d --pull always \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v "$HOME/docker-panel-worker/repos:/app/clones" \\
   -v "$HOME/docker-panel-worker/data:/app/data" \\
-  cjarn/docker-panel-lite-worker:py
+  "cjarn/docker-panel-lite-worker:$WORKER_TAG"
 
 docker logs --tail 100 docker-panel-lite-worker`}</code></pre><div className="docs-callout"><strong>Keep the data folder</strong><p>The mounted <code>/app/data</code> folder preserves the worker identity and token across restarts or image updates.</p></div></section>
 
