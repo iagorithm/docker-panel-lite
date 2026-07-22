@@ -547,7 +547,7 @@ class Worker:
                     "publicTunnelError": str(error)[:1000],
                     "publicTunnelUpdatedAt": now_ms(),
                 }
-                if (job and job.get("action") == "tunnel_start" and job.get("repositoryId"):
+                if job and job.get("action") == "tunnel_start" and job.get("repositoryId"):
                     reference(f"workspaces/{job['workspaceId']}/repositories/{job['repositoryId']}").update(tunnel_failure)
                 elif job and job.get("action") == "container_tunnel_start" and job.get("containerId"):
                     reference(f"workspaces/{job['workspaceId']}/containers/{job['containerId']}").update(tunnel_failure)
