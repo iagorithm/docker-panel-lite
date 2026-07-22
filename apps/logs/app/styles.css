@@ -183,6 +183,7 @@ article {
   min-height: 25px;
   padding: 2px 5px;
   border-bottom: 1px solid #101a14;
+  cursor: pointer;
 }
 article:hover { background: #09110c; }
 article.is-selected { background: #0b1910; box-shadow: inset 2px 0 #55d17d; }

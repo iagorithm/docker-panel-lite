@@ -406,7 +406,19 @@ export function LogsTerminal() {
           <span>Rev.</span>
         </div>
         {logs.length ? logs.map((log) => (
-          <article className={`${selectedLogIds.has(log.id) ? "is-selected" : ""} ${expandedLogIds.has(log.id) ? "is-expanded" : ""}`} key={log.id}>
+          <article
+            className={`${selectedLogIds.has(log.id) ? "is-selected" : ""} ${expandedLogIds.has(log.id) ? "is-expanded" : ""}`}
+            key={log.id}
+            title={expandedLogIds.has(log.id) ? "Clic para ocultar detalles" : "Clic para mostrar detalles"}
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("button, input, a, label")) return;
+              setExpandedLogIds((current) => {
+                const next = new Set(current);
+                if (next.has(log.id)) next.delete(log.id); else next.add(log.id);
+                return next;
+              });
+            }}
+          >
             <div className="log-selection">
               <input
                 type="checkbox"
