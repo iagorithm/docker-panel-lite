@@ -9,6 +9,53 @@ const deploymentContents = [
   ["History", "Deployment results and errors that help verify or troubleshoot a release."],
 ];
 
+type OperationIcon = "sync" | "settings" | "play" | "more" | "document" | "bug" | "link" | "close" | "stop" | "terminal" | "logs" | "trash";
+
+function OperationIconGraphic({ name }: { name: OperationIcon }) {
+  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
+  return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    {name === "sync" ? <path {...common} d="M17.6 6.2A7.25 7.25 0 0 0 5.35 9.05M17.6 6.2V3.45m0 2.75h-2.75M6.4 17.8a7.25 7.25 0 0 0 12.25-2.85M6.4 17.8v2.75m0-2.75h2.75" /> : null}
+    {name === "settings" ? <path {...common} d="M12 8.35A3.65 3.65 0 1 0 12 15.65 3.65 3.65 0 0 0 12 8.35Zm7.05 3.65c0-.45-.04-.89-.12-1.31l2.02-1.58-2-3.46-2.52 1.01a7.5 7.5 0 0 0-2.27-1.31L13.78 2.7h-4l-.38 2.65a7.5 7.5 0 0 0-2.27 1.31L4.61 5.65l-2 3.46 2.02 1.58a7.08 7.08 0 0 0 0 2.62l-2.02 1.58 2 3.46 2.52-1.01A7.5 7.5 0 0 0 9.4 18.65l.38 2.65h4l.38-2.65a7.5 7.5 0 0 0 2.27-1.31l2.52 1.01 2-3.46-2.02-1.58c.08-.42.12-.86.12-1.31Z" /> : null}
+    {name === "play" ? <path d="M8.75 6.45v11.1a1 1 0 0 0 1.55.84l8.15-5.55a1 1 0 0 0 0-1.68L10.3 5.61a1 1 0 0 0-1.55.84Z" fill="currentColor" /> : null}
+    {name === "more" ? <path d="M6.25 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm5.75 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm5.75 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="currentColor" /> : null}
+    {name === "document" ? <path {...common} d="M7 3.75h6.2l3.8 3.8V20a1.25 1.25 0 0 1-1.25 1.25H7A1.25 1.25 0 0 1 5.75 20V5A1.25 1.25 0 0 1 7 3.75Zm6 0v4h4M8.9 12.15h6.2M8.9 16.1h6.2" /> : null}
+    {name === "bug" ? <path {...common} d="M9 5.25V3.5M15 5.25V3.5M5.25 9H3.5M20.5 9h-1.75M5.25 15H3.5m17 0h-1.75M8 6.25h8v9.5a4 4 0 0 1-8 0v-9.5ZM8 10h8M12 10v9.75" /> : null}
+    {name === "link" ? <path {...common} d="M9.45 14.55 14.55 9.45M10.75 6.75l1.55-1.55a4 4 0 0 1 5.65 5.65L16.4 12.4M7.6 11.6l-1.55 1.55a4 4 0 0 0 5.65 5.65l1.55-1.55" /> : null}
+    {name === "close" ? <path {...common} d="M6.75 6.75l10.5 10.5M17.25 6.75 6.75 17.25" /> : null}
+    {name === "stop" ? <rect x="7.75" y="7.75" width="8.5" height="8.5" rx="1.45" fill="currentColor" /> : null}
+    {name === "terminal" ? <path {...common} d="M4.5 6.25h15v11.5h-15zM8.2 10l2.15 2-2.15 2M12.35 14h4.2" /> : null}
+    {name === "logs" ? <path {...common} d="M6.5 4.75h11A1.25 1.25 0 0 1 18.75 6v12A1.25 1.25 0 0 1 17.5 19.25h-11A1.25 1.25 0 0 1 5.25 18V6A1.25 1.25 0 0 1 6.5 4.75ZM8.5 8.15h7M8.5 11.05h7M8.5 13.95h5.6M8.5 16.85h3.8" /> : null}
+    {name === "trash" ? <path {...common} d="M4.75 7h14.5M9.75 11v5.75M14.25 11v5.75M8 7l1.1-3h5.8L16 7M6.75 7l.9 13.25h8.7L17.25 7" /> : null}
+  </svg>;
+}
+
+const projectOperations: [OperationIcon, string, string, string][] = [
+  ["sync", "Refresh", "Primary", "Pulls the latest source and refreshes project information from the selected worker."],
+  ["settings", "Settings", "Primary", "Opens Git, Build, Environment, Domain and Access configuration."],
+  ["play", "Deploy", "Primary", "Builds and starts the project using its selected Compose or Dockerfile mode."],
+  ["more", "More", "Primary", "Opens the compact menu that contains the less frequent project operations."],
+  ["document", "View Compose / Dockerfile", "More", "Reads and displays the build file detected on the selected worker."],
+  ["bug", "Deployment events", "More", "Shows progress, results and errors from project operations."],
+  ["link", "Open / refresh public URLs", "More", "Creates or regenerates the configured ngrok URLs."],
+  ["close", "Close public URLs", "More", "Stops the public tunnels created for the project."],
+  ["stop", "Stop project", "More", "Stops the Compose stack or Dockerfile-managed service without deleting the project."],
+];
+
+const deploymentOperations: [OperationIcon, string, string, string][] = [
+  ["link", "Public URL", "Primary", "Creates or regenerates public access for a running service."],
+  ["sync", "Restart", "Primary", "Restarts the running container without rebuilding the project source."],
+  ["more", "More", "Primary", "Opens the compact menu with state-dependent container operations."],
+  ["play", "Start", "More", "Starts a stopped container."],
+  ["terminal", "Run command", "More", "Runs the selected saved command inside an eligible running container."],
+  ["logs", "View logs", "More", "Opens the runtime output for the selected container."],
+  ["stop", "Stop", "More", "Stops a running container while preserving it."],
+  ["trash", "Delete", "More", "Removes the managed container; use it only when the runtime is no longer needed."],
+];
+
+function OperationReference({ operations }: { operations: [OperationIcon, string, string, string][] }) {
+  return <div className="docs-operation-grid">{operations.map(([icon, label, placement, copy]) => <article key={label}><span className="docs-operation-icon"><OperationIconGraphic name={icon} /></span><div><h4>{label}<small>{placement}</small></h4><p>{copy}</p></div></article>)}</div>;
+}
+
 export default function DocsOverviewPage() {
   return <main className="docs-article">
     <header className="docs-article-header"><p className="docs-breadcrumb">Documentation / Overview</p><h1>Docker Panel Lite documentation</h1><p>Learn how to connect a Docker host and take an application from a Git repository to a running deployment.</p></header>
@@ -48,7 +95,7 @@ docker logs --tail 100 docker-panel-lite-worker`}</code></pre><div className="do
 
     <section id="public-urls"><h3>Public URLs and ngrok</h3><p>A deployment can remain private or expose a temporary public URL through ngrok. In the project Domain tab, enter the ngrok token first and then enable <strong>Public</strong>. You can generate a token from the discreet link next to the token field.</p><ul><li>A token belongs to its ngrok account; using a token from another account uses that account.</li><li>Account limits and available domains depend on the ngrok plan.</li><li>For Compose projects, select the service and internal port that should receive traffic.</li><li><strong>Close Public URL</strong> stops the tunnel even when the application container is not running.</li><li>Close URLs that are no longer needed before opening more sessions.</li></ul><div className="docs-callout is-warning"><strong>ngrok errors</strong><p>If ngrok rejects a session, review the message shown by the deployment. It may indicate account, billing, agent-limit, domain or upstream-port problems.</p></div></section>
 
-    <section id="operations"><h3>Deployment operations</h3><p>The Deployments page keeps the public URL and Restart actions visible. Open <strong>More</strong> for Start, run command, logs, Stop and Delete. In Projects, use Refresh, Settings and Deploy; the remaining actions are under More.</p><table><thead><tr><th>Action</th><th>Use it when</th></tr></thead><tbody><tr><td>Deploy</td><td>Source, build settings or environment changed.</td></tr><tr><td>Restart</td><td>The same deployed version needs a runtime restart.</td></tr><tr><td>Logs</td><td>You need to inspect application output.</td></tr><tr><td>Run command</td><td>You need to execute a configured maintenance command.</td></tr><tr><td>Stop</td><td>The deployment should stop without being removed.</td></tr><tr><td>Delete</td><td>The deployment and its managed runtime are no longer needed.</td></tr></tbody></table></section>
+    <section id="operations"><h3>Available operations and icons</h3><p>The icons below are the same ones used in the application. <strong>Primary</strong> actions remain visible on each row; actions marked <strong>More</strong> appear inside the three-dot menu. Some operations only appear when the worker and container are in an eligible state.</p><h4 className="docs-operation-heading">Projects</h4><p>Project operations act on the Git source and the complete application configuration.</p><OperationReference operations={projectOperations} /><h4 className="docs-operation-heading">Deployments</h4><p>Deployment operations act on an individual Docker container and its runtime.</p><OperationReference operations={deploymentOperations} /><div className="docs-callout"><strong>Deploy is different from Restart</strong><p>Use Deploy after changing source, Build or Environment. Use Restart when the current deployed version only needs to restart at runtime.</p></div></section>
 
     <section id="deployment-troubleshooting"><h3>Deployment troubleshooting</h3><table><thead><tr><th>Symptom</th><th>What to check</th></tr></thead><tbody><tr><td>Repository cannot be cloned</td><td>URL, branch and selected Git credential.</td></tr><tr><td>Compose or Dockerfile cannot be read</td><td>File path relative to the repository and worker availability.</td></tr><tr><td>Build fails</td><td>Deployment result, build file and required environment variables.</td></tr><tr><td>Application is not reachable</td><td>Container status, listening address and configured internal port.</td></tr><tr><td>Public URL fails</td><td>The exact ngrok error, account limits, domain availability and target service.</td></tr></tbody></table></section>
   </main>;
