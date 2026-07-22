@@ -216,12 +216,12 @@ export default async function LoginPage() {
             <h3>Architecture</h3>
             <p>Understand the control panel, Firebase state, Docker workers, queues, containers, and public URLs.</p>
           </a>
-          <a href="/docs#worker-setup">
+          <a href="/docs#workers">
             <span>02</span>
             <h3>Set up a worker</h3>
             <p>Run the Docker Hub image, persist the worker identity, copy the claim token, and attach the host.</p>
           </a>
-          <a href="/docs#clone-deploy">
+          <a href="/docs/deploy">
             <span>03</span>
             <h3>Clone and deploy</h3>
             <p>Add credentials, register a repository, sync branches, select a worker, and launch the service.</p>
