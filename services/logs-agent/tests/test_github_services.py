@@ -1,3 +1,4 @@
+import base64
 import unittest
 
 from src.github_services import GitHubServices
@@ -53,6 +54,16 @@ class GitHubServicesBoundaryTests(unittest.TestCase):
         previous = "def port_open(port):\n    return False\n"
         proposed = "def port_open(port):\n    return port == 3000\n"
         self.backend.validate_safe_replacement("services/worker/main.py", previous, proposed)
+
+    def test_preview_returns_diff_without_creating_commit(self):
+        backend = GitHubServices("token", "owner/repository", "main", "run-id", True, False, True)
+        previous = "def port_open(port):\n    return False\n"
+        backend.request = lambda method, path, **kwargs: {"content": base64.b64encode(previous.encode()).decode(), "sha": "current"}
+        result = backend.write_file("services/worker/main.py", "def port_open(port):\n    return port == 3000\n", "Detect occupied port")
+        self.assertIn("no commit", result)
+        self.assertEqual(backend.branch, "")
+        self.assertEqual(backend.changes, [])
+        self.assertIn("+    return port == 3000", backend.preview_changes[0]["diff"])
 
 
 if __name__ == "__main__":
