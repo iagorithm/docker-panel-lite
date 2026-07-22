@@ -41,6 +41,11 @@ def _safe_project(value: str) -> str:
 def _pid_running(pid: int) -> bool:
     if pid <= 0:
         return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 def _public_tunnel_url(candidate: str, domain: str = "") -> bool:
@@ -66,11 +71,6 @@ def _ngrok_error_message(error_code: str) -> str:
             "or upgrade the ngrok account to a paid plan."
         )
     return f"ngrok failed with {code}: review the ngrok account and billing configuration"
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 class NgrokService:
