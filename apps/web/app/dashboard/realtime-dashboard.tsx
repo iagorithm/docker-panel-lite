@@ -1327,7 +1327,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
   );
   return (
     <div className="table-workspace repositories-workspace">
-      <div className="projects-heading"><h1>Projects</h1><span>{filteredRepositories.length} project{filteredRepositories.length === 1 ? "" : "s"}</span></div>
+      <div className="projects-heading"><h1></h1><span>{filteredRepositories.length} project{filteredRepositories.length === 1 ? "" : "s"}</span></div>
       <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects..." /></label>
         <div className="toolbar-actions">
