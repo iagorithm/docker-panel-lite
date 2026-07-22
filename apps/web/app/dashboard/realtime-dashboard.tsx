@@ -758,7 +758,7 @@ function WorkspaceSettingsView({ workspaceId, user, credentials, commandPresets 
       <div className="workspace-settings-body">
         <div className="workspace-settings-tabs" role="tablist" aria-label="Workspace settings">
           <button type="button" role="tab" aria-selected={settingsSection === "credentials"} className={settingsSection === "credentials" ? "is-active" : ""} onClick={() => setSettingsSection("credentials")}><Icon name="key" />Credentials</button>
-          <button type="button" role="tab" aria-selected={settingsSection === "commands"} className={settingsSection === "commands" ? "is-active" : ""} onClick={() => setSettingsSection("commands")}><Icon name="terminal" />Registered Commands</button>
+          <button type="button" role="tab" aria-selected={settingsSection === "commands"} className={settingsSection === "commands" ? "is-active" : ""} onClick={() => setSettingsSection("commands")}><Icon name="terminal" />Snippets</button>
           <button type="button" role="tab" aria-selected={settingsSection === "projects"} className={settingsSection === "projects" ? "is-active" : ""} onClick={() => setSettingsSection("projects")}><Icon name="download" />Import Projects</button>
         </div>
         <div className="workspace-settings-content" role="tabpanel">
@@ -1778,7 +1778,7 @@ function CommandPresetsPanel({ commandPresets }: { commandPresets: CommandPreset
   const sortedCommandPresets = [...commandPresets].sort((a, b) => a.name.localeCompare(b.name));
   return (
     <section className="panel command-presets-panel">
-      <div className="section-title"><div><h2>Registered commands</h2></div></div>
+      <div className="section-title"><div><h2>Snippets</h2></div></div>
       <form action={saveCommandPreset} className="form-grid command-preset-form">
         <label>Name<input name="name" required placeholder="Nuke database" /></label>
         <label>Description<input name="description" placeholder="Runs maintenance script inside selected container" /></label>
