@@ -1,6 +1,6 @@
 import { adminDatabase } from "@/lib/firebase-admin";
 
-export type AppLog = { id: string; actorType: "worker" | "ui"; actorId: string; actorEmail?: string; actorLabel?: string; runtime?: "worker-python" | "worker-go" | "web"; functionName?: string; action: string; source: string; severity: "error"; message: string; context?: Record<string, string>; createdAt: number };
+export type AppLog = { id: string; actorType: "worker" | "ui"; actorId: string; actorEmail?: string; actorLabel?: string; userId?: string; userEmail?: string; runtime?: "worker-python" | "worker-go" | "web"; functionName?: string; action: string; source: string; severity: "error"; message: string; context?: Record<string, string>; createdAt: number };
 
 export async function recentLogs(workspaceId: string, limit = 1000) {
   const snapshot = await adminDatabase.ref(`workspaces/${workspaceId}/app_logs`).get();

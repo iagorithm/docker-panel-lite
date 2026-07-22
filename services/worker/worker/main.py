@@ -106,6 +106,8 @@ class Worker:
                 "actorType": "worker",
                 "actorId": self.settings.worker_id,
                 "actorLabel": self.worker_label or "",
+                "userId": str((job or {}).get("requestedBy") or ""),
+                "userEmail": str((job or {}).get("requestedByEmail") or ""),
                 "runtime": "worker-python",
                 "functionName": function_name[:240],
                 "action": str(action or "worker_runtime")[:120],
@@ -117,6 +119,8 @@ class Worker:
                     "repositoryId": str((job or {}).get("repositoryId") or ""),
                     "containerId": str((job or {}).get("containerId") or ""),
                     "targetWorkerId": str((job or {}).get("targetWorkerId") or ""),
+                    "requestedBy": str((job or {}).get("requestedBy") or ""),
+                    "requestedByEmail": str((job or {}).get("requestedByEmail") or ""),
                 },
                 "createdAt": now_ms(),
             })
