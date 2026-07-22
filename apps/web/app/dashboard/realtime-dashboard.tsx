@@ -407,8 +407,15 @@ function repositoryDebugTunnelUrls(repository: Repository) {
   const urls = new Map<string, string>();
   const add = (service: string, value?: string) => {
     const raw = String(value || "").trim();
-    if (!raw) return;
-    urls.set(service || repository.service || "app", /^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!raw || /ERR_NGROK_|dashboard\.ngrok\.com\/billing|[\r\n]/i.test(raw)) return;
+    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.hostname === "dashboard.ngrok.com" || parsed.pathname.toLowerCase().includes("/billing/")) return;
+      urls.set(service || repository.service || "app", parsed.toString());
+    } catch {
+      return;
+    }
   };
 
   for (const [service, tunnel] of Object.entries(repository.publicTunnels || {})) add(service, tunnel.url || tunnel.domain);

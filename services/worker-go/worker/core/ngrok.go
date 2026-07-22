@@ -16,7 +16,7 @@ import (
 
 var ngrokErrorPattern = regexp.MustCompile(`(?i)ERR_NGROK_\d+`)
 
-func publicTunnelURL(candidate string, domain string) bool {
+func IsPublicTunnelURL(candidate string, domain string) bool {
 	parsed, err := url.Parse(strings.TrimRight(candidate, ","))
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
 		return false
@@ -71,14 +71,15 @@ func (s NgrokService) Current(project string) (*Tunnel, error) {
 	}
 	url := stringValue(state["url"])
 	target := stringValue(state["target"])
-	if url == "" || target == "" {
+	domain := stringValue(state["domain"])
+	if url == "" || target == "" || !IsPublicTunnelURL(url, domain) {
 		return nil, nil
 	}
 	return &Tunnel{
 		URL:       url,
 		Target:    target,
 		PID:       pid,
-		Domain:    stringValue(state["domain"]),
+		Domain:    domain,
 		StartedAt: int64Value(state["startedAt"]),
 	}, nil
 }
@@ -142,7 +143,7 @@ func (s NgrokService) Start(project string, target string, domain string) (Tunne
 		urls := urlPattern.FindAllString(logText, -1)
 		for _, item := range urls {
 			candidate := strings.TrimRight(item, ",")
-			if publicTunnelURL(candidate, domain) {
+			if IsPublicTunnelURL(candidate, domain) {
 				publicURL = candidate
 				break
 			}

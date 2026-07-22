@@ -539,6 +539,21 @@ class Worker:
             LOG.debug("Job %s traceback:\n%s", job_id, traceback.format_exc())
             self._record_app_error(str((job or {}).get("action") or "unknown_job"), error, source="worker.job", job=job)
             try:
+                tunnel_failure = {
+                    "publicUrl": "",
+                    "publicUrls": {},
+                    "publicTunnels": {},
+                    "publicTunnelStatus": "error",
+                    "publicTunnelError": str(error)[:1000],
+                    "publicTunnelUpdatedAt": now_ms(),
+                }
+                if (job and job.get("action") == "tunnel_start" and job.get("repositoryId"):
+                    reference(f"workspaces/{job['workspaceId']}/repositories/{job['repositoryId']}").update(tunnel_failure)
+                elif job and job.get("action") == "container_tunnel_start" and job.get("containerId"):
+                    reference(f"workspaces/{job['workspaceId']}/containers/{job['containerId']}").update(tunnel_failure)
+            except Exception as tunnel_state_error:
+                self._record_app_error(str((job or {}).get("action") or "tunnel_start"), tunnel_state_error, source="worker.tunnel.failure_state", job=job)
+            try:
                 job = reference(f"jobs/{job_id}").get() or job or {"id": job_id, "workspaceId": self.settings.workspace_id}
                 self._publish(job, {"status": "failed", "message": str(error)[:1000], "finishedAt": now_ms(), "leaseExpiresAt": None})
             except Exception as publish_error:

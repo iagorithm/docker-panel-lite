@@ -104,13 +104,14 @@ class NgrokService:
             return None
         url = str(state.get("url") or "")
         target = str(state.get("target") or "")
-        if not url or not target:
+        domain = str(state.get("domain") or "")
+        if not url or not target or not _public_tunnel_url(url, domain):
             return None
         return Tunnel(
             url=url,
             target=target,
             pid=pid,
-            domain=str(state.get("domain") or ""),
+            domain=domain,
             started_at=int(state.get("startedAt") or 0),
         )
 
