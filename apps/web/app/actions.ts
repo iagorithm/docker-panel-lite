@@ -920,7 +920,14 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
   ).val();
   if (!repository) throw new Error("Repository not found");
   if (!canAccessRepository(repository as RepositoryAccessRecord, user)) throw new Error("Repository is not available to this user");
-  targetWorkerId ||= String(repository.defaultWorkerId || "");
+  if (action === "tunnel_stop") {
+    const recordedTunnelWorkerId = Object.values((repository.publicTunnels || {}) as Record<string, { workerId?: string }>)
+      .map((tunnel) => String(tunnel?.workerId || ""))
+      .find(Boolean);
+    targetWorkerId = String(repository.publicTunnelWorkerId || recordedTunnelWorkerId || repository.defaultWorkerId || targetWorkerId || "");
+  } else {
+    targetWorkerId ||= String(repository.defaultWorkerId || "");
+  }
   const createdAt = Date.now();
   const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose", "read_dockerfile"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {

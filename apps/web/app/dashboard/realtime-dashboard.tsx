@@ -1361,6 +1361,8 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           const isOwner = canManageRepository(repository as RepositoryAccessRecord, currentUser);
           const targetWorkerId = repository.defaultWorkerId || "";
           const workerSelected = Boolean(targetWorkerId && availableWorkerIds.has(targetWorkerId));
+          const tunnelStopWorkerId = repository.publicTunnelWorkerId || Object.values(repository.publicTunnels || {}).map((tunnel) => tunnel.workerId || "").find(Boolean) || targetWorkerId;
+          const tunnelStopWorkerSelected = Boolean(tunnelStopWorkerId && availableWorkerIds.has(tunnelStopWorkerId));
           const deployedWorkers = workersByRepository.get(repository.id) || [];
           const deployedWorkerNames = deployedWorkers.map((worker) => worker.name);
           const publicUrls = repositoryPublicUrls(repository);
@@ -1416,7 +1418,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                   onClick={() => setViewingDeploymentLogRepositoryId((current) => current === repository.id ? null : repository.id)}
                 ><Icon name={viewingDeploymentLogRepositoryId === repository.id ? "close" : "bug"} /></IconButton>
                 <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
-                {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
+                {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={tunnelStopWorkerId} busy={busyRepositoryActions.has(`${repository.id}:tunnel_stop:${tunnelStopWorkerId}`)} disabled={!tunnelStopWorkerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
               </div>
               {isOwner ? <RepositorySettings repository={repository} credentials={credentials} workers={projectWorkers} deployedWorkers={deployedWorkers} latestDeployment={latestDeployment} latestWorker={latestWorker} now={now} open={editingRepositoryId === repository.id} /> : null}
