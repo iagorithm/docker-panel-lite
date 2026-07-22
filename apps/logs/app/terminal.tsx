@@ -17,6 +17,10 @@ function formattedCode(value: unknown) {
   return value;
 }
 
+function formattedDate(value: number) {
+  return new Date(value).toLocaleString("sv-SE", { hour12: false });
+}
+
 type IconName = "refresh" | "reset" | "download" | "select" | "clear" | "analyze" | "save" | "solution" | "apply" | "expand" | "hotfix";
 
 function Icon({ name }: { name: IconName }) {
@@ -319,9 +323,10 @@ export function LogsTerminal() {
       ) : null}
       <section className="terminal">
         <div className="log-table-header" aria-hidden="true">
-          <span />
+          <span>Sel.</span>
           <span>Fecha</span>
-          <span>Componente · función</span>
+          <span>Componente</span>
+          <span>Función</span>
           <span>Acción</span>
           <span>Error</span>
           <span>Rev.</span>
@@ -352,11 +357,9 @@ export function LogsTerminal() {
                 })}
               ><Icon name="expand" /></button>
             </div>
-            <time title={new Date(log.createdAt).toISOString()}>{new Date(log.createdAt).toLocaleString()}</time>
-            <strong className="log-source" title={`${log.actorType === "worker" ? log.actorLabel || log.actorId : "web"} · ${log.runtime}:${log.functionName}`}>
-              <span>{log.actorType === "worker" ? log.actorLabel || log.actorId : "web"}</span>
-              <small>{log.runtime}:{log.functionName}</small>
-            </strong>
+            <time title={new Date(log.createdAt).toLocaleString()}>{formattedDate(log.createdAt)}</time>
+            <strong className="log-component" title={log.actorType === "worker" ? log.actorLabel || log.actorId : "web"}>{log.actorType === "worker" ? log.actorLabel || log.actorId : "web"}</strong>
+            <code className="log-function" title={`${log.runtime}:${log.functionName}`}>{log.runtime}:{log.functionName}</code>
             <span className="log-action" title={log.action}>{log.action}</span>
             <code className="log-preview" title={String(log.message)}>{String(log.message)}</code>
             <small className="analysis-count" title={log.lastAnalyzedAt ? `Última revisión ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Sin revisar"}>{log.analyzed ? `${log.analysisCount || 1}×` : "—"}</small>

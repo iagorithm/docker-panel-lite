@@ -147,7 +147,7 @@ button:disabled { cursor: wait; opacity: .4; }
 .log-table-header,
 article {
   display: grid;
-  grid-template-columns: 54px 126px 190px 110px minmax(220px, 1fr) 24px;
+  grid-template-columns: 54px 156px 170px 245px 135px minmax(280px, 1fr) 34px;
   gap: 5px;
   align-items: center;
 }
@@ -179,10 +179,10 @@ article.is-selected { background: #0b1910; box-shadow: inset 2px 0 #55d17d; }
 .is-expanded .expand-control svg { transform: rotate(180deg); }
 .analysis-count { color: #86efac; font-size: 8px; text-align: center; white-space: nowrap; }
 time, small { color: #637a68; }
+time { white-space: nowrap; }
 strong { color: #e08c86; overflow: hidden; text-overflow: ellipsis; }
-.log-source { display: flex; gap: 5px; align-items: baseline; min-width: 0; white-space: nowrap; }
-.log-source > span { overflow: hidden; text-overflow: ellipsis; }
-.log-source > small { overflow: hidden; color: #718579; font-size: 8px; text-overflow: ellipsis; }
+.log-component { min-width: 0; white-space: nowrap; }
+.log-function { display: block; overflow: hidden; color: #789080; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .log-action { overflow: hidden; padding: 1px 4px; color: #d6b56d; background: #151207; border-radius: 2px; text-overflow: ellipsis; white-space: nowrap; }
 pre { margin: 0; tab-size: 2; }
 code { color: #d5dfd8; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -197,9 +197,8 @@ code { color: #d5dfd8; white-space: pre-wrap; overflow-wrap: anywhere; }
   main { padding: 3px; }
   .filters input, .filters select { flex: 1; width: auto; min-width: 125px; max-width: none; }
   .filter-spacer { display: none; }
-  article { grid-template-columns: 1fr; }
-  .log-table-header { display: none; }
-  .log-details { grid-column: auto; padding: 5px; }
+  .log-table-header, article { grid-template-columns: 54px 156px 150px 220px 120px minmax(280px, 1fr) 34px; min-width: 1080px; }
+  .log-details { grid-column: 1 / -1; padding: 5px 28px 6px 59px; }
   .terminal { min-height: calc(100vh - 112px); max-height: none; }
   .agent-report header { flex-wrap: wrap; }
 }
