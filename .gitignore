@@ -10,6 +10,7 @@ node_modules/
 .next/
 .turbo/
 npm-debug.log*
+*.tsbuildinfo
 
 # Python caches and local environments
 __pycache__/
