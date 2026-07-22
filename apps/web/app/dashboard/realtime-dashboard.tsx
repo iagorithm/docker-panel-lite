@@ -18,7 +18,6 @@ import {
   enqueueContainerCommand,
   enqueueContainerTunnelRefresh,
   enqueueContainerAction,
-  enqueueDeployment,
   enqueueDeploymentWithState,
   enqueueInventoryRefresh,
   importRepositoriesJson,
@@ -318,7 +317,7 @@ function PendingSubmitButton({ children, className = "primary", formAction, tool
   return <button className={className} type="submit" title={tooltip} data-tooltip={tooltip} formAction={formAction} name={name} value={value} disabled={disabled || visiblePending}>{visiblePending ? <Spinner /> : children}</button>;
 }
 
-function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, disabled = false, targetWorkerId = "" }: {
+function QueueButton({ repositoryId, action, children, title, primary = false, busy = false, disabled = false, targetWorkerId = "", onClick }: {
   repositoryId: string;
   action: RepositoryAction;
   children: React.ReactNode;
@@ -327,6 +326,7 @@ function QueueButton({ repositoryId, action, children, title, primary = false, b
   busy?: boolean;
   disabled?: boolean;
   targetWorkerId?: string;
+  onClick?: () => void;
 }) {
   const [queueState, queueAction] = useActionState(enqueueDeploymentWithState, initialDeploymentQueueState);
   useEffect(() => {
@@ -340,7 +340,7 @@ function QueueButton({ repositoryId, action, children, title, primary = false, b
       <input type="hidden" name="repositoryId" value={repositoryId} />
       <input type="hidden" name="action" value={action} />
       <input type="hidden" name="targetWorkerId" value={targetWorkerId || ""} />
-      <PendingIconButton title={title} primary={primary} busy={busy}>{children}</PendingIconButton>
+      <PendingIconButton title={title} primary={primary} busy={busy} onClick={onClick}>{children}</PendingIconButton>
     </form>
   );
 }
@@ -1364,6 +1364,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           const deployedWorkerNames = deployedWorkers.map((worker) => worker.name);
           const publicUrls = repositoryPublicUrls(repository);
           const latestDeployment = deployments.filter((deployment) => deployment.repositoryId === repository.id).sort((a, b) => b.createdAt - a.createdAt)[0];
+          const latestComposeRead = deployments.filter((deployment) => deployment.repositoryId === repository.id && deployment.action === "read_compose").sort((a, b) => b.createdAt - a.createdAt)[0];
           const projectUrl = publicUrls[0]?.[1] || repository.publicTunnelDomain || "Not deployed publicly";
           const productionDomainUrl = repository.domain ? (repository.domain.startsWith("http") ? repository.domain : `https://${repository.domain}`) : "";
           const latestWorker = latestDeployment?.targetWorkerId ? agentById.get(latestDeployment.targetWorkerId) : undefined;
@@ -1395,12 +1396,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                   ) : !workerSelected ? (
                     <IconButton title="Select a worker first" disabled><Icon name="document" /></IconButton>
                   ) : (
-                    <form action={enqueueDeployment}>
-                      <input type="hidden" name="repositoryId" value={repository.id} />
-                      <input type="hidden" name="action" value="read_compose" />
-                      <input type="hidden" name="targetWorkerId" value={targetWorkerId} />
-                      <PendingIconButton title="View Compose" busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></PendingIconButton>
-                    </form>
+                    <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></QueueButton>
                   )
                 ) : null}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
@@ -1414,7 +1410,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
               </div>
               {isOwner ? <RepositorySettings repository={repository} credentials={credentials} workers={projectWorkers} deployedWorkers={deployedWorkers} latestDeployment={latestDeployment} latestWorker={latestWorker} now={now} open={editingRepositoryId === repository.id} /> : null}
-              <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
+              <ComposeViewer repository={repository} deployment={latestComposeRead} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
               <RepositoryDeploymentLog repository={repository} deployments={deployments} open={viewingDeploymentLogRepositoryId === repository.id} onClose={() => setViewingDeploymentLogRepositoryId(null)} />
             </article>
           );
@@ -1694,15 +1690,27 @@ function RepositoryDeleteConfirm({ repository, open, compact = false, onClose }:
   );
 }
 
-function ComposeViewer({ repository, open, onClose }: { repository: Repository; open: boolean; onClose: () => void }) {
+function ComposeViewer({ repository, deployment, open, onClose }: { repository: Repository; deployment?: Deployment; open: boolean; onClose: () => void }) {
   if (!open) return null;
+  const composeContent = repository.composeContent;
+  const viewerContent = typeof composeContent === "string"
+    ? composeContent || "The Compose file is empty."
+    : deployment?.status === "failed"
+      ? `Could not load the Compose file.\n\n${deployment.message || "The worker reported an unknown error."}`
+      : deployment?.status === "completed"
+        ? `The worker completed the request but did not return Compose content.\n\n${deployment.message || "Check that the configured Compose file exists in the repository."}`
+        : deployment && ["queued", "leased", "running"].includes(deployment.status)
+          ? `Loading Compose file...\n\nStatus: ${deployment.status}`
+          : deployment
+            ? `Could not load the Compose file.\n\nJob status: ${deployment.status}${deployment.message ? `\n${deployment.message}` : ""}`
+            : "Waiting for the Compose read request to be queued...";
   return (
     <div className="compose-viewer full-row">
       <div className="compose-viewer-header">
         <div><strong>Docker Compose</strong><span>{repository.composeFile || defaultComposeFile}</span></div>
         <button type="button" title="Close Compose" aria-label="Close Compose" data-tooltip="Close Compose" onClick={onClose}><Icon name="close" /></button>
       </div>
-      <pre className="code-viewer"><code>{repository.composeContent || "Loading Compose file..."}</code></pre>
+      <pre className="code-viewer"><code>{viewerContent}</code></pre>
     </div>
   );
 }
