@@ -92,7 +92,7 @@ function SplitDiff({ diff }: { diff: string }) {
   </div>;
 }
 
-type IconName = "refresh" | "reset" | "download" | "select" | "clear" | "analyze" | "save" | "solution" | "apply" | "expand" | "hotfix";
+type IconName = "refresh" | "reset" | "download" | "select" | "clear" | "analyze" | "save" | "solution" | "apply" | "expand" | "hotfix" | "commit";
 
 function Icon({ name }: { name: IconName }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 1.8 };
@@ -108,8 +108,17 @@ function Icon({ name }: { name: IconName }) {
     {name === "apply" ? <path {...common} d="m5 12 4 4L19 6" /> : null}
     {name === "expand" ? <path {...common} d="m7 9 5 5 5-5" /> : null}
     {name === "hotfix" ? <path {...common} d="m13 2-8 12h7l-1 8 8-12h-7z" /> : null}
+    {name === "commit" ? <path {...common} d="M12 3v5m0 8v5M8 12H3m18 0h-5M8 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0Z" /> : null}
   </svg>;
 }
+
+type AgentFix = {
+  id: string; runId: string; repository: string; baseBranch: string;
+  targetBranch: string; commitSha: string; commitMessage: string; hotfix: boolean;
+  requestedBy: string; requestedByEmail?: string; report: string;
+  changes: Array<{ path: string; commit: string; reason?: string }>;
+  logIds: string[]; createdAt: number;
+};
 
 async function responseBody(response: Response) {
   const text = await response.text();
@@ -122,6 +131,7 @@ async function responseBody(response: Response) {
 
 export function LogsTerminal() {
   const [logs, setLogs] = useState<AppLog[]>([]);
+  const [agentFixes, setAgentFixes] = useState<Map<string, AgentFix>>(() => new Map());
   const [error, setError] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
   const [email, setEmail] = useState("");
@@ -167,6 +177,13 @@ export function LogsTerminal() {
         throw new Error(body.error || `Logs API returned HTTP ${response.status}`);
       }
       setLogs(body.logs || []);
+      try {
+        const fixesResponse = await fetch("/api/agent/fixes?limit=500", { cache: "no-store" });
+        const fixesBody = await responseBody(fixesResponse) as { fixes?: AgentFix[] };
+        if (fixesResponse.ok) setAgentFixes(new Map((fixesBody.fixes || []).map((fix) => [fix.id, fix])));
+      } catch {
+        // Agent history is auxiliary; log browsing must remain available if it is offline.
+      }
       setNeedsLogin(false);
       setError("");
     } catch (reason) {
@@ -350,9 +367,10 @@ export function LogsTerminal() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ runId: agentResult.runId, hotfix, commitMessage: agentResult.commitMessage }),
       });
-      const body = await responseBody(response) as { error?: string; branch?: string; changes?: Array<{ path: string; commit: string }> };
+      const body = await responseBody(response) as { error?: string; branch?: string; fixId?: string; fix?: AgentFix; changes?: Array<{ path: string; commit: string }> };
       if (!response.ok || !body.branch) throw new Error(body.error || `Commit returned HTTP ${response.status}`);
       setAgentResult((current) => current ? { ...current, branch: body.branch, changes: body.changes, hotfix } : current);
+      if (body.fixId && body.fix) setAgentFixes((current) => new Map(current).set(body.fixId!, body.fix!));
       setAgentNotice(`Fix committed on ${body.branch}`);
       await refresh();
     } catch (reason) {
@@ -464,7 +482,7 @@ export function LogsTerminal() {
             <span className="log-action" title={log.action}>{log.action}</span>
             <code className="log-preview" title={String(log.message)}>{String(log.message)}</code>
             <strong className="occurrence-count" title={`${occurrences.length} occurrences`}>{occurrences.length}</strong>
-            <span className={`fix-status ${occurrences.every((item) => item.fixed) ? "is-fixed" : occurrences.some((item) => item.fixed) ? "is-partial" : ""}`} title={occurrences.every((item) => item.fixed) ? `Fixed on ${log.fixBranch || "Git"}` : occurrences.some((item) => item.fixed) ? "Some occurrences are fixed" : "Open error"}>{occurrences.every((item) => item.fixed) ? "fixed" : occurrences.some((item) => item.fixed) ? "mixed" : "open"}</span>
+            <span className={`fix-status ${occurrences.every((item) => item.fixed) ? "is-fixed" : occurrences.some((item) => item.fixed) ? "is-partial" : ""}`} title={occurrences.every((item) => item.fixed) ? `Agent fix ${log.agentFixId || log.fixRunId || "record"} on ${log.fixBranch || "Git"}` : occurrences.some((item) => item.fixed) ? "Some occurrences are fixed" : "Open error"}>{occurrences.every((item) => item.fixed) ? (log.agentFixId ? log.agentFixId.replace("fix_", "").slice(0, 6) : "fixed") : occurrences.some((item) => item.fixed) ? "mixed" : "open"}</span>
             <small className="analysis-count" title={log.lastAnalyzedAt ? `Last review ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Not reviewed"}>{log.analyzed ? `${log.analysisCount || 1}×` : "—"}</small>
             {expandedLogIds.has(log.id) ? <div className="log-details">
               <pre className="log-code"><code>{formattedCode(log.message)}</code></pre>
@@ -474,6 +492,20 @@ export function LogsTerminal() {
                 {" source="}{log.source}
               </small>
               <pre><code>{formattedCode(log.context || {})}</code></pre>
+              {occurrences.map((item) => item.agentFixId).filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index).map((fixId) => {
+                const fix = agentFixes.get(fixId);
+                return <section className="agent-fix-record" key={fixId}>
+                  <header><Icon name="commit" /><strong>{fixId}</strong>{fix ? <time>{formattedDate(fix.createdAt)}</time> : null}</header>
+                  {fix ? <div className="agent-fix-grid">
+                    <span>Commit</span><code>{fix.commitSha}</code>
+                    <span>Branch</span><code>{fix.targetBranch}{fix.hotfix ? " · hotfix" : ""}</code>
+                    <span>Message</span><strong>{fix.commitMessage}</strong>
+                    <span>Repository</span><code>{fix.repository}</code>
+                    <span>Requested by</span><code>{fix.requestedByEmail || fix.requestedBy}</code>
+                    <span>Files</span><code>{fix.changes.map((change) => change.path).join(", ")}</code>
+                  </div> : <small>Agent record is not available in the local database.</small>}
+                </section>;
+              })}
             </div> : null}
             {expandedLogIds.has(log.id) && agentResult && agentSourceLogs[0]?.id === log.id ? <section className="agent-report inline-agent-report">
               <header>
@@ -531,13 +563,14 @@ export function LogsTerminal() {
           <span>{selectedGroup ? selectedGroup.log.action : "Select an error row"}</span>
         </header>
         <div className="occurrence-table">
-          <div className="occurrence-header"><span>When</span><span>Where</span><span>Function</span><span>User</span><span>Source</span></div>
+          <div className="occurrence-header"><span>When</span><span>Where</span><span>Function</span><span>User</span><span>Source</span><span>Agent fix</span></div>
           {selectedGroup ? selectedGroup.occurrences.map((occurrence) => <div className="occurrence-row" key={occurrence.id}>
             <time>{formattedDate(occurrence.createdAt)}</time>
             <strong>{occurrence.actorType === "worker" ? occurrence.actorLabel || occurrence.actorId : "web"}</strong>
             <code>{occurrence.runtime}:{occurrence.functionName}</code>
             <span>{occurrence.userEmail || occurrence.actorEmail || occurrence.userId || "unknown"}</span>
             <span>{occurrence.context?.containerId || occurrence.source || "—"}</span>
+            <code title={occurrence.agentFixId || "No fix record"}>{occurrence.agentFixId ? occurrence.agentFixId.replace("fix_", "").slice(0, 8) : "—"}</code>
           </div>) : <p className="empty">Select a grouped error to view its ungrouped history.</p>}
         </div>
       </section>

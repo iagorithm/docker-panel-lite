@@ -18,11 +18,14 @@ services:
       LOGS_AGENT_LLM_RETRIES: ${LOGS_AGENT_LLM_RETRIES:-2}
       LOGS_AGENT_MAX_ITERATIONS: ${LOGS_AGENT_MAX_ITERATIONS:-12}
       LOGS_AGENT_EXECUTION_TIMEOUT_SECONDS: ${LOGS_AGENT_EXECUTION_TIMEOUT_SECONDS:-240}
+      LOGS_AGENT_DATABASE_PATH: ${LOGS_AGENT_DATABASE_PATH:-/data/logs-agent.db}
       FIREBASE_DATABASE_URL: ${FIREBASE_DATABASE_URL:-${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
+    volumes:
+      - logs-agent-data:/data
     cap_drop:
       - ALL
     security_opt:
@@ -149,3 +152,6 @@ services:
       APP_DATA_DIR: /app/data
       APP_CLONE_DIR: /app/clones
     restart: unless-stopped
+
+volumes:
+  logs-agent-data:

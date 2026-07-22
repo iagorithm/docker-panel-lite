@@ -22,6 +22,7 @@ export type AppLog = {
   fixed?: boolean;
   fixedAt?: number;
   fixedBy?: string;
+  agentFixId?: string;
   fixRunId?: string;
   fixBranch?: string;
   fixCommits?: string[];

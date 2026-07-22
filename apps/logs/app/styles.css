@@ -228,6 +228,14 @@ code { color: #d5dfd8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .log-code { padding: 5px 7px; background: #050806; border-left: 2px solid #284431; line-height: 1.5; }
 .log-details > pre:last-child { padding: 4px 7px; color: #8ba695; background: #060a07; border: 1px solid #111e16; }
 .log-details > pre:last-child code { color: inherit; }
+.agent-fix-record { display: block; min-height: 0; padding: 6px 8px; cursor: default; background: #080d0a; border: 1px solid #1b3323; }
+.agent-fix-record:hover { background: #080d0a; }
+.agent-fix-record header { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+.agent-fix-record header svg { width: 12px; height: 12px; color: #86efac; }
+.agent-fix-record header time { margin-left: auto; }
+.agent-fix-grid { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 2px 8px; font-size: 9px; }
+.agent-fix-grid > span { color: #637a68; }
+.agent-fix-grid > code, .agent-fix-grid > strong { overflow: hidden; color: #b9c9bd; text-overflow: ellipsis; white-space: nowrap; }
 .empty { padding: 16px; color: #52665a; }
 .panel-resizer { position: relative; z-index: 8; cursor: row-resize; background: #101a14; border-top: 1px solid #263b2e; border-bottom: 1px solid #263b2e; touch-action: none; }
 .panel-resizer:hover, .panel-resizer:active { background: #315d3e; }
@@ -237,7 +245,7 @@ code { color: #d5dfd8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .occurrences-panel > header strong { color: #93c5fd; }
 .occurrences-panel > header span { color: #637a68; }
 .occurrence-table { height: calc(100% - 28px); overflow: auto; }
-.occurrence-header, .occurrence-row { display: grid; grid-template-columns: 156px 180px 280px minmax(180px, 1fr) minmax(180px, 1fr); gap: 6px; align-items: center; min-width: 1050px; padding: 3px 8px; }
+.occurrence-header, .occurrence-row { display: grid; grid-template-columns: 156px 180px 280px minmax(180px, 1fr) minmax(180px, 1fr) 90px; gap: 6px; align-items: center; min-width: 1140px; padding: 3px 8px; }
 .occurrence-header { position: sticky; z-index: 3; top: 0; color: #718579; background: #090e0b; border-bottom: 1px solid #26382c; font-size: 8px; text-transform: uppercase; }
 .occurrence-row { min-height: 24px; border-bottom: 1px solid #101a14; font-size: 9px; }
 .occurrence-row strong, .occurrence-row code, .occurrence-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

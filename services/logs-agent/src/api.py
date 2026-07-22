@@ -15,11 +15,13 @@ from firebase_admin import credentials, db
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.crew import run_diagnostics
+from src.fix_store import FixStore
 from src.github_services import GitHubServices
 
 app = FastAPI(title="Docker Panel Logs CrewAI Agent", version="1.0.0")
 diagnostic_slots = threading.BoundedSemaphore(max(1, int(os.environ.get("LOGS_AGENT_MAX_CONCURRENCY", "2"))))
 PREVIEW_TTL_SECONDS = max(300, int(os.environ.get("LOGS_AGENT_PREVIEW_TTL_SECONDS", "3600")))
+fix_store = FixStore()
 
 
 class AgentRequest(BaseModel):
@@ -108,7 +110,7 @@ def mark_logs_analyzed(workspace_id: str, logs: list[dict], requested_by: str) -
         reference.transaction(increment)
 
 
-def mark_logs_fixed(workspace_id: str, log_ids: list[str], requested_by: str, run_id: str, branch: str, changes: list[dict], commit_message: str) -> None:
+def mark_logs_fixed(workspace_id: str, log_ids: list[str], requested_by: str, fix_id: str, run_id: str, branch: str, changes: list[dict], commit_message: str) -> None:
     fixed_at = int(time.time() * 1000)
     commits = [str(change.get("commit", "")) for change in changes if change.get("commit")]
     updates = {}
@@ -120,6 +122,7 @@ def mark_logs_fixed(workspace_id: str, log_ids: list[str], requested_by: str, ru
             f"{path}/fixed": True,
             f"{path}/fixedAt": fixed_at,
             f"{path}/fixedBy": requested_by,
+            f"{path}/agentFixId": fix_id,
             f"{path}/fixRunId": run_id,
             f"{path}/fixBranch": branch,
             f"{path}/fixCommits": commits,
@@ -143,6 +146,19 @@ def ready():
     if missing:
         raise HTTPException(status_code=503, detail=f"Missing configuration: {', '.join(missing)}")
     return {"ok": True, "service": "logs-agent", "model": os.environ.get("CREWAI_MODEL", "openai/gpt-5-mini"), "maxConcurrency": int(os.environ.get("LOGS_AGENT_MAX_CONCURRENCY", "2"))}
+
+
+@app.get("/v1/fixes")
+def fixes(workspaceId: str, fixId: str = "", limit: int = 200, x_agent_secret: str = Header(default="")):
+    authorize(x_agent_secret)
+    validate_segment(workspaceId, "workspaceId")
+    if fixId:
+        validate_segment(fixId, "fixId")
+        record = fix_store.get(workspaceId, fixId)
+        if not record:
+            raise HTTPException(status_code=404, detail="Agent fix record not found")
+        return {"fix": record}
+    return {"fixes": fix_store.list(workspaceId, limit)}
 
 
 @app.post("/v1/diagnose")
@@ -224,10 +240,21 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
         github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), request.runId, True, request.hotfix)
         github.commit_preview_batch(existing["previewChanges"], request.commitMessage, existing.get("report", ""), request.requestedByEmail or request.requestedBy)
         git_committed = True
-        result = {"runId": request.runId, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix, "commitMessage": request.commitMessage}
+        source_commit = next((str(change.get("commit")) for change in github.changes if str(change.get("path", "")).startswith("services/")), "")
+        fix_id = f"fix_{request.runId}"
+        fix_record = fix_store.save(
+            fix_id=fix_id, workspace_id=request.workspaceId, run_id=request.runId,
+            repository=os.environ["GITHUB_REPOSITORY"], base_branch=github.base_branch,
+            target_branch=github.branch, commit_sha=source_commit,
+            commit_message=request.commitMessage, hotfix=request.hotfix,
+            requested_by=request.requestedBy, requested_by_email=request.requestedByEmail,
+            report=existing.get("report", ""), changes=github.changes,
+            log_ids=existing.get("logIds", []),
+        )
+        result = {"runId": request.runId, "fixId": fix_id, "fix": fix_record, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix, "commitMessage": request.commitMessage}
         trace.update({**result, "status": "completed", "committedAt": {".sv": "timestamp"}, "previewChanges": None})
         try:
-            mark_logs_fixed(request.workspaceId, existing.get("logIds", []), request.requestedByEmail or request.requestedBy, request.runId, github.branch, github.changes, request.commitMessage)
+            mark_logs_fixed(request.workspaceId, existing.get("logIds", []), request.requestedByEmail or request.requestedBy, fix_id, request.runId, github.branch, github.changes, request.commitMessage)
             trace.update({"logsMarkedFixed": True})
         except Exception as fixed_error:
             trace.update({"logsMarkedFixed": False, "fixedMarkError": str(fixed_error)[:1000]})

@@ -30,6 +30,9 @@ GitHub source tree under `services/**`.
   no-op/destructive-change rejection, safe GitHub read retries, readiness checks,
   a non-root read-only container, dropped capabilities, and a writable tmpfs only.
 - Runs are stored at `workspaces/<workspaceId>/agent_runs/<runId>`.
+- Applied fixes are stored independently in the agent's persistent SQLite database
+  at `LOGS_AGENT_DATABASE_PATH`. Firebase log records retain `agentFixId` so the
+  logs UI can resolve the exact commit, branch, files, requester, and timestamp.
 
 ## API
 
