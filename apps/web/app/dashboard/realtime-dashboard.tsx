@@ -1310,6 +1310,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           const targetWorkerId = repository.defaultWorkerId || "";
           const workerSelected = Boolean(targetWorkerId && availableWorkerIds.has(targetWorkerId));
           const deployedWorkers = workersByRepository.get(repository.id) || [];
+          const deployedWorkerNames = deployedWorkers.map((worker) => worker.name);
           const publicUrls = repositoryPublicUrls(repository);
           const latestDeployment = deployments.filter((deployment) => deployment.repositoryId === repository.id).sort((a, b) => b.createdAt - a.createdAt)[0];
           const projectUrl = publicUrls[0]?.[1] || repository.domain || repository.publicTunnelDomain || "Not deployed publicly";
@@ -1322,6 +1323,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
               <div className="resource-identity project-identity"><ProjectMark tooltip={repository.alias} /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
               <div className="project-source-status">
                 <span className="project-source-pill" title={repository.url} data-tooltip={`Source repository: ${repository.url}`}><Icon name="branch" />{repositorySlug(repository.url)}</span>
+                {deployedWorkers.length ? <span className="project-worker-pill" title={`Deployed on: ${deployedWorkerNames.join(", ")}`}><Icon name="worker" /><span>{deployedWorkers[0].name}</span>{deployedWorkers.length > 1 ? <b>+{deployedWorkers.length - 1}</b> : null}</span> : null}
                 <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`} data-tooltip={`Latest deployment status: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "minus" : "sync"} /></span>
               </div>
               <div className="row-actions project-row-actions">
