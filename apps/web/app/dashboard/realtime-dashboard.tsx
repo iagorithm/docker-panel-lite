@@ -353,6 +353,26 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-state"><span className="empty-state-icon" aria-hidden="true" /><h3>{title}</h3><p>{copy}</p></div>;
 }
 
+function DeploymentOnboarding() {
+  return (
+    <section className="deployment-onboarding" aria-labelledby="deployment-onboarding-title">
+      <div className="deployment-onboarding-copy">
+        <span className="deployment-onboarding-kicker">Nothing running yet</span>
+        <h3 id="deployment-onboarding-title">Oops, your deployment space is still taking a nap.</h3>
+        <p>Wake it up with three quick steps. Public access is optional—backend services can stay private.</p>
+        <div className="deployment-onboarding-actions"><a className="secondary" href="/dashboard/settings">Add credentials</a><a className="primary" href="/dashboard/projects">Register a project</a></div>
+      </div>
+      <div className="deployment-onboarding-flow" aria-label="Git credential, project, deployment, and optional public domain">
+        <div className="onboarding-flow-line" aria-hidden="true"><span /></div>
+        <article><span><Icon name="key" /></span><b>1</b><strong>Git credential</strong><small>Required for private repositories.</small></article>
+        <article><span><ProjectMark /></span><b>2</b><strong>Register project</strong><small>Choose its worker and build mode.</small></article>
+        <article><span><Icon name="play" /></span><b>3</b><strong>Deploy</strong><small>Start the service on your worker.</small></article>
+        <article className="is-optional"><span><Icon name="link" /></span><b>Optional</b><strong>Make it public</strong><small>Add an ngrok token and domain. Internal APIs do not need this.</small></article>
+      </div>
+    </section>
+  );
+}
+
 function RepositoryDeploymentLog({ repository, deployments, open, onClose }: {
   repository: Repository;
   deployments: Deployment[];
@@ -698,6 +718,14 @@ export function RealtimeDashboard(props: Props) {
       </aside>
 
       <main className="main-shell">
+        {navigatingView ? (
+          <div className="route-navigation-overlay" role="status" aria-live="polite" aria-label="Loading section">
+            <div className="route-navigation-loader">
+              <span className="route-navigation-spinner" aria-hidden="true"><span /></span>
+              <div><strong>Loading {navigatingView === "containers" ? "Deployments" : navigatingView === "repositories" ? "Projects" : navigatingView.charAt(0).toUpperCase() + navigatingView.slice(1)}</strong><small>Preparing your workspace</small></div>
+            </div>
+          </div>
+        ) : null}
         {view === "containers" ? (
           <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); navigateTo("logs"); }} />
         ) : view === "repositories" ? (
@@ -815,6 +843,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   const visibleContainerRecords = containers.filter((container) => {
     return Boolean(containerDisplayStatus(container));
   });
+  const hasServiceDeployments = visibleContainerRecords.some((container) => !isWorkerControlContainer(container));
   const sortedContainers = [...visibleContainerRecords].sort((a, b) =>
     Number(isWorkerControlContainer(b)) - Number(isWorkerControlContainer(a))
     || Number(containerDisplayStatus(b) === "running") - Number(containerDisplayStatus(a) === "running")
@@ -1027,7 +1056,8 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
                 </div>
               );
             }) : filteredContainers.map((container, index) => renderContainerRow(container, index > 0))
-          ) : <EmptyState title={visibleContainerRecords.length ? "No matching deployments" : "No deployments available"} copy={visibleContainerRecords.length ? "Clear the search field to show every deployment." : "Deploy a project or bring its worker online to see stopped services here."} />}
+          ) : visibleContainerRecords.length ? <EmptyState title="No matching deployments" copy="Clear the search field to show every deployment." /> : null}
+          {!workerViewOnly && !hasServiceDeployments && !query.trim() ? <DeploymentOnboarding /> : null}
       </section>
     </div>
   );
