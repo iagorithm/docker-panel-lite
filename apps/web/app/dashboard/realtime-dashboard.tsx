@@ -1257,7 +1257,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
               <div className="resource-identity project-identity"><ProjectMark /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
               <div className="project-source-status">
                 <span className="project-source-pill" title={repository.url}><Icon name="branch" />{repositorySlug(repository.url)}</span>
-                <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : "sync"} /></span>
+                <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "container" : "sync"} /></span>
               </div>
               <div className="row-actions project-row-actions">
                 <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
