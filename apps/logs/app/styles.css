@@ -128,7 +128,22 @@ button:disabled { cursor: wait; opacity: .4; }
 .commit-preview-meta small { color: #d6b56d; }
 .change-preview section { display: grid; gap: 4px; }
 .change-preview section > strong { color: #86efac; font-size: 10px; }
-.change-preview pre { max-height: 24rem; overflow: auto; padding: 7px; color: #d7e3da; background: #070b08; border: 1px solid #203428; font-size: 9px; line-height: 1.45; }
+.split-diff { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr); max-height: 30rem; overflow: auto; border: 1px solid #263b2e; background: #070a08; font-size: 10px; }
+.diff-panel-title { position: sticky; z-index: 4; top: 0; padding: 6px 10px; color: #a9b9ad; background: #111713; border-bottom: 1px solid #304438; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.old-title { border-right: 1px solid #304438; }
+.new-title { color: #b8e9c5; }
+.diff-row { display: contents; }
+.diff-cell { display: grid; grid-template-columns: 42px minmax(max-content, 1fr); min-height: 21px; border-bottom: 1px solid #101713; }
+.diff-row .diff-cell:first-child { border-right: 1px solid #263b2e; }
+.diff-cell code { display: block; padding: 2px 8px; color: #c5d0c8; white-space: pre; }
+.diff-number { padding: 2px 7px; color: #526259; background: #0a0e0b; border-right: 1px solid #19251d; text-align: right; user-select: none; }
+.diff-cell.removed { background: #251011; }
+.diff-cell.removed code { color: #ffc6c2; background: #321416; }
+.diff-cell.removed .diff-number { color: #d9827d; background: #281113; }
+.diff-cell.added { background: #0c2113; }
+.diff-cell.added code { color: #baf2c7; background: #10301a; }
+.diff-cell.added .diff-number { color: #65b67b; background: #0d2615; }
+.diff-hunk { grid-column: 1 / -1; min-height: 22px; padding: 3px 10px; color: #8eb8df; background: #101a23; border-bottom: 1px solid #263b48; }
 .agent-notice, .error { margin: 0; padding: 6px 8px; font-size: 10px; }
 .agent-notice { color: #bbf7d0; background: #0b2b18; }
 .error { color: #ffc2be; background: #381311; }

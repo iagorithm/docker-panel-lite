@@ -21,6 +21,77 @@ function formattedDate(value: number) {
   return new Date(value).toLocaleString("sv-SE", { hour12: false });
 }
 
+type DiffRow = { oldNumber: number | null; newNumber: number | null; oldText: string; newText: string; oldKind?: "removed"; newKind?: "added"; hunk?: string };
+
+function parseSplitDiff(diff: string): DiffRow[] {
+  const lines = diff.split("\n");
+  const rows: DiffRow[] = [];
+  let oldNumber = 0;
+  let newNumber = 0;
+  let inHunk = false;
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
+    if (hunk) {
+      oldNumber = Number(hunk[1]);
+      newNumber = Number(hunk[2]);
+      inHunk = true;
+      rows.push({ oldNumber: null, newNumber: null, oldText: "", newText: "", hunk: line });
+      index += 1;
+      continue;
+    }
+    if (!inHunk || line.startsWith("\\ No newline")) { index += 1; continue; }
+    if (line.startsWith(" ")) {
+      rows.push({ oldNumber, newNumber, oldText: line.slice(1), newText: line.slice(1) });
+      oldNumber += 1;
+      newNumber += 1;
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("-") || line.startsWith("+")) {
+      const removed: string[] = [];
+      const added: string[] = [];
+      while (index < lines.length && (lines[index].startsWith("-") || lines[index].startsWith("+"))) {
+        if (lines[index].startsWith("-")) removed.push(lines[index].slice(1));
+        else added.push(lines[index].slice(1));
+        index += 1;
+      }
+      const count = Math.max(removed.length, added.length);
+      for (let offset = 0; offset < count; offset += 1) {
+        const oldText = removed[offset] ?? "";
+        const newText = added[offset] ?? "";
+        rows.push({
+          oldNumber: offset < removed.length ? oldNumber++ : null,
+          newNumber: offset < added.length ? newNumber++ : null,
+          oldText,
+          newText,
+          oldKind: offset < removed.length ? "removed" : undefined,
+          newKind: offset < added.length ? "added" : undefined,
+        });
+      }
+      continue;
+    }
+    index += 1;
+  }
+  return rows;
+}
+
+function SplitDiff({ diff }: { diff: string }) {
+  const rows = parseSplitDiff(diff);
+  return <div className="split-diff">
+    <div className="diff-panel-title old-title">Código anterior</div>
+    <div className="diff-panel-title new-title">Código nuevo</div>
+    {rows.map((row, index) => row.hunk ? (
+      <div className="diff-hunk" key={`hunk-${index}`}>{row.hunk}</div>
+    ) : (
+      <div className="diff-row" key={`line-${index}`}>
+        <div className={`diff-cell ${row.oldKind || ""}`}><span className="diff-number">{row.oldNumber ?? ""}</span><code>{row.oldText}</code></div>
+        <div className={`diff-cell ${row.newKind || ""}`}><span className="diff-number">{row.newNumber ?? ""}</span><code>{row.newText}</code></div>
+      </div>
+    ))}
+  </div>;
+}
+
 type IconName = "refresh" | "reset" | "download" | "select" | "clear" | "analyze" | "save" | "solution" | "apply" | "expand" | "hotfix";
 
 function Icon({ name }: { name: IconName }) {
@@ -318,7 +389,7 @@ export function LogsTerminal() {
             {agentResult.previews.map((preview) => <section key={preview.path}>
               <strong>{preview.path}</strong>
               <small>{preview.reason}</small>
-              <pre><code>{preview.diff}</code></pre>
+              <SplitDiff diff={preview.diff} />
             </section>)}
           </div> : null}
           {agentResult.changes?.length ? <small>changes: {agentResult.changes.map((change) => `${change.path}@${change.commit.slice(0, 8)}`).join(", ")}</small> : null}
