@@ -33,6 +33,12 @@ export function LogsTerminal() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const [agentInstruction, setAgentInstruction] = useState("");
+  const [agentMarkdown, setAgentMarkdown] = useState(true);
+  const [agentApply, setAgentApply] = useState(false);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; changes?: Array<{ path: string; commit: string }> } | null>(null);
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(() => new Set());
   const [actor, setActor] = useState("all");
   const [worker, setWorker] = useState("");
   const [container, setContainer] = useState("");
@@ -141,6 +147,42 @@ export function LogsTerminal() {
     setTo("");
   };
 
+  const selectedLogs = useMemo(() => logs.filter((log) => selectedLogIds.has(log.id)), [logs, selectedLogIds]);
+
+  const runAgent = async (logsToAnalyze: AppLog[] = selectedLogs) => {
+    if (!logsToAnalyze.length) {
+      setError("Select at least one log to analyze");
+      return;
+    }
+    setAgentRunning(true);
+    setError("");
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ logs: logsToAnalyze, instruction: agentInstruction, format: agentMarkdown ? "markdown" : "summary", apply: agentApply }),
+      });
+      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; changes?: Array<{ path: string; commit: string }> };
+      if (!response.ok || !body.report || !body.runId) throw new Error(body.error || `CrewAI agent returned HTTP ${response.status}`);
+      setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, changes: body.changes });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAgentRunning(false);
+    }
+  };
+
+  const downloadAgentReport = () => {
+    if (!agentResult) return;
+    const blob = new Blob([agentResult.report], { type: agentMarkdown ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `services-diagnostics-${agentResult.runId}.${agentMarkdown ? "md" : "txt"}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <main>
       <header>
@@ -165,10 +207,39 @@ export function LogsTerminal() {
         <button onClick={resetFilters}>reset filters</button>
         <button className="download" onClick={() => void download()}>download + clear</button>
       </section>
+      <section className="agent-controls">
+        <div><strong>CrewAI services agent</strong><span>{selectedLogs.length} of {logs.length} logs selected · writes only to a dedicated GitHub branch</span></div>
+        <input value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} placeholder="optional diagnostic instruction" />
+        <label><input type="checkbox" checked={agentMarkdown} onChange={(event) => setAgentMarkdown(event.target.checked)} /> Markdown report</label>
+        <label className="agent-apply"><input type="checkbox" checked={agentApply} onChange={(event) => setAgentApply(event.target.checked)} /> Apply fixes to branch</label>
+        <button disabled={!logs.length} onClick={() => setSelectedLogIds(new Set(logs.map((log) => log.id)))}>select all</button>
+        <button disabled={!selectedLogIds.size} onClick={() => setSelectedLogIds(new Set())}>clear selection</button>
+        <button disabled={agentRunning || !selectedLogs.length || needsLogin} onClick={() => void runAgent()}>{agentRunning ? "analyzing..." : `analyze selected (${selectedLogs.length})`}</button>
+      </section>
       {error ? <p className="error">ERROR {error}</p> : null}
+      {agentResult ? (
+        <section className="agent-report">
+          <header><strong>agent run {agentResult.runId}</strong><span>{agentResult.branch ? `branch=${agentResult.branch}` : "analysis-only"}</span><button onClick={downloadAgentReport}>download report</button></header>
+          <pre><code>{agentResult.report}</code></pre>
+          {agentResult.changes?.length ? <small>changes: {agentResult.changes.map((change) => `${change.path}@${change.commit.slice(0, 8)}`).join(", ")}</small> : null}
+        </section>
+      ) : null}
       <section className="terminal">
         {logs.length ? logs.map((log) => (
-          <article key={log.id}>
+          <article className={selectedLogIds.has(log.id) ? "is-selected" : ""} key={log.id}>
+            <div className="log-selection">
+              <input
+                type="checkbox"
+                checked={selectedLogIds.has(log.id)}
+                aria-label={`Select ${log.action} log`}
+                onChange={(event) => setSelectedLogIds((current) => {
+                  const next = new Set(current);
+                  if (event.target.checked) next.add(log.id); else next.delete(log.id);
+                  return next;
+                })}
+              />
+              <button disabled={agentRunning || needsLogin} onClick={() => void runAgent([log])}>analyze</button>
+            </div>
             <time>{new Date(log.createdAt).toLocaleString()}</time>
             <strong>{log.runtime}:{log.functionName}</strong>
             <span>[{log.action}]</span>

@@ -10,10 +10,10 @@ Run these commands from the repository root.
 | --- | --- |
 | `./run.sh` | Shows the command menu. |
 | `./run.sh setup` | Creates `.env` from `.env.example` when `.env` does not exist yet. |
-| `./run.sh run` | Builds local source and starts only `web`, the Python `worker`, and the independent `logs` app. Uses local images and persistent folders under `volume/`. |
+| `./run.sh run` | Builds local source and starts `web`, Python `worker`, `logs`, and the independent CrewAI `logs-agent`. |
 | `./run.sh run local` | Same as `./run.sh run`. |
 | `./run.sh run published` | Pulls and starts the stack using the images configured in `.env`. Use this for the deployed worker image flow. |
-| `./run.sh run go` | Explicitly starts `web`, Python `worker`, `logs`, and `worker-go` with the Go profile enabled. |
+| `./run.sh run go` | Starts the normal stack plus `worker-go`. |
 | `./run.sh down` | Stops and removes the Compose stack containers. It does not delete local data under `volume/`. |
 | `./run.sh restart` | Recreates and starts the published-image stack. |
 | `./run.sh ps` | Shows Compose service status. |
@@ -72,6 +72,36 @@ http://localhost:3001
 It reads only Firebase `app_logs`, filters by date, worker, container or UI,
 and downloads the selected errors to `app-logs.logs`. Downloading drains only
 the selected records; browsing and refreshing never delete logs.
+
+### Independent CrewAI logs agent
+
+The agent implementation lives in `services/logs-agent`; it is not part of the
+Next.js runtime. The logs UI sends authenticated requests through a thin server
+proxy to `LOGS_AGENT_URL`. Locally this is the separate `logs-agent` container.
+
+Configure these values in `.env` for local use and in the independent agent
+deployment:
+
+```env
+OPENAI_API_KEY=...
+CREWAI_MODEL=openai/gpt-5-mini
+GITHUB_TOKEN=...
+GITHUB_REPOSITORY=owner/repository
+GITHUB_BASE_BRANCH=main
+LOGS_AGENT_SECRET=a-long-random-shared-secret
+```
+
+In the Vercel project for `apps/logs`, configure only the service connection
+and the existing Firebase Admin values:
+
+```env
+LOGS_AGENT_URL=https://your-independent-agent.example.com
+LOGS_AGENT_SECRET=the-same-long-random-shared-secret
+```
+
+Analysis mode is read-only. Apply mode creates `logs-agent/<run-id>` from the
+configured base branch and restricts all reads and writes to `services/**`.
+Every run and commit is recorded under the workspace `agent_runs` collection.
 
 Run the Go worker tests:
 

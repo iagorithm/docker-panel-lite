@@ -21,7 +21,7 @@ Setup:
   firebase-rules        Deploy Firebase Realtime Database rules
 
 Run:
-  run                   Build and run local web + Python worker + logs app
+  run                   Build and run web + Python worker + logs + CrewAI agent
   run local             Same as run
   run published         Pull/run stack using images configured in .env
   run go                Build/run web + Python worker + logs app + Go worker
@@ -166,9 +166,9 @@ cmd_run() {
       export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
       echo "Building and starting local source stack..."
       echo "  python worker image: $LOCAL_WORKER_IMAGE"
-      echo "  services: web worker logs"
-      compose_build up -d --build --pull never web worker logs "$@"
-      compose_build ps web worker logs
+      echo "  services: web worker logs logs-agent"
+      compose_build up -d --build --pull never web worker logs logs-agent "$@"
+      compose_build ps web worker logs logs-agent
       ;;
     published|image)
       echo "Starting stack from configured images..."
@@ -180,7 +180,7 @@ cmd_run() {
       export WORKER_IMAGE="$LOCAL_WORKER_IMAGE"
       export WORKER_GO_IMAGE="$LOCAL_WORKER_GO_IMAGE"
       echo "Building and starting stack with Go worker profile..."
-      compose_local up -d --build --pull never web worker logs worker-go "$@"
+      compose_local up -d --build --pull never web worker logs logs-agent worker-go "$@"
       compose_go ps
       ;;
     *)

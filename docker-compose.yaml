@@ -1,4 +1,19 @@
 services:
+  logs-agent:
+    build:
+      context: .
+      dockerfile: services/logs-agent/Dockerfile
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CREWAI_MODEL: ${CREWAI_MODEL:-openai/gpt-5-mini}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      GITHUB_BASE_BRANCH: ${GITHUB_BASE_BRANCH:-main}
+      LOGS_AGENT_SECRET: ${LOGS_AGENT_SECRET:-}
+      FIREBASE_DATABASE_URL: ${FIREBASE_DATABASE_URL:-${NEXT_PUBLIC_FIREBASE_DATABASE_URL:-}}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+    restart: unless-stopped
+
   logs:
     build:
       context: .
@@ -15,6 +30,10 @@ services:
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
       DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-default}
       DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-admin}
+      LOGS_AGENT_URL: ${LOGS_AGENT_URL:-http://logs-agent:8000}
+      LOGS_AGENT_SECRET: ${LOGS_AGENT_SECRET:-}
+    depends_on:
+      - logs-agent
     restart: unless-stopped
 
   web:
