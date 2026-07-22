@@ -499,32 +499,32 @@ async function resolveContainerTarget(input: {
   const targetWorkerId = String(container.workerId || "");
   const containerRef = String(container.dockerId || container.name || input.submittedContainerRef || input.containerId);
   if (!targetWorkerId) {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container has no assigned worker" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Container has no assigned worker" });
     return null;
   }
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
   if (!targetWorker || !canAccessWorker(targetWorker as WorkerAccessRecord, { uid: input.requestedBy, email: input.requestedByEmail })) {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker is not available to this user" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Worker is not available to this user" });
     return null;
   }
   if (!targetWorker || !agentIsOnline(targetWorker, input.createdAt)) {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container worker is not available" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Container worker is not available" });
     return null;
   }
   if (isWorkerContainerRecord(container) && ["container_stop", "container_delete", "container_exec"].includes(input.action)) {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers can only be restarted or inspected with logs" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Worker containers can only be restarted or inspected with logs" });
     return null;
   }
   if (isWorkerContainerRecord(container) && input.action === "tunnel_start") {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Worker containers cannot be exposed publicly" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Worker containers cannot be exposed publicly" });
     return null;
   }
   if (["container_stop", "container_restart", "container_logs", "container_exec"].includes(input.action) && container.status !== "running") {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container is not running" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Container is not running" });
     return null;
   }
   if (input.action === "tunnel_start" && container.status !== "running") {
-    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, message: "Container must be running to regenerate its public URL" });
+    await recordFailedDeployment({ workspaceId: input.workspaceId, repositoryId: "", containerId: input.containerId, containerRef, action: input.action, targetWorkerId, requestedBy: input.requestedBy, requestedByEmail: input.requestedByEmail, message: "Container must be running to regenerate its public URL" });
     return null;
   }
   return {
