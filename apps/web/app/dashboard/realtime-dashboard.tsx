@@ -1755,11 +1755,22 @@ function WorkerClaimForm() {
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const submitClaim = async (formData: FormData) => {
     setFeedback(null);
-    const result = await claimWorker(formData);
-    setFeedback(result);
-    if (result.ok) {
-      formRef.current?.reset();
-      router.refresh();
+    try {
+      const result = await claimWorker(formData);
+      setFeedback(result);
+      if (result.ok) {
+        formRef.current?.reset();
+        router.refresh();
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      const staleAction = message.includes("Failed to find Server Action") || message.includes("older or newer deployment");
+      setFeedback({
+        ok: false,
+        message: staleAction
+          ? "The app was updated. Reload this page and submit the worker token again."
+          : "The worker could not be claimed. Your token was not changed; please try again.",
+      });
     }
   };
   return (
