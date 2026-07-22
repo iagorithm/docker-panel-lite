@@ -49,7 +49,7 @@ type Props = {
   initialCommandPresets: CommandPreset[];
 };
 
-type View = "containers" | "repositories" | "logs";
+type View = "containers" | "repositories" | "logs" | "workers";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "compose.yml";
@@ -528,7 +528,7 @@ function repositorySharingLabel(repository: Repository) {
   return sharing === "private" ? "Private" : sharing === "shared" ? "Shared" : "Public";
 }
 
-function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: number; onOpenWorkers: () => void }) {
+function SidebarWorkers({ agents, now, active, onOpenWorkers }: { agents: Agent[]; now: number; active: boolean; onOpenWorkers: () => void }) {
   const sortedAgents = [...agents].sort((a, b) => {
     const aOnline = Number(isWorkerOnline(a, now));
     const bOnline = Number(isWorkerOnline(b, now));
@@ -538,7 +538,7 @@ function SidebarWorkers({ agents, now, onOpenWorkers }: { agents: Agent[]; now: 
   const onlineCount = sortedAgents.filter((agent) => isWorkerOnline(agent, now)).length;
   return (
     <section className="sidebar-workers" aria-label="Workers">
-      <button className="sidebar-workers-header" type="button" title="View workers" data-tooltip="View workers" onClick={onOpenWorkers}>
+      <button className={`sidebar-workers-header ${active ? "is-active" : ""}`} type="button" title="Open workers" data-tooltip="Open workers" aria-pressed={active} onClick={onOpenWorkers}>
         <span><Icon name="worker" /></span>
         <strong>Workers</strong>
         <small>{onlineCount}/{sortedAgents.length}</small>
@@ -666,7 +666,7 @@ export function RealtimeDashboard(props: Props) {
           <button className={view === "logs" ? "is-active" : ""} title="View deployment logs" data-tooltip="View deployment logs" onClick={() => setView("logs")}><Icon name="logs" />Logs</button>
         </nav>
 
-        <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
+        <SidebarWorkers agents={agents} now={now} active={view === "workers"} onOpenWorkers={() => setView("workers")} />
 
         <a className="sidebar-doc-link" href="/docs" title="Open documentation" data-tooltip="Open documentation">
           <span><Icon name="document" /></span>
@@ -684,15 +684,17 @@ export function RealtimeDashboard(props: Props) {
           <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); setView("logs"); }} />
         ) : view === "repositories" ? (
           <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
-        ) : (
+        ) : view === "logs" ? (
           <LogsView containers={containers} deployments={sortedDeployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setView("containers")} />
+        ) : (
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} workerViewOnly onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); setView("logs"); }} />
         )}
       </main>
     </div>
   );
 }
 
-function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now, currentUser, onOpenLogs }: {
+function ContainersView({ repositories, containers, commandPresets, deployments, agents, activeJobs, now, currentUser, workerViewOnly = false, onOpenLogs }: {
   repositories: Repository[];
   containers: ManagedContainer[];
   commandPresets: CommandPreset[];
@@ -701,11 +703,12 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   activeJobs: number;
   now: number;
   currentUser: Props["user"];
+  workerViewOnly?: boolean;
   onOpenLogs: (containerId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [showCommandTerminal, setShowCommandTerminal] = useState(false);
-  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("containers");
+  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">(workerViewOnly ? "workers" : "containers");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
   const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
@@ -897,21 +900,19 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   }
   return (
     <div className="table-workspace containers-workspace">
-      <div className="top-toolbar">
+      {workerViewOnly ? <div className="projects-heading"><h1>Workers</h1><span>{agents.length} worker{agents.length === 1 ? "" : "s"}</span></div> : <div className="top-toolbar">
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search deployments..." /></label>
         <div className="toolbar-actions">
           <div className="icon-toggle container-toolbar-toggle" aria-label="Deployment tools">
             <button type="button" className={!showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View deployments" aria-label="View deployments" aria-pressed={!showCommandTerminal && containerViewMode === "containers"} data-tooltip="View deployments" onClick={() => { setShowCommandTerminal(false); setContainerViewMode("containers"); }}><SidebarContainerMark /></button>
             <button type="button" className={!showCommandTerminal && containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={!showCommandTerminal && containerViewMode === "groups"} data-tooltip="View groups" onClick={() => { setShowCommandTerminal(false); setContainerViewMode("groups"); }}><Icon name="layers" /></button>
-            <button type="button" className={!showCommandTerminal && containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={!showCommandTerminal && containerViewMode === "workers"} data-tooltip="View workers" onClick={() => { setShowCommandTerminal(false); setContainerViewMode("workers"); }}><Icon name="worker" /></button>
             <IconButton title="Command terminal" active={showCommandTerminal} onClick={() => setShowCommandTerminal((current) => !current)}><Icon name="terminal" /></IconButton>
             <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh deployments"><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
-      </div>
+      </div>}
 
-      {!showCommandTerminal && containerViewMode === "workers" ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
-
+      {workerViewOnly ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
       {showCommandTerminal ? (
         <CommandTerminal containers={containers} commandPresets={commandPresets} agents={agents} deployments={deployments} now={now} onClose={() => setShowCommandTerminal(false)} />
       ) : (

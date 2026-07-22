@@ -175,6 +175,11 @@ a:hover { text-decoration-color: var(--ui-text); }
   color: var(--ui-text);
   background: rgba(255, 255, 255, 0.42);
 }
+.sidebar-workers-header.is-active {
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+}
 .sidebar-worker-list {
   display: flex;
   min-width: 0;
