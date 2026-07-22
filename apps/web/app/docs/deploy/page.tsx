@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Deploy Docker Compose and Dockerfile applications",
+  description: "Step-by-step guide to deploy a Git repository with Docker Compose or a Dockerfile to your own server using a worqer.app remote worker.",
+  alternates: { canonical: "/docs/deploy" },
+};
+
 const steps = [
   ["1", "Prepare a worker", "Start and claim a worker on the Docker host. Confirm that it appears online."],
   ["2", "Add Git access", "For a private repository, create a credential available to the project owner."],

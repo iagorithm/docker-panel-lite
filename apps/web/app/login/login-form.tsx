@@ -63,7 +63,7 @@ export function LoginForm() {
   return (
     <form className="auth-card" onSubmit={submit}>
       <div>
-        <p className="eyebrow">devploy.com</p>
+        <p className="eyebrow">worqer.app</p>
         <h1>Sign in</h1>
         <p className="muted">Manage repositories, workers, domains, and deployments.</p>
       </div>

@@ -1,16 +1,37 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/session";
 import { LoginForm } from "./login-form";
 
+export const metadata: Metadata = {
+  title: "Sign in",
+  alternates: { canonical: "/" },
+  robots: { index: false, follow: true },
+};
+
 export default async function LoginPage() {
   if (await getSessionUser()) redirect("/dashboard");
+  return <PublicLanding />;
+}
+
+export function PublicLanding() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "worqer.app",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Web, Linux, Docker",
+    url: "https://worqer.app",
+    description: "Self-hosted Docker deployment platform for deploying Compose stacks and Dockerfile applications to your own servers.",
+    featureList: ["Docker Compose deployment", "Dockerfile deployment", "Remote Docker workers", "Container logs and commands", "Public ngrok URLs", "Git repository deployments"],
+  };
   return (
     <main className="public-landing">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <nav className="landing-nav" aria-label="Public navigation">
-        <a className="landing-brand" href="#top" aria-label="devploy.com">
-          <span className="brand-mark" aria-hidden="true"><span /></span>
-          <span>devploy.com</span>
+        <a className="landing-brand" href="#top" aria-label="worqer.app">
+          <img src="/worqer-logo.svg" alt="worqer.app" />
         </a>
         <div>
           <a href="#architecture">Architecture</a>
@@ -20,23 +41,23 @@ export default async function LoginPage() {
 
       <section className="landing-hero" id="top">
         <div className="landing-hero-copy">
-          <p className="eyebrow">Ship from your own infrastructure</p>
-          <h1>Your private deployment cockpit for Docker teams.</h1>
+          <p className="eyebrow">Self-hosted deployment platform</p>
+          <h1>Deploy Docker apps to your own servers.</h1>
           <p>
-            devploy.com gives small teams the feeling of a polished platform
-            without giving up their own servers. Connect a worker, choose a repo,
-            launch the service, and keep operations visible from the first sync to
-            the live URL.
+            worqer.app gives developers one dashboard for Docker Compose and
+            Dockerfile deployments without giving up control of their infrastructure.
+            Connect a remote worker, choose a Git repository, deploy, inspect logs,
+            run commands, and publish the service when it is ready.
           </p>
           <div className="landing-hero-actions">
             <a className="landing-primary-link" href="#login">Get started</a>
             <a className="landing-secondary-link" href="/docs">Read the docs</a>
           </div>
           <div className="landing-trust-row" aria-label="Platform capabilities">
-            <span>Firebase Auth</span>
-            <span>Realtime Database</span>
-            <span>Docker Hub worker</span>
-            <span>Ngrok tunnels</span>
+            <span>Docker Compose</span>
+            <span>Dockerfile</span>
+            <span>Remote workers</span>
+            <span>Public URLs</span>
           </div>
         </div>
 
@@ -146,7 +167,7 @@ export default async function LoginPage() {
           </p>
         </div>
         <div className="architecture-frame">
-          <img src="/platform-architecture.svg" alt="devploy.com architecture diagram" />
+          <img src="/platform-architecture.svg" alt="worqer.app architecture for remote Docker deployments" />
         </div>
       </section>
 

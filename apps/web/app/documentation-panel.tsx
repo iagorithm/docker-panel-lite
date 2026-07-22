@@ -31,7 +31,7 @@ const workerSetupDocs = [
       "docker logs --tail 100 docker-panel-lite-worker\n# Look for: Worker claim token for worker-default-...: <generated-worker-token>",
   },
   {
-    title: "5. Claim it from devploy.com",
+    title: "5. Claim it from worqer.app",
     body: "Open the dashboard, go to Containers, open Workers, paste the token into Worker token, press the add button, then choose Private, Shared, or Public access.",
   },
 ];
@@ -137,7 +137,7 @@ export function DocumentationPanel({ defaultOpen = true, compact = false }: Docu
   }
 
   return (
-    <section className={`docs-panel ${compact ? "is-compact" : ""}`} aria-label="devploy.com documentation">
+    <section className={`docs-panel ${compact ? "is-compact" : ""}`} aria-label="worqer.app documentation">
       <div className="docs-panel-header">
         <div>
           <p className="eyebrow">Documentation</p>

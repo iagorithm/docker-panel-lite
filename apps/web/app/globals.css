@@ -147,7 +147,7 @@ a:hover { text-decoration-color: var(--ui-text); }
   height: 2.25rem;
   flex: 0 0 2.25rem;
   overflow: hidden;
-  background: #0f172a url("/devploy-mark.svg") center / cover no-repeat;
+  background: #0f172a url("/worqer-mark.svg") center / cover no-repeat;
   border: 1px solid #0f172a;
   border-radius: 9px;
   box-shadow: var(--ui-shadow-xs);
@@ -3364,6 +3364,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   font-size: 0.94rem;
   font-weight: 760;
   text-decoration: none;
+}
+.landing-brand > img {
+  display: block;
+  width: 10rem;
+  height: 2.5rem;
+  object-fit: contain;
+  object-position: left center;
 }
 .landing-nav > div {
   display: flex;
