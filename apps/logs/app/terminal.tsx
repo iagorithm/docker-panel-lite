@@ -271,6 +271,7 @@ export function LogsTerminal() {
       setAgentTab(body.previews?.length ? "preview" : "problem");
       setAgentResultKind(options.kind || "analysis");
       setAgentSourceLogs(logsToAnalyze);
+      setExpandedLogIds((current) => new Set(current).add(logsToAnalyze[0].id));
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -369,49 +370,6 @@ export function LogsTerminal() {
       </section>
       {error ? <p className="error">ERROR {error}</p> : null}
       {agentNotice ? <p className="agent-notice">{agentNotice}</p> : null}
-      {agentResult ? (
-        <section className="agent-report">
-          <header>
-            <button className="icon-control" title="Download report" aria-label="Download report" onClick={downloadAgentReport}><Icon name="download" /></button>
-            {agentResultKind === "analysis" ? <button className="icon-control" title="Save analysis" aria-label="Save analysis" onClick={() => void saveAgentResult("analysis")}><Icon name="save" /></button> : null}
-            <strong>{agentResultKind} · {agentResult.runId}</strong>
-            <span>{agentResult.branch ? `branch=${agentResult.branch}` : agentResult.previews?.length ? `target=${agentResult.plannedBranch} · pending confirmation` : "analysis-only"}</span>
-          </header>
-          <div className="agent-report-layout">
-            <nav className="report-tabs" aria-label="Analysis result">
-              <button className={agentTab === "problem" ? "is-active" : ""} onClick={() => setAgentTab("problem")}>Problem</button>
-              <button className={agentTab === "preview" ? "is-active" : ""} onClick={() => setAgentTab("preview")}>Git preview</button>
-            </nav>
-            <div className="report-tab-panel">
-              {agentTab === "problem" ? <>
-                <pre><code>{agentResult.report}</code></pre>
-                {!agentResult.branch && !agentResult.previews?.length ? <div className="problem-actions">
-                  <button className="result-action agent-apply-button" title="Prepare the exact change for review before committing" disabled={agentRunning} onClick={() => void applySolution(false)}><Icon name="apply" /><span>Prepare fix</span></button>
-                  <button className="result-action hotfix-control" title="Prepare a one-file hotfix for review before committing" disabled={agentRunning} onClick={() => void applySolution(true)}><Icon name="hotfix" /><span>Prepare hotfix</span></button>
-                </div> : null}
-              </> : <>
-                {agentResult.previews?.length ? <div className="change-preview">
-                  <div className="commit-preview-meta">
-                    <label>Target branch <code>{agentResult.plannedBranch}</code></label>
-                    <label>Commit message <input maxLength={120} value={agentResult.commitMessage || ""} onChange={(event) => setAgentResult((current) => current ? { ...current, commitMessage: event.target.value } : current)} /></label>
-                    <small>Nothing is pushed until you confirm.</small>
-                  </div>
-                  {agentResult.previews.map((preview) => <section key={preview.path}>
-                    <strong>{preview.path}</strong>
-                    <small>{preview.reason}</small>
-                    <SplitDiff diff={preview.diff} />
-                  </section>)}
-                  {!agentResult.branch ? <div className="preview-confirm-actions">
-                    {!agentResult.hotfix ? <button className="result-action agent-apply-button" title={`Commit the reviewed diff to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(false)}><Icon name="apply" /><span>Commit to branch</span></button> : null}
-                    {agentResult.previews.length === 1 && agentResult.hotfix ? <button className="result-action hotfix-control" title={`Commit the reviewed diff directly to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(true)}><Icon name="hotfix" /><span>Commit hotfix</span></button> : null}
-                  </div> : null}
-                </div> : <p className="preview-empty">Prepare a fix from the Problem tab to review its exact Git diff.</p>}
-              </>}
-            </div>
-          </div>
-          {agentResult.changes?.length ? <small>changes: {agentResult.changes.map((change) => `${change.path}@${change.commit.slice(0, 8)}`).join(", ")}</small> : null}
-        </section>
-      ) : null}
       <section className="terminal">
         <div className="log-table-header" aria-hidden="true">
           <span>Sel.</span>
@@ -428,7 +386,7 @@ export function LogsTerminal() {
             key={log.id}
             title={expandedLogIds.has(log.id) ? "Click to hide details" : "Click to show details"}
             onClick={(event) => {
-              if ((event.target as HTMLElement).closest("button, input, a, label")) return;
+              if ((event.target as HTMLElement).closest("button, input, a, label, .agent-report")) return;
               setExpandedLogIds((current) => {
                 const next = new Set(current);
                 if (next.has(log.id)) next.delete(log.id); else next.add(log.id);
@@ -475,6 +433,47 @@ export function LogsTerminal() {
               </small>
               <pre><code>{formattedCode(log.context || {})}</code></pre>
             </div> : null}
+            {expandedLogIds.has(log.id) && agentResult && agentSourceLogs[0]?.id === log.id ? <section className="agent-report inline-agent-report">
+              <header>
+                <button className="icon-control" title="Download report" aria-label="Download report" onClick={downloadAgentReport}><Icon name="download" /></button>
+                {agentResultKind === "analysis" ? <button className="icon-control" title="Save analysis" aria-label="Save analysis" onClick={() => void saveAgentResult("analysis")}><Icon name="save" /></button> : null}
+                <strong>{agentResultKind} · {agentResult.runId}</strong>
+                <span>{agentResult.branch ? `branch=${agentResult.branch}` : agentResult.previews?.length ? `target=${agentResult.plannedBranch} · pending confirmation` : "analysis-only"}</span>
+              </header>
+              <div className="agent-report-layout">
+                <nav className="report-tabs" aria-label="Analysis result">
+                  <button className={agentTab === "problem" ? "is-active" : ""} onClick={() => setAgentTab("problem")}>Problem</button>
+                  <button className={agentTab === "preview" ? "is-active" : ""} onClick={() => setAgentTab("preview")}>Git preview</button>
+                </nav>
+                <div className="report-tab-panel">
+                  {agentTab === "problem" ? <>
+                    <pre><code>{agentResult.report}</code></pre>
+                    {!agentResult.branch && !agentResult.previews?.length ? <div className="problem-actions">
+                      <button className="result-action agent-apply-button" title="Prepare the exact change for review before committing" disabled={agentRunning} onClick={() => void applySolution(false)}><Icon name="apply" /><span>Prepare fix</span></button>
+                      <button className="result-action hotfix-control" title="Prepare a one-file hotfix for review before committing" disabled={agentRunning} onClick={() => void applySolution(true)}><Icon name="hotfix" /><span>Prepare hotfix</span></button>
+                    </div> : null}
+                  </> : <>
+                    {agentResult.previews?.length ? <div className="change-preview">
+                      <div className="commit-preview-meta">
+                        <label>Target branch <code>{agentResult.plannedBranch}</code></label>
+                        <label>Commit message <input maxLength={120} value={agentResult.commitMessage || ""} onChange={(event) => setAgentResult((current) => current ? { ...current, commitMessage: event.target.value } : current)} /></label>
+                        <small>Nothing is pushed until you confirm.</small>
+                      </div>
+                      {agentResult.previews.map((preview) => <section key={preview.path}>
+                        <strong>{preview.path}</strong>
+                        <small>{preview.reason}</small>
+                        <SplitDiff diff={preview.diff} />
+                      </section>)}
+                      {!agentResult.branch ? <div className="preview-confirm-actions">
+                        {!agentResult.hotfix ? <button className="result-action agent-apply-button" title={`Commit the reviewed diff to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(false)}><Icon name="apply" /><span>Commit to branch</span></button> : null}
+                        {agentResult.previews.length === 1 && agentResult.hotfix ? <button className="result-action hotfix-control" title={`Commit the reviewed diff directly to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(true)}><Icon name="hotfix" /><span>Commit hotfix</span></button> : null}
+                      </div> : null}
+                    </div> : <p className="preview-empty">Prepare a fix from the Problem tab to review its exact Git diff.</p>}
+                  </>}
+                </div>
+              </div>
+              {agentResult.changes?.length ? <small>changes: {agentResult.changes.map((change) => `${change.path}@${change.commit.slice(0, 8)}`).join(", ")}</small> : null}
+            </section> : null}
           </article>
         )) : <p className="empty">-- no application errors stored --</p>}
       </section>
