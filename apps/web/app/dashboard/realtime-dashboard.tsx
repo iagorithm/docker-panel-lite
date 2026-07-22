@@ -720,7 +720,7 @@ export function RealtimeDashboard(props: Props) {
         </div>
       </aside>
 
-      <main className="main-shell">
+      <main className={`main-shell ${view === "logs" ? "is-logs-view" : ""}`}>
         {navigatingView ? (
           <div className="route-navigation-overlay" role="status" aria-live="polite" aria-label="Loading section">
             <div className="route-navigation-loader">
@@ -1175,6 +1175,7 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
   const [projectFilter, setProjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
+  const [logPage, setLogPage] = useState(0);
   const onlineWorkerIds = useMemo(
     () => new Set(agents.filter((agent) => isWorkerOnline(agent, now)).map((agent) => agent.id)),
     [agents, now],
@@ -1204,7 +1205,7 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
     () => new Set(deployments.filter((job) => job.action === "container_logs" && isBusyContainerJob(job, now, onlineWorkerIds)).map((job) => job.containerId || "")),
     [deployments, now, onlineWorkerIds],
   );
-  const consoleText = visibleContainers
+  const completeConsoleText = visibleContainers
     .map((container) => {
       const lines = [
         `$ ${container.name}  [${container.status}${container.project ? ` · ${container.project}` : ""}]`,
@@ -1212,10 +1213,13 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
       ];
       return lines.join("\n");
     })
-    .join("\n\n")
-    .split(/\r?\n/)
-    .slice(0, 70)
-    .join("\n");
+    .join("\n\n");
+  const consoleLines = completeConsoleText ? completeConsoleText.split(/\r?\n/) : [];
+  const maxLogPage = Math.max(0, Math.ceil(consoleLines.length / 100) - 1);
+  const visibleLogPage = Math.min(logPage, maxLogPage);
+  const pageEnd = Math.max(0, consoleLines.length - visibleLogPage * 100);
+  const pageStart = Math.max(0, pageEnd - 100);
+  const consoleText = consoleLines.slice(pageStart, pageEnd).join("\n");
   const selectedContainer = selectedContainerId ? sortedContainers.find((container) => container.id === selectedContainerId) : undefined;
   const canRefreshSelectedContainer = Boolean(selectedContainerId && selectedContainer);
   useEffect(() => {
@@ -1226,6 +1230,7 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fullscreen]);
+  useEffect(() => setLogPage(0), [selectedContainerId, projectFilter, statusFilter, query]);
 
   return (
     <div className={`logs-workspace ${fullscreen ? "is-fullscreen" : ""}`}>
@@ -1262,8 +1267,12 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
 
       <section className="logs-monitor">
         <div className="logs-monitor-header">
-          <div><strong>Live logs</strong><span>{visibleContainers.length} of {containers.length} deployments</span></div>
-          {selectedContainerId ? <button type="button" title="Show all deployments" data-tooltip="Show all deployments" onClick={() => onSelectContainer("")}><Icon name="close" /></button> : null}
+          <div><strong>Live logs</strong><span>Lines {consoleLines.length ? pageStart + 1 : 0}–{pageEnd} of {consoleLines.length} · {visibleContainers.length} of {containers.length} deployments</span></div>
+          <div className="logs-monitor-header-actions">
+            <button className="logs-page-button" type="button" onClick={() => setLogPage((current) => Math.min(maxLogPage, current + 1))} disabled={pageStart === 0}>Earlier 100</button>
+            <button className="logs-page-button" type="button" onClick={() => setLogPage((current) => Math.max(0, current - 1))} disabled={visibleLogPage === 0}>Later 100</button>
+            {selectedContainerId ? <button type="button" title="Show all deployments" data-tooltip="Show all deployments" onClick={() => onSelectContainer("")}><Icon name="close" /></button> : null}
+          </div>
         </div>
         <pre className="logs-monitor-console"><code>{consoleText || "No deployments match the current filters."}</code></pre>
       </section>

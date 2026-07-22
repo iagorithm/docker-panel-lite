@@ -52,6 +52,7 @@ a:hover { text-decoration-color: var(--ui-text); }
   border-right: 1px solid var(--ui-border);
 }
 .main-shell { width: min(100%, 1780px); padding: 2.35rem 2.1rem 2.2rem 1.55rem; }
+.main-shell.is-logs-view { height: 100vh; overflow: hidden; }
 .route-navigation-overlay {
   position: fixed;
   z-index: 80;
@@ -1994,8 +1995,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .logs-workspace {
   display: flex;
+  height: 100%;
   min-width: 0;
-  min-height: calc(100vh - 5.2rem);
+  min-height: 0;
   flex-direction: column;
   gap: 0.4rem;
 }
@@ -2093,6 +2095,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   flex-direction: column;
   gap: 0.05rem;
 }
+.logs-monitor-header .logs-monitor-header-actions {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.24rem;
+}
 .logs-monitor-header strong {
   color: #f6f6f3;
   font-size: 0.68rem;
@@ -2118,13 +2126,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .logs-monitor-header button:hover {
   background: #252525;
 }
+.logs-monitor-header .logs-page-button {
+  width: auto;
+  min-width: auto;
+  padding: 0.2rem 0.45rem;
+  color: #d6d6d1;
+  border: 1px solid #353535;
+  font-size: 0.56rem;
+  font-weight: 620;
+}
+.logs-monitor-header .logs-page-button:disabled {
+  color: #666662;
+  background: transparent;
+  border-color: #292929;
+  opacity: 1;
+}
 .logs-monitor-header .ui-icon {
   width: 0.78rem;
   height: 0.78rem;
 }
 .logs-monitor-console {
   flex: 1;
-  min-height: 32rem;
+  min-height: 0;
   margin: 0;
   padding: 0.72rem 0.82rem 1rem;
   overflow: auto;
@@ -5006,6 +5029,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .route-navigation-overlay { left: 0; }
   .sidebar-footer { margin-top: 1rem; }
   .main-shell { padding: 1rem; }
+  .main-shell.is-logs-view { height: auto; min-height: 100vh; overflow: visible; }
   .workspace-guide-body { grid-template-columns: 1fr; }
   .workspace-guide-body article,
   .workspace-guide-body article:nth-child(2n) { border-right: 0; }
@@ -5024,7 +5048,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-text); outlin
   .form-grid { grid-template-columns: 1fr; }
   .repo-resource-row .inline-editor .form-grid { grid-template-columns: 1fr; }
   .form-grid .wide { grid-column: span 1; }
-  .logs-workspace { min-height: calc(100vh - 2rem); }
+  .logs-workspace { height: auto; min-height: calc(100vh - 2rem); }
   .logs-filters { width: 100%; min-width: 0; flex-direction: column; align-items: stretch; }
   .logs-filters select { width: 100%; }
   .logs-monitor-console { min-height: 24rem; }

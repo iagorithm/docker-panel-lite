@@ -122,11 +122,11 @@ func ContainerAction(action string, candidates []string) (string, *string, error
 		}
 		return fmt.Sprintf("Container '%s' deleted", nameOrID(name, containerID)), nil, nil
 	case "container_logs":
-		output, err := commandOutput(20*time.Second, "docker", "logs", "--tail", "100", containerID)
+		output, err := commandOutput(20*time.Second, "docker", "logs", "--tail", "1000", containerID)
 		if err != nil {
 			return "", nil, err
 		}
-		tail := tailText(output, 100000)
+		tail := tailText(output, 500000)
 		return fmt.Sprintf("Loaded logs for '%s'", nameOrID(name, containerID)), &tail, nil
 	default:
 		return "", nil, fmt.Errorf("unknown container action: %s", action)

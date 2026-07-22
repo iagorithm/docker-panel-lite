@@ -950,7 +950,7 @@ def execute_container(job: dict) -> tuple[str, str | None]:
         container.remove(force=True)
         return f"Container '{name}' deleted", None
     if job["action"] == "container_logs":
-        return f"Loaded logs for '{container.name}'", container.logs(tail=100).decode(errors="replace")[-100_000:]
+        return f"Loaded logs for '{container.name}'", container.logs(tail=1000).decode(errors="replace")[-500_000:]
     if job["action"] == "container_exec":
         message, output, exit_code = execute_container_command(job)
         if exit_code:
