@@ -70,6 +70,10 @@ class GitHubServices:
             raise ValueError(f"{safe} is larger than the agent read limit")
         return content
 
+    def branch_name(self, reason: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", reason.lower()).strip("-")[:48] or "service-error"
+        return f"fix/{slug}-{self.run_id[:6]}"
+
     def ensure_branch(self, reason: str = "") -> str:
         if self.branch:
             return self.branch
@@ -77,12 +81,11 @@ class GitHubServices:
             self.branch = self.base_branch
             return self.branch
         base = self.request("GET", f"/git/ref/heads/{self.base_branch}")
-        slug = re.sub(r"[^a-z0-9]+", "-", reason.lower()).strip("-")[:48] or "service-error"
-        self.branch = f"fix/{slug}-{self.run_id[:6]}"
+        self.branch = self.branch_name(reason)
         self.request("POST", "/git/refs", json={"ref": f"refs/heads/{self.branch}", "sha": base["object"]["sha"]})
         return self.branch
 
-    def write_file(self, path: str, content: str, reason: str) -> str:
+    def write_file(self, path: str, content: str, reason: str, commit_message: str = "") -> str:
         if not self.allow_writes:
             return "WRITE BLOCKED: analysis-only run. Recommend the change in the report."
         safe = self.safe_path(path)
@@ -100,7 +103,8 @@ class GitHubServices:
             self.preview_changes.append({"path": safe, "content": content, "reason": reason[:500], "diff": diff})
             return f"Preview ready for {safe}; no commit was created"
         branch = self.ensure_branch(reason)
-        result = self.request("PUT", f"/contents/{safe}", json={"message": f"fix(services): {reason[:120]}", "content": base64.b64encode(content.encode()).decode(), "sha": current["sha"], "branch": branch})
+        message = (commit_message.strip() or f"fix(services): {reason}").replace("\n", " ")[:120]
+        result = self.request("PUT", f"/contents/{safe}", json={"message": message, "content": base64.b64encode(content.encode()).decode(), "sha": current["sha"], "branch": branch})
         change = {"path": safe, "commit": result["commit"]["sha"], "reason": reason[:500]}
         self.changes.append(change)
         return f"Updated {safe} on {branch} in commit {change['commit']}"

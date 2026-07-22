@@ -54,7 +54,7 @@ export function LogsTerminal() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [agentMarkdown, setAgentMarkdown] = useState(true);
   const [agentRunning, setAgentRunning] = useState(false);
-  const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
+  const [agentResult, setAgentResult] = useState<{ runId: string; report: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean } | null>(null);
   const [agentResultKind, setAgentResultKind] = useState<"analysis" | "solution">("analysis");
   const [agentSourceLogs, setAgentSourceLogs] = useState<AppLog[]>([]);
   const [agentNotice, setAgentNotice] = useState("");
@@ -187,9 +187,9 @@ export function LogsTerminal() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ logs: logsToAnalyze, instruction: options.instruction ?? "", format: agentMarkdown ? "markdown" : "summary", apply: options.apply ?? false, hotfix: options.hotfix ?? false, preview: options.preview ?? false }),
       });
-      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
+      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
       if (!response.ok || !body.report || !body.runId) throw new Error(body.error || `CrewAI agent returned HTTP ${response.status}`);
-      setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, changes: body.changes, previews: body.previews, hotfix: body.hotfix });
+      setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, plannedBranch: body.plannedBranch, commitMessage: body.commitMessage, changes: body.changes, previews: body.previews, hotfix: body.hotfix });
       setAgentResultKind(options.kind || "analysis");
       setAgentSourceLogs(logsToAnalyze);
       await refresh();
@@ -234,7 +234,7 @@ export function LogsTerminal() {
       const response = await fetch("/api/agent/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ runId: agentResult.runId, hotfix }),
+        body: JSON.stringify({ runId: agentResult.runId, hotfix, commitMessage: agentResult.commitMessage }),
       });
       const body = await responseBody(response) as { error?: string; branch?: string; changes?: Array<{ path: string; commit: string }> };
       if (!response.ok || !body.branch) throw new Error(body.error || `Commit returned HTTP ${response.status}`);
@@ -296,13 +296,18 @@ export function LogsTerminal() {
             {agentResultKind === "analysis" ? <button className="icon-control" title="Save analysis" aria-label="Save analysis" onClick={() => void saveAgentResult("analysis")}><Icon name="save" /></button> : null}
             {!agentResult.branch && !agentResult.previews?.length ? <button className="result-action agent-apply-button" title="Prepara el cambio exacto para revisarlo antes del commit" aria-label="Preparar el fix para revisión" disabled={agentRunning} onClick={() => void applySolution(false)}><Icon name="apply" /><span>Preparar fix</span></button> : null}
             {!agentResult.branch && !agentResult.previews?.length ? <button className="result-action hotfix-control" title="Prepara un hotfix de un archivo para revisarlo antes del commit" aria-label="Preparar el hotfix para revisión" disabled={agentRunning} onClick={() => void applySolution(true)}><Icon name="hotfix" /><span>Preparar hotfix</span></button> : null}
-            {!agentResult.branch && agentResult.previews?.length ? <button className="result-action agent-apply-button" title="Confirma exactamente el diff mostrado en una rama fix/*" aria-label="Confirmar el fix mostrado en una rama" disabled={agentRunning} onClick={() => void commitPreview(false)}><Icon name="apply" /><span>Commit en rama</span></button> : null}
-            {!agentResult.branch && agentResult.previews?.length === 1 ? <button className="result-action hotfix-control" title="Confirma exactamente el diff mostrado directamente en main" aria-label="Confirmar el hotfix mostrado en main" disabled={agentRunning} onClick={() => void commitPreview(true)}><Icon name="hotfix" /><span>Commit en main</span></button> : null}
+            {!agentResult.branch && agentResult.previews?.length && !agentResult.hotfix ? <button className="result-action agent-apply-button" title={`Confirma exactamente el diff mostrado en ${agentResult.plannedBranch}`} aria-label="Confirmar el fix mostrado en la rama indicada" disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(false)}><Icon name="apply" /><span>Confirmar commit</span></button> : null}
+            {!agentResult.branch && agentResult.previews?.length === 1 && agentResult.hotfix ? <button className="result-action hotfix-control" title={`Confirma exactamente el diff mostrado directamente en ${agentResult.plannedBranch}`} aria-label="Confirmar el hotfix mostrado en main" disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(true)}><Icon name="hotfix" /><span>Confirmar hotfix</span></button> : null}
             <strong>{agentResultKind} · {agentResult.runId}</strong>
-            <span>{agentResult.branch ? `branch=${agentResult.branch}` : "analysis-only"}</span>
+            <span>{agentResult.branch ? `branch=${agentResult.branch}` : agentResult.previews?.length ? `target=${agentResult.plannedBranch} · pending confirmation` : "analysis-only"}</span>
           </header>
           <pre><code>{agentResult.report}</code></pre>
           {agentResult.previews?.length ? <div className="change-preview">
+            <div className="commit-preview-meta">
+              <label>Rama destino <code>{agentResult.plannedBranch}</code></label>
+              <label>Mensaje del commit <input maxLength={120} value={agentResult.commitMessage || ""} onChange={(event) => setAgentResult((current) => current ? { ...current, commitMessage: event.target.value } : current)} /></label>
+              <small>No se enviará nada hasta confirmar.</small>
+            </div>
             {agentResult.previews.map((preview) => <section key={preview.path}>
               <strong>{preview.path}</strong>
               <small>{preview.reason}</small>
@@ -313,6 +318,14 @@ export function LogsTerminal() {
         </section>
       ) : null}
       <section className="terminal">
+        <div className="log-table-header" aria-hidden="true">
+          <span />
+          <span>Fecha</span>
+          <span>Componente · función</span>
+          <span>Acción</span>
+          <span>Error</span>
+          <span>Rev.</span>
+        </div>
         {logs.length ? logs.map((log) => (
           <article className={`${selectedLogIds.has(log.id) ? "is-selected" : ""} ${expandedLogIds.has(log.id) ? "is-expanded" : ""}`} key={log.id}>
             <div className="log-selection">
@@ -339,11 +352,14 @@ export function LogsTerminal() {
                 })}
               ><Icon name="expand" /></button>
             </div>
-            <time>{new Date(log.createdAt).toLocaleString()}</time>
-            <strong>{log.runtime}:{log.functionName}</strong>
-            <span>[{log.action}]</span>
+            <time title={new Date(log.createdAt).toISOString()}>{new Date(log.createdAt).toLocaleString()}</time>
+            <strong className="log-source" title={`${log.actorType === "worker" ? log.actorLabel || log.actorId : "web"} · ${log.runtime}:${log.functionName}`}>
+              <span>{log.actorType === "worker" ? log.actorLabel || log.actorId : "web"}</span>
+              <small>{log.runtime}:{log.functionName}</small>
+            </strong>
+            <span className="log-action" title={log.action}>{log.action}</span>
             <code className="log-preview" title={String(log.message)}>{String(log.message)}</code>
-            {log.analyzed ? <small className="analysis-count" title={log.lastAnalyzedAt ? `Last reviewed ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Analyzed"}>{log.analysisCount || 1}×</small> : null}
+            <small className="analysis-count" title={log.lastAnalyzedAt ? `Última revisión ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Sin revisar"}>{log.analyzed ? `${log.analysisCount || 1}×` : "—"}</small>
             {expandedLogIds.has(log.id) ? <div className="log-details">
               <pre className="log-code"><code>{formattedCode(log.message)}</code></pre>
               <small>

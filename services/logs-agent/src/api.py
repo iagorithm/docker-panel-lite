@@ -44,6 +44,7 @@ class CommitRequest(BaseModel):
     requestedBy: str
     requestedByEmail: str = ""
     hotfix: bool = False
+    commitMessage: str = Field(min_length=3, max_length=120)
 
 
 def firebase_app():
@@ -100,7 +101,10 @@ def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
                 github.append_changelog(status="applied", summary=report, requested_by=request.requestedByEmail or request.requestedBy)
         mark_logs_analyzed(request.workspaceId, request.logs, request.requestedBy)
         previews = [{key: change[key] for key in ("path", "reason", "diff")} for change in github.preview_changes]
-        result = {"runId": run_id, "report": report, "branch": github.branch, "changes": github.changes, "previews": previews, "format": request.format, "hotfix": request.hotfix}
+        first_reason = github.preview_changes[0]["reason"] if github.preview_changes else "service error"
+        planned_branch = github.base_branch if request.hotfix else github.branch_name(first_reason)
+        commit_message = f"fix(services): {first_reason}"[:120]
+        result = {"runId": run_id, "report": report, "branch": github.branch, "plannedBranch": planned_branch if request.preview else github.branch, "commitMessage": commit_message if request.preview else "", "changes": github.changes, "previews": previews, "format": request.format, "hotfix": request.hotfix}
         trace_result = {**result, "status": "preview" if request.preview else "completed", "finishedAt": {".sv": "timestamp"}}
         if request.preview:
             trace_result["previewChanges"] = github.preview_changes
@@ -125,12 +129,14 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
         raise HTTPException(status_code=403, detail="Only the preview owner can commit this fix")
     if request.hotfix and len(existing["previewChanges"]) != 1:
         raise HTTPException(status_code=400, detail="Hotfix requires a preview that changes exactly one services file")
+    if request.hotfix != bool(existing.get("hotfix")):
+        raise HTTPException(status_code=409, detail="Commit target does not match the reviewed preview")
     try:
         github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), request.runId, True, request.hotfix)
         for change in existing["previewChanges"]:
-            github.write_file(change["path"], change["content"], change["reason"])
+            github.write_file(change["path"], change["content"], change["reason"], request.commitMessage)
         github.append_changelog(status="applied", summary=existing.get("report", ""), requested_by=request.requestedByEmail or request.requestedBy)
-        result = {"runId": request.runId, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix}
+        result = {"runId": request.runId, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix, "commitMessage": request.commitMessage}
         trace.update({**result, "status": "completed", "committedAt": {".sv": "timestamp"}, "previewChanges": None})
         return result
     except Exception as error:
