@@ -638,7 +638,10 @@ export function RealtimeDashboard(props: Props) {
     if (nextView === view || navigatingView) return;
     const route = nextView === "containers" ? "deployments" : nextView === "repositories" ? "projects" : nextView;
     setNavigatingView(nextView);
-    router.push(`/dashboard/${route}`);
+    // These routes render the same dashboard shell. Updating browser history keeps
+    // the mounted realtime listeners alive instead of fetching the server page and
+    // its complete Firebase snapshot again for every section change.
+    window.history.pushState(null, "", `/dashboard/${route}`);
   };
   const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
   const [now, setNow] = useState(Date.now());
