@@ -306,12 +306,13 @@ export function LogsTerminal() {
       const response = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ logs: logsToAnalyze, instruction: options.instruction ?? "", format: agentMarkdown ? "markdown" : "summary", apply: options.apply ?? false, hotfix: options.hotfix ?? false, preview: options.preview ?? false }),
+        body: JSON.stringify({ workflow: "analyze-and-fix", logs: logsToAnalyze, instruction: options.instruction ?? "", format: agentMarkdown ? "markdown" : "summary", apply: options.apply ?? true, hotfix: options.hotfix ?? false, preview: options.preview ?? true }),
       });
       const body = await responseBody(response) as { error?: string; runId?: string; report?: string; branch?: string; baseBranch?: string; plannedBranch?: string; commitMessage?: string; changes?: Array<{ path: string; commit: string }>; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
       if (!response.ok || !body.report || !body.runId) throw new Error(body.error || `CrewAI agent returned HTTP ${response.status}`);
       setAgentResult({ runId: body.runId, report: body.report, branch: body.branch, baseBranch: body.baseBranch, plannedBranch: body.plannedBranch, commitMessage: body.commitMessage, changes: body.changes, previews: body.previews, hotfix: body.hotfix });
-      setAgentTab(body.previews?.length ? "preview" : "problem");
+      setAgentTab("problem");
+      setCommitTarget(body.hotfix ? "hotfix" : "branch");
       setAgentResultKind(options.kind || "analysis");
       setAgentSourceLogs(logsToAnalyze);
       setExpandedLogIds((current) => new Set(current).add(logsToAnalyze[0].id));
@@ -339,21 +340,6 @@ export function LogsTerminal() {
       setAgentNotice(kind === "solution" ? `Solution registered in CHANGELOGS.md${body.branch ? ` on ${body.branch}` : ""}` : "Analysis saved to internal history");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  };
-
-  const applySolution = async (hotfix: boolean) => {
-    setPreparingMode(hotfix ? "hotfix" : "fix");
-    try {
-      await runAgent(agentSourceLogs, {
-        kind: "solution",
-        apply: true,
-        hotfix,
-        preview: true,
-        instruction: `Apply the diagnosed correction exactly when supported by the code. The tool reason and Git commit message must be concise English describing what the fix resolves. Keep the final report brief. Diagnosis: ${agentResult?.report || ""}`.slice(0, 9500),
-      });
-    } finally {
-      setPreparingMode(null);
     }
   };
 
@@ -388,7 +374,7 @@ export function LogsTerminal() {
     try {
       const response = await fetch("/api/agent/fixes", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fixId: fix.id, hotfix: fix.hotfix }),
+        body: JSON.stringify({ fixId: fix.id, hotfix: false }),
       });
       const body = await responseBody(response) as { error?: string; runId?: string; report?: string; baseBranch?: string; plannedBranch?: string; commitMessage?: string; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
       if (!response.ok || !body.runId || !body.previews?.length) throw new Error(body.error || `Reapply returned HTTP ${response.status}`);
@@ -396,6 +382,7 @@ export function LogsTerminal() {
       setAgentResultKind("solution");
       setAgentSourceLogs(sourceLogs);
       setAgentTab("preview");
+      setCommitTarget(body.hotfix ? "hotfix" : "branch");
       if (sourceLogs[0]) setExpandedLogIds((current) => new Set(current).add(sourceLogs[0].id));
       setAgentNotice(`Reapply prepared from ${fix.id}; review the diff before committing.`);
     } catch (reason) {
@@ -444,7 +431,7 @@ export function LogsTerminal() {
         <button className={`icon-control ${agentMarkdown ? "is-active" : ""}`} title="Generate a Markdown report" aria-label="Generate a Markdown report" onClick={() => setAgentMarkdown((value) => !value)}><span className="md-icon">MD</span></button>
         <button className="icon-control" title="Select all logs" aria-label="Select all logs" disabled={!logs.length} onClick={() => setSelectedLogIds(new Set(logs.map((log) => log.id)))}><Icon name="select" /></button>
         <button className="icon-control" title="Clear selection" aria-label="Clear selection" disabled={!selectedLogIds.size} onClick={() => setSelectedLogIds(new Set())}><Icon name="clear" /></button>
-        <button className="icon-control primary-control" title="Analyze selected logs without changing code" data-tooltip="Analyze · no commit" aria-label="Analyze without changing code" disabled={agentRunning || !selectedLogs.length || needsLogin} onClick={() => void runAgent()}><Icon name="analyze" /></button>
+        <button className="icon-control primary-control" title="Analyze and prepare a validated fix preview; no commit" data-tooltip="Analyze · prepare preview" aria-label="Analyze and prepare fix preview" disabled={agentRunning || !selectedLogs.length || needsLogin} onClick={() => void runAgent()}><Icon name="analyze" /></button>
       </section>
       {error ? <p className="error">ERROR {error}</p> : null}
       {agentNotice ? <p className="agent-notice">{agentNotice}</p> : null}
@@ -538,7 +525,7 @@ export function LogsTerminal() {
                 <button className="icon-control" title="Download report" aria-label="Download report" onClick={downloadAgentReport}><Icon name="download" /></button>
                 {agentResultKind === "analysis" ? <button className="icon-control" title="Save analysis" aria-label="Save analysis" onClick={() => void saveAgentResult("analysis")}><Icon name="save" /></button> : null}
                 <strong>{agentResultKind} · {agentResult.runId}</strong>
-                <span>{agentResult.branch ? `branch=${agentResult.branch}` : agentResult.previews?.length ? `target=${agentResult.plannedBranch} · pending confirmation` : "analysis-only"}</span>
+                <span>{agentResult.branch ? `branch=${agentResult.branch}` : agentResult.previews?.length ? `code ready · pending commit confirmation` : "analysis-only"}</span>
               </header>
               <div className="agent-report-layout">
                 <nav className="report-tabs" aria-label="Analysis result">
@@ -546,21 +533,15 @@ export function LogsTerminal() {
                   <button className={agentTab === "preview" ? "is-active" : ""} onClick={() => setAgentTab("preview")}>Git preview</button>
                 </nav>
                 <div className="report-tab-panel">
-                  {agentTab === "problem" ? <>
-                    <pre><code>{agentResult.report}</code></pre>
-                    {!agentResult.branch && !agentResult.previews?.length ? <div className="problem-actions">
-                      <label className="target-branch-select">Target branch
-                        <select value={commitTarget} disabled={agentRunning} onChange={(event) => setCommitTarget(event.target.value as "branch" | "hotfix")}>
-                          <option value="branch">New descriptive fix branch</option>
-                          <option value="hotfix">{agentResult.baseBranch || "main"} (hotfix)</option>
-                        </select>
-                      </label>
-                      <button className={`result-action ${commitTarget === "hotfix" ? "hotfix-control" : "agent-apply-button"}`} title={commitTarget === "hotfix" ? `Prepare a one-file hotfix for ${agentResult.baseBranch || "main"}` : "Prepare the exact change for a new descriptive branch"} disabled={agentRunning} onClick={() => void applySolution(commitTarget === "hotfix")}>{preparingMode ? <span className="row-spinner" aria-hidden="true" /> : <Icon name={commitTarget === "hotfix" ? "hotfix" : "apply"} />}<span>{preparingMode ? "Preparing…" : "Prepare change"}</span></button>
-                    </div> : null}
-                  </> : <>
+                  {agentTab === "problem" ? <pre><code>{agentResult.report}</code></pre> : <>
                     {agentResult.previews?.length ? <div className="change-preview">
                       <div className="commit-preview-meta">
-                        <label>Target branch <code>{agentResult.plannedBranch}</code></label>
+                        <label>Target
+                          <select value={commitTarget} disabled={agentRunning} onChange={(event) => setCommitTarget(event.target.value as "branch" | "hotfix")}>
+                            <option value="branch">{agentResult.plannedBranch} (new branch)</option>
+                            <option value="hotfix" disabled={agentResult.previews.length !== 1}>{agentResult.baseBranch || "main"} (hotfix)</option>
+                          </select>
+                        </label>
                         <label>Commit message <input maxLength={120} value={agentResult.commitMessage || ""} onChange={(event) => setAgentResult((current) => current ? { ...current, commitMessage: event.target.value } : current)} /></label>
                         <small>Nothing is pushed until you confirm.</small>
                       </div>
@@ -570,8 +551,7 @@ export function LogsTerminal() {
                         <SplitDiff diff={preview.diff} />
                       </section>)}
                       {!agentResult.branch ? <div className="preview-confirm-actions">
-                        {!agentResult.hotfix ? <button className="result-action agent-apply-button" title={`Commit the reviewed diff to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(false)}><Icon name="apply" /><span>Commit to branch</span></button> : null}
-                        {agentResult.previews.length === 1 && agentResult.hotfix ? <button className="result-action hotfix-control" title={`Commit the reviewed diff directly to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim()} onClick={() => void commitPreview(true)}><Icon name="hotfix" /><span>Commit hotfix</span></button> : null}
+                        <button className={`result-action ${commitTarget === "hotfix" ? "hotfix-control" : "agent-apply-button"}`} title={commitTarget === "hotfix" ? `Commit the reviewed diff directly to ${agentResult.baseBranch || "main"}` : `Commit the reviewed diff to ${agentResult.plannedBranch}`} disabled={agentRunning || !agentResult.commitMessage?.trim() || (commitTarget === "hotfix" && agentResult.previews.length !== 1)} onClick={() => void commitPreview(commitTarget === "hotfix")}>{agentRunning ? <span className="row-spinner" aria-hidden="true" /> : <Icon name={commitTarget === "hotfix" ? "hotfix" : "apply"} />}<span>Confirm commit</span></button>
                       </div> : null}
                     </div> : <p className="preview-empty">Prepare a fix from the Problem tab to review its exact Git diff.</p>}
                   </>}

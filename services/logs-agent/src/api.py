@@ -82,6 +82,16 @@ class ReapplyRequest(BaseModel):
     hotfix: bool = False
 
 
+class FixFromAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    analysisRunId: str = Field(min_length=1, max_length=80)
+    instruction: str = Field(default="", max_length=2000)
+    format: Literal["markdown", "summary"] = "markdown"
+    workspaceId: str
+    requestedBy: str
+    requestedByEmail: str = ""
+
+
 def firebase_app():
     if firebase_admin._apps:
         return firebase_admin.get_app()
@@ -224,8 +234,7 @@ def reapply_fix(request: ReapplyRequest, x_agent_secret: str = Header(default=""
     return {"runId": run_id, "report": original["report"], "baseBranch": github.base_branch, "plannedBranch": planned_branch, "commitMessage": original["commitMessage"], "previews": public_previews, "hotfix": request.hotfix, "reappliesFixId": request.fixId}
 
 
-@app.post("/v1/diagnose")
-def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
+def run_diagnose(request: AgentRequest, x_agent_secret: str, *, mark_review: bool = True):
     authorize(x_agent_secret)
     validate_segment(request.workspaceId, "workspaceId")
     validate_segment(request.requestedBy, "requestedBy")
@@ -246,7 +255,8 @@ def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
                 raise RuntimeError("Fix was not applied: the agent did not modify any services/** source file")
             if not request.preview:
                 github.append_changelog(status="applied", summary=report, requested_by=request.requestedByEmail or request.requestedBy)
-        mark_logs_analyzed(request.workspaceId, request.logs, request.requestedBy)
+        if mark_review:
+            mark_logs_analyzed(request.workspaceId, request.logs, request.requestedBy)
         previews = [{key: change[key] for key in ("path", "reason", "diff")} for change in github.preview_changes]
         first_reason = github.preview_changes[0]["reason"] if github.preview_changes else "service error"
         planned_branch = github.base_branch if request.hotfix else github.branch_name(first_reason)
@@ -269,6 +279,57 @@ def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
         diagnostic_slots.release()
 
 
+@app.post("/v1/diagnose")
+def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
+    """Backward-compatible endpoint; apply/preview flags control its behavior."""
+    return run_diagnose(request, x_agent_secret)
+
+
+@app.post("/v1/analyze")
+def analyze(request: AgentRequest, x_agent_secret: str = Header(default="")):
+    """Analyze only. No source preview and no Git write are permitted."""
+    return run_diagnose(request.model_copy(update={"apply": False, "preview": False, "hotfix": False}), x_agent_secret)
+
+
+@app.post("/v1/analyze-and-fix")
+def analyze_and_fix(request: AgentRequest, x_agent_secret: str = Header(default="")):
+    """Analyze and prepare a validated source preview; commit remains separate."""
+    return run_diagnose(request.model_copy(update={"apply": True, "preview": True, "hotfix": False}), x_agent_secret)
+
+
+@app.post("/v1/fix")
+def fix_from_analysis(request: FixFromAnalysisRequest, x_agent_secret: str = Header(default="")):
+    """Prepare a fix from a completed analysis run without repeating its review count."""
+    authorize(x_agent_secret)
+    validate_segment(request.workspaceId, "workspaceId")
+    validate_segment(request.requestedBy, "requestedBy")
+    validate_segment(request.analysisRunId, "analysisRunId")
+    analysis = db.reference(f"workspaces/{request.workspaceId}/agent_runs/{request.analysisRunId}", app=firebase_app()).get() or {}
+    if analysis.get("requestedBy") != request.requestedBy:
+        raise HTTPException(status_code=403, detail="Only the analysis owner can prepare its fix")
+    if analysis.get("status") != "completed" or analysis.get("apply") or analysis.get("previewChanges"):
+        raise HTTPException(status_code=409, detail="The referenced run is not a completed analysis-only run")
+    logs = []
+    log_ids = analysis.get("logIds") if isinstance(analysis.get("logIds"), list) else []
+    for log_id in log_ids[:50]:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", str(log_id)):
+            continue
+        value = db.reference(f"workspaces/{request.workspaceId}/app_logs/{log_id}", app=firebase_app()).get()
+        if isinstance(value, dict):
+            logs.append({**value, "id": str(log_id)})
+    if not logs:
+        raise HTTPException(status_code=409, detail="The analysis logs are no longer available")
+    instruction = f"Prepare only the minimal fix supported by this completed analysis. Preserve all unrelated behavior. Analysis: {analysis.get('report', '')}\n{request.instruction}"[:10_000]
+    fix_request = AgentRequest(
+        logs=logs, instruction=instruction, format=request.format,
+        apply=True, preview=True, hotfix=False, workspaceId=request.workspaceId,
+        requestedBy=request.requestedBy, requestedByEmail=request.requestedByEmail,
+    )
+    result = run_diagnose(fix_request, x_agent_secret, mark_review=False)
+    db.reference(f"workspaces/{request.workspaceId}/agent_runs/{result['runId']}", app=firebase_app()).update({"sourceAnalysisRunId": request.analysisRunId})
+    return {**result, "sourceAnalysisRunId": request.analysisRunId}
+
+
 @app.post("/v1/commit")
 def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default="")):
     authorize(x_agent_secret)
@@ -282,8 +343,6 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
         raise HTTPException(status_code=403, detail="Only the preview owner can commit this fix")
     if request.hotfix and len(existing["previewChanges"]) != 1:
         raise HTTPException(status_code=400, detail="Hotfix requires a preview that changes exactly one services file")
-    if request.hotfix != bool(existing.get("hotfix")):
-        raise HTTPException(status_code=409, detail="Commit target does not match the reviewed preview")
     if int(existing.get("previewExpiresAt") or 0) < int(time.time() * 1000):
         raise HTTPException(status_code=410, detail="Fix preview expired; prepare it again")
     attempt_id = uuid.uuid4().hex[:16]
@@ -291,6 +350,7 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
     def claim(current):
         if isinstance(current, dict) and current.get("status") == "preview" and current.get("requestedBy") == request.requestedBy:
             current["status"] = "committing"
+            current["hotfix"] = request.hotfix
             current["commitAttemptId"] = attempt_id
             current["commitStartedAt"] = int(time.time() * 1000)
         return current

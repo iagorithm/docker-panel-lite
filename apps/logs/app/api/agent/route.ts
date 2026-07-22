@@ -25,10 +25,12 @@ export async function POST(request: NextRequest) {
   if (!endpoint || !secret) return NextResponse.json({ error: "Independent CrewAI service is not configured" }, { status: 503 });
   try {
     const body = await request.json();
-    const response = await fetch(`${endpoint}/v1/diagnose`, {
+    const workflow = body.workflow === "analyze" ? "analyze" : body.workflow === "fix" ? "fix" : body.workflow === "legacy" ? "diagnose" : "analyze-and-fix";
+    const { workflow: _workflow, ...requestPayload } = body;
+    const response = await fetch(`${endpoint}/v1/${workflow}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-agent-secret": secret },
-      body: JSON.stringify({ ...body, workspaceId: user.workspaceId, requestedBy: user.uid, requestedByEmail: user.email }),
+      body: JSON.stringify({ ...requestPayload, workspaceId: user.workspaceId, requestedBy: user.uid, requestedByEmail: user.email }),
       signal: AbortSignal.timeout(295_000),
     });
     const text = await response.text();

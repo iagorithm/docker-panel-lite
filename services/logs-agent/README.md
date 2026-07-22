@@ -19,9 +19,10 @@ GitHub source tree under `services/**`.
   dependencies, cleanup, or speculative behavior.
 - Reports keep the complete evidence-based improvement proposal separate from
   the minimal safe fix. Optional proposal items are never applied automatically.
-- Applying is two-phase: the agent first stores and returns an exact validated
-  diff without writing GitHub; an explicit confirmation commits that same
-  preview to a descriptive branch or, for one file, directly to the base branch.
+- Analysis prepares and stores an exact validated diff without writing GitHub.
+  The Problem tab retains the diagnosis, Git preview exposes the ready code, and
+  one explicit confirmation commits that preview to a descriptive branch or,
+  for one file, directly to the selected base branch.
 - Preview commits are atomic: source changes and `CHANGELOGS.md` share one Git
   commit. A stale source SHA, expired preview, or concurrent confirmation is
   rejected before updating a branch.
@@ -39,14 +40,36 @@ GitHub source tree under `services/**`.
 
 ## API
 
-`POST /v1/diagnose`
+The API supports both workflows explicitly:
+
+- `POST /v1/analyze-and-fix`: diagnoses and prepares the validated Git preview.
+- `POST /v1/analyze`: diagnoses without preparing or writing source code.
+- `POST /v1/fix`: accepts `analysisRunId` from an analysis-only run and prepares
+  its preview later. Only the same workspace/user may continue that run.
+- `POST /v1/commit`: commits a previously reviewed preview.
+- `POST /v1/diagnose`: backward-compatible endpoint controlled by the existing
+  `apply` and `preview` flags.
+
+Combined flow (`POST /v1/analyze-and-fix`):
 
 ```json
 {
   "logs": [],
   "instruction": "Focus on repeated tunnel failures",
   "format": "markdown",
-  "apply": false,
+  "workspaceId": "default",
+  "requestedBy": "firebase-user-id",
+  "requestedByEmail": "admin@example.com"
+}
+```
+
+Separate flow, first `POST /v1/analyze` with the same log payload, then:
+
+```json
+{
+  "analysisRunId": "analysis-run-id",
+  "instruction": "Prepare the minimal correction",
+  "format": "markdown",
   "workspaceId": "default",
   "requestedBy": "firebase-user-id",
   "requestedByEmail": "admin@example.com"
