@@ -1,7 +1,10 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine AS dependencies
 WORKDIR /app
 COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,id=docker-panel-web-npm,target=/root/.npm,sharing=locked \
+    npm ci --no-audit --no-fund
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -25,7 +28,8 @@ ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY \
     NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID \
     NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID \
     FIREBASE_DATABASE_URL=$NEXT_PUBLIC_FIREBASE_DATABASE_URL
-RUN npm run build
+RUN --mount=type=cache,id=docker-panel-web-next,target=/app/.next/cache,sharing=locked \
+    npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
