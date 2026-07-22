@@ -1521,6 +1521,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
+  const [deploymentMode, setDeploymentMode] = useState<"compose" | "dockerfile">(repository.mode);
   const [settingsTab, setSettingsTab] = useState<"overview" | "configuration" | "environment" | "networking" | "access">("overview");
   const [sharing, setSharing] = useState(repositorySharingMode(repository as RepositoryAccessRecord));
   const [sharedEmails, setSharedEmails] = useState((repository.sharedEmails || []).join(", "));
@@ -1533,6 +1534,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
     setRepositoryUrl(repository.url);
     setCredentialId(repository.credentialId || "");
     setBranch(repository.branch || "");
+    setDeploymentMode(repository.mode);
     setBranches(repository.availableBranches || []);
     setBranchMessage("");
     setLoadingBranches(false);
@@ -1540,7 +1542,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
     setSharedEmails((repository.sharedEmails || []).join(", "));
     setSettingsTab("overview");
     setShowDeleteConfirm(false);
-  }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches, repository.sharing, repository.public, repository.sharedEmails]);
+  }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.mode, repository.availableBranches, repository.sharing, repository.public, repository.sharedEmails]);
 
   async function discoverBranches() {
     if (!repositoryUrl.trim()) {
@@ -1604,13 +1606,39 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
             <label>Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select></label>
-            <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
-            <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
-            <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile} /></label>
+            <fieldset className="mode-control wide deployment-mode-settings">
+              <legend>What should this project run?</legend>
+              <div className="segmented-radio" role="radiogroup" aria-label="Project deployment mode">
+                <label><input type="radio" name="mode" value="compose" checked={deploymentMode === "compose"} onChange={() => setDeploymentMode("compose")} /><span>Docker Compose</span></label>
+                <label><input type="radio" name="mode" value="dockerfile" checked={deploymentMode === "dockerfile"} onChange={() => setDeploymentMode("dockerfile")} /><span>Dockerfile</span></label>
+              </div>
+              <small className="field-hint">{deploymentMode === "compose" ? "Runs the services defined in the selected Compose file." : "Builds the selected Dockerfile and runs it as one individual container."}</small>
+            </fieldset>
+            {deploymentMode === "compose" ? (
+              <>
+                <label>Compose file<input name="composeFile" defaultValue={repository.composeFile || defaultComposeFile} placeholder={defaultComposeFile} /><small className="field-hint">This is the Docker Compose file that will be executed.</small></label>
+                <input type="hidden" name="dockerfile" value={repository.dockerfile || "Dockerfile"} />
+              </>
+            ) : (
+              <>
+                <input type="hidden" name="composeFile" value={repository.composeFile || defaultComposeFile} />
+                <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile || "Dockerfile"} placeholder="Dockerfile" /><small className="field-hint">This Dockerfile will be built and run as an individual service.</small></label>
+              </>
+            )}
             <label>Worker pool<input name="poolId" defaultValue={repository.poolId || "default"} /></label>
-            <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
-            <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
-            <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
+            {deploymentMode === "compose" ? (
+              <>
+                <label>Compose service<input name="service" defaultValue={repository.service || "web"} /></label>
+                <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
+                <input type="hidden" name="ports" value={repository.ports || ""} />
+              </>
+            ) : (
+              <>
+                <input type="hidden" name="service" value={repository.service || "web"} />
+                <input type="hidden" name="internalPort" value={repository.internalPort || 3000} />
+                <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} placeholder="8080:80" /><small className="field-hint">Port mappings for the individual container.</small></label>
+              </>
+            )}
           </div>
           <div className="danger-tab-panel access-danger-zone">
             <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
