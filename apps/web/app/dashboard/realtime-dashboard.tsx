@@ -2,7 +2,7 @@
 
 import { signOut } from "firebase/auth";
 import { onValue, ref } from "firebase/database";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -39,6 +39,7 @@ import type { Agent, CommandPreset, CredentialSummary, Deployment, ManagedContai
 import { canManageWorker, workerSharedEmails, workerSharingMode, type WorkerAccessRecord } from "@/lib/worker-access";
 
 type Props = {
+  initialView?: View;
   workspaceId: string;
   user: { uid: string; email: string; role: string };
   initialRepositories: Repository[];
@@ -49,7 +50,7 @@ type Props = {
   initialCommandPresets: CommandPreset[];
 };
 
-type View = "containers" | "repositories" | "logs" | "workers";
+type View = "containers" | "repositories" | "logs" | "workers" | "settings";
 type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "compose.yml";
@@ -601,6 +602,7 @@ function EnvironmentEditor({ environment = {}, initialEnvText, className = "envi
 
 export function RealtimeDashboard(props: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const base = `workspaces/${props.workspaceId}`;
   const sharedResources = useSharedWorkspaceResources(props.initialRepositories, props.initialCredentials);
   const repositories = sharedResources.repositories;
@@ -609,7 +611,12 @@ export function RealtimeDashboard(props: Props) {
   const credentials = sharedResources.credentials;
   const allContainers = useCollection<ManagedContainer>(`${base}/containers`, props.initialContainers);
   const commandPresets = useCollection<CommandPreset>(`${base}/commandPresets`, props.initialCommandPresets);
-  const [view, setView] = useState<View>("containers");
+  const routeView: Record<string, View> = { deployments: "containers", projects: "repositories", logs: "logs", workers: "workers", settings: "settings" };
+  const view = routeView[pathname.split("/").filter(Boolean).at(-1) || ""] || props.initialView || "containers";
+  const navigateTo = (nextView: View) => {
+    const route = nextView === "containers" ? "deployments" : nextView === "repositories" ? "projects" : nextView;
+    router.push(`/dashboard/${route}`);
+  };
   const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
   const [now, setNow] = useState(Date.now());
 
@@ -661,17 +668,23 @@ export function RealtimeDashboard(props: Props) {
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} title="View deployments" data-tooltip="View deployments" onClick={() => setView("containers")}><SidebarContainerMark />Deployments</button>
-          <button className={view === "repositories" ? "is-active" : ""} title="View projects" data-tooltip="View projects" onClick={() => setView("repositories")}><ProjectMark />Projects</button>
-          <button className={view === "logs" ? "is-active" : ""} title="View deployment logs" data-tooltip="View deployment logs" onClick={() => setView("logs")}><Icon name="logs" />Logs</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View deployments" data-tooltip="View deployments" onClick={() => navigateTo("containers")}><SidebarContainerMark />Deployments</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View projects" data-tooltip="View projects" onClick={() => navigateTo("repositories")}><ProjectMark />Projects</button>
+          <button className={view === "logs" ? "is-active" : ""} title="View deployment logs" data-tooltip="View deployment logs" onClick={() => navigateTo("logs")}><Icon name="logs" />Logs</button>
         </nav>
 
-        <SidebarWorkers agents={agents} now={now} active={view === "workers"} onOpenWorkers={() => setView("workers")} />
+        <SidebarWorkers agents={agents} now={now} active={view === "workers"} onOpenWorkers={() => navigateTo("workers")} />
 
-        <a className="sidebar-doc-link" href="/docs" title="Open documentation" data-tooltip="Open documentation">
-          <span><Icon name="document" /></span>
-          Documentation
-        </a>
+        <div className="sidebar-utility-nav">
+          <button className={`sidebar-doc-link ${view === "settings" ? "is-active" : ""}`} type="button" title="Open settings" data-tooltip="Open settings" onClick={() => navigateTo("settings")}>
+            <span><Icon name="sliders" /></span>
+            Settings
+          </button>
+          <a className="sidebar-doc-link" href="/docs" title="Open documentation" data-tooltip="Open documentation">
+            <span><Icon name="document" /></span>
+            Documentation
+          </a>
+        </div>
 
         <div className="sidebar-footer">
           <div className="session-user"><span aria-hidden="true" /><div><small>Signed in</small><strong>{props.user.email || props.user.role}</strong></div></div>
@@ -681,15 +694,40 @@ export function RealtimeDashboard(props: Props) {
 
       <main className="main-shell">
         {view === "containers" ? (
-          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); setView("logs"); }} />
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); navigateTo("logs"); }} />
         ) : view === "repositories" ? (
-          <RepositoriesView repositories={repositories} commandPresets={commandPresets} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
+          <RepositoriesView repositories={repositories} credentials={credentials} containers={containers} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} />
         ) : view === "logs" ? (
-          <LogsView containers={containers} deployments={sortedDeployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => setView("containers")} />
+          <LogsView containers={containers} deployments={sortedDeployments} agents={agents} selectedContainerId={selectedLogContainerId} now={now} onSelectContainer={setSelectedLogContainerId} onClose={() => navigateTo("containers")} />
+        ) : view === "workers" ? (
+          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} workerViewOnly onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); navigateTo("logs"); }} />
         ) : (
-          <ContainersView repositories={repositories} containers={containers} commandPresets={commandPresets} deployments={sortedDeployments} agents={agents} activeJobs={active.length} now={now} currentUser={props.user} workerViewOnly onOpenLogs={(containerId) => { setSelectedLogContainerId(containerId); setView("logs"); }} />
+          <WorkspaceSettingsView workspaceId={props.workspaceId} user={props.user} credentials={credentials} commandPresets={commandPresets} />
         )}
       </main>
+    </div>
+  );
+}
+
+function WorkspaceSettingsView({ workspaceId, user, credentials, commandPresets }: { workspaceId: string; user: Props["user"]; credentials: CredentialSummary[]; commandPresets: CommandPreset[] }) {
+  const [settingsSection, setSettingsSection] = useState<"credentials" | "commands">("credentials");
+  return (
+    <div className="table-workspace settings-workspace">
+      <div className="projects-heading"><h1>Settings</h1><span>Workspace configuration</span></div>
+      <section className="panel workspace-settings-summary">
+        <div><span>Workspace</span><strong>{workspaceId}</strong></div>
+        <div><span>Signed in as</span><strong>{user.email || user.uid}</strong></div>
+        <div><span>Role</span><strong>{user.role}</strong></div>
+      </section>
+      <div className="workspace-settings-body">
+        <div className="workspace-settings-tabs" role="tablist" aria-label="Workspace settings">
+          <button type="button" role="tab" aria-selected={settingsSection === "credentials"} className={settingsSection === "credentials" ? "is-active" : ""} onClick={() => setSettingsSection("credentials")}><Icon name="key" />Credentials</button>
+          <button type="button" role="tab" aria-selected={settingsSection === "commands"} className={settingsSection === "commands" ? "is-active" : ""} onClick={() => setSettingsSection("commands")}><Icon name="terminal" />Registered Commands</button>
+        </div>
+        <div className="workspace-settings-content" role="tabpanel">
+          {settingsSection === "credentials" ? <CredentialsPanel credentials={credentials} currentUser={user} /> : <CommandPresetsPanel commandPresets={commandPresets} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -707,7 +745,6 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   onOpenLogs: (containerId: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [showCommandTerminal, setShowCommandTerminal] = useState(false);
   const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">(workerViewOnly ? "workers" : "containers");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
@@ -904,19 +941,15 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
         <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search deployments..." /></label>
         <div className="toolbar-actions">
           <div className="icon-toggle container-toolbar-toggle" aria-label="Deployment tools">
-            <button type="button" className={!showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View deployments" aria-label="View deployments" aria-pressed={!showCommandTerminal && containerViewMode === "containers"} data-tooltip="View deployments" onClick={() => { setShowCommandTerminal(false); setContainerViewMode("containers"); }}><SidebarContainerMark /></button>
-            <button type="button" className={!showCommandTerminal && containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={!showCommandTerminal && containerViewMode === "groups"} data-tooltip="View groups" onClick={() => { setShowCommandTerminal(false); setContainerViewMode("groups"); }}><Icon name="layers" /></button>
-            <IconButton title="Command terminal" active={showCommandTerminal} onClick={() => setShowCommandTerminal((current) => !current)}><Icon name="terminal" /></IconButton>
+            <button type="button" className={containerViewMode === "containers" ? "is-active" : ""} title="View deployments" aria-label="View deployments" aria-pressed={containerViewMode === "containers"} data-tooltip="View deployments" onClick={() => setContainerViewMode("containers")}><SidebarContainerMark /></button>
+            <button type="button" className={containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={containerViewMode === "groups"} data-tooltip="View groups" onClick={() => setContainerViewMode("groups")}><Icon name="layers" /></button>
             <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh deployments"><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
       </div>}
 
       {workerViewOnly ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
-      {showCommandTerminal ? (
-        <CommandTerminal containers={containers} commandPresets={commandPresets} agents={agents} deployments={deployments} now={now} onClose={() => setShowCommandTerminal(false)} />
-      ) : (
-        <section className="panel resource-panel">
+      <section className="panel resource-panel">
           {filteredContainers.length ? (
             containerViewMode === "workers" ? containersByWorker.map(([workerKey, worker], workerIndex) => {
               const isExpanded = expandedWorkers.has(workerKey);
@@ -965,8 +998,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
               );
             }) : filteredContainers.map((container, index) => renderContainerRow(container, index > 0))
           ) : <EmptyState title={visibleContainerRecords.length ? "No matching deployments" : "No deployments available"} copy={visibleContainerRecords.length ? "Clear the search field to show every deployment." : "Deploy a project or bring its worker online to see stopped services here."} />}
-        </section>
-      )}
+      </section>
     </div>
   );
 }
@@ -1173,9 +1205,8 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
   );
 }
 
-function RepositoriesView({ repositories, commandPresets, credentials, containers, deployments, agents, activeJobs, now, currentUser }: {
+function RepositoriesView({ repositories, credentials, containers, deployments, agents, activeJobs, now, currentUser }: {
   repositories: Repository[];
-  commandPresets: CommandPreset[];
   credentials: CredentialSummary[];
   containers: ManagedContainer[];
   deployments: Deployment[];
@@ -1189,8 +1220,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
   const [viewingDeploymentLogRepositoryId, setViewingDeploymentLogRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
-  const [showCredentials, setShowCredentials] = useState(false);
-  const [showCommandPresets, setShowCommandPresets] = useState(false);
   const projectWorkers = useMemo(() => [...agents].sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))), [agents]);
   const availableWorkers = useMemo(
     () => agents.filter((agent) => isWorkerOnline(agent, now)).sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))),
@@ -1243,16 +1272,12 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
         <div className="toolbar-actions">
           <div className="icon-toggle repository-toolbar-toggle" aria-label="Project tools">
             <IconButton title={showAddRepository ? "Close project form" : "Add project"} active={showAddRepository} onClick={() => setShowAddRepository((current) => !current)}><Icon name="add" /></IconButton>
-            <IconButton title={showCredentials ? "Close credentials" : "Credentials"} active={showCredentials} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
-            <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} active={showCommandPresets} onClick={() => setShowCommandPresets((current) => !current)}><Icon name="terminal" /></IconButton>
             <form action={enqueueAllRepositories}><PendingIconButton title="Sync all projects"><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
       </div>
 
       {showAddRepository ? <AddRepositoryPanel credentials={credentials} /> : null}
-      {showCredentials ? <CredentialsPanel credentials={credentials} currentUser={currentUser} /> : null}
-      {showCommandPresets ? <CommandPresetsPanel commandPresets={commandPresets} /> : null}
 
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
