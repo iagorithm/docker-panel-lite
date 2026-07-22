@@ -436,6 +436,7 @@ async function recordFailedDeployment(input: {
   action: JobAction;
   targetWorkerId: string;
   requestedBy: string;
+  requestedByEmail?: string;
   message: string;
 }) {
   const createdAt = Date.now();
@@ -467,6 +468,9 @@ async function recordFailedDeployment(input: {
       id: appLogRef.key,
       actorType: "ui",
       actorId: input.requestedBy,
+      actorEmail: input.requestedByEmail || "",
+      userId: input.requestedBy,
+      userEmail: input.requestedByEmail || "",
       runtime: "web",
       functionName: "recordFailedDeployment",
       action: input.action,
@@ -870,12 +874,12 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
   const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
     const message = "Repository credential is not available to this user";
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });
     return { status: "error", message };
   }
   if (!targetWorkerId) {
     const message = "Select a worker before running this action";
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });
     return { status: "error", message };
   }
   const targetWorker = targetWorkerId
@@ -883,17 +887,17 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
     : null;
   if (targetWorkerId && !targetWorker) {
     const message = "Worker not found";
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });
     return { status: "error", message };
   }
   if (targetWorkerId && !canAccessWorker(targetWorker as WorkerAccessRecord, user)) {
     const message = "Worker is not available to this user";
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });
     return { status: "error", message };
   }
   if (targetWorkerId && !agentIsOnline(targetWorker, createdAt)) {
     const message = "Worker is not available";
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });
     return { status: "error", message };
   }
   if (["deploy", "build"].includes(action)) {
@@ -904,7 +908,7 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
       targetWorkerId,
     });
     if (portCollision) {
-      await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, message: portCollision });
+      await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message: portCollision });
       return { status: "error", message: portCollision };
     }
   }
@@ -925,6 +929,7 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
     attempt: 0,
     idempotencyKey: `${user.workspaceId}:${repositoryId}:${action}:${targetWorkerId || "any"}:${createdAt}`,
     requestedBy: user.uid,
+    requestedByEmail: user.email,
     createdAt,
   };
   await adminDatabase.ref().update({
@@ -981,7 +986,7 @@ export async function enqueueAllRepositories() {
     const jobRef = adminDatabase.ref("jobs").push();
     const jobId = jobRef.key!;
     const shardId = shardFor(repositoryId);
-    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId, action: "sync", poolId: target.poolId, shardId, targetWorkerId: target.workerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId, action: "sync", poolId: target.poolId, shardId, targetWorkerId: target.workerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, requestedByEmail: user.email, createdAt };
     updates[`jobs/${jobId}`] = job;
     updates[`queues/${target.poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId: target.workerId };
     updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
@@ -1003,7 +1008,7 @@ export async function enqueueContainerAction(formData: FormData) {
   const poolId = target.poolId;
   const targetWorkerId = target.targetWorkerId;
   const containerRef = target.containerRef;
-  const job = { id: jobId, workspaceId: user.workspaceId, containerId, containerRef, repositoryId: "", action, poolId, shardId, targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+  const job = { id: jobId, workspaceId: user.workspaceId, containerId, containerRef, repositoryId: "", action, poolId, shardId, targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, requestedByEmail: user.email, createdAt };
   await adminDatabase.ref().update({ [`jobs/${jobId}`]: job, [`queues/${poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId }, [`workspaces/${user.workspaceId}/deployments/${jobId}`]: job });
 }
 
@@ -1017,15 +1022,15 @@ export async function enqueueWorkerCommand(formData: FormData) {
   const workspaceRoot = `workspaces/${user.workspaceId}`;
   const targetWorker = (await adminDatabase.ref(`${workspaceRoot}/agents/${targetWorkerId}`).get()).val();
   if (!targetWorker) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker not found" });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message: "Worker not found" });
     return;
   }
   if (!canAccessWorker(targetWorker as WorkerAccessRecord, user)) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker is not available to this user" });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message: "Worker is not available to this user" });
     return;
   }
   if (!agentIsOnline(targetWorker, createdAt)) {
-    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, message: "Worker is not available" });
+    await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId: repositoryId || "worker-command", action: "worker_command", targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message: "Worker is not available" });
     return;
   }
   if (repositoryId) {
@@ -1052,6 +1057,7 @@ export async function enqueueWorkerCommand(formData: FormData) {
     progress: 0,
     attempt: 0,
     requestedBy: user.uid,
+    requestedByEmail: user.email,
     createdAt,
   };
   await adminDatabase.ref().update({
@@ -1093,6 +1099,7 @@ export async function enqueueContainerCommand(formData: FormData) {
     progress: 0,
     attempt: 0,
     requestedBy: user.uid,
+    requestedByEmail: user.email,
     createdAt,
   };
   await adminDatabase.ref().update({
@@ -1124,7 +1131,7 @@ export async function enqueueContainerTunnelRefresh(formData: FormData) {
     const jobId = jobRef.key!;
     const shardId = shardFor(`container-tunnel:${containerId}:${createdAt}`);
     const internalPort = Number(String((Array.isArray(container.ports) ? container.ports[0] : "") || "").match(/->(\d+)/)?.[1] || 3000);
-    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId: "", containerId, containerRef: target.containerRef, action: "container_tunnel_start", internalPort, tunnelReset: true, poolId: target.poolId, shardId, targetWorkerId: target.targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, createdAt };
+    const job = { id: jobId, workspaceId: user.workspaceId, repositoryId: "", containerId, containerRef: target.containerRef, action: "container_tunnel_start", internalPort, tunnelReset: true, poolId: target.poolId, shardId, targetWorkerId: target.targetWorkerId, status: "queued", progress: 0, attempt: 0, requestedBy: user.uid, requestedByEmail: user.email, createdAt };
     await adminDatabase.ref().update({
       [`jobs/${jobId}`]: job,
       [`queues/${target.poolId}/${shardId}/${jobId}`]: { createdAt, priority: 100, targetWorkerId: target.targetWorkerId },
@@ -1154,6 +1161,7 @@ export async function enqueueContainerTunnelRefresh(formData: FormData) {
     progress: 0,
     attempt: 0,
     requestedBy: user.uid,
+    requestedByEmail: user.email,
     createdAt,
   };
   await adminDatabase.ref().update({
@@ -1194,6 +1202,7 @@ export async function enqueueAllContainerLogs() {
       progress: 0,
       attempt: 0,
       requestedBy: user.uid,
+      requestedByEmail: user.email,
       createdAt,
     };
     updates[`jobs/${jobId}`] = job;
@@ -1232,6 +1241,7 @@ export async function enqueueInventoryRefresh() {
       progress: 0,
       attempt: 0,
       requestedBy: user.uid,
+      requestedByEmail: user.email,
       createdAt,
     };
     updates[`jobs/${jobId}`] = job;
