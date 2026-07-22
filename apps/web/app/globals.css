@@ -1096,6 +1096,9 @@ a:hover { text-decoration-color: var(--ui-text); }
 .repository-deployment-log-header > div { display: flex; min-width: 0; flex-direction: column; gap: 0.12rem; }
 .repository-deployment-log-header strong { font-size: 0.74rem; }
 .repository-deployment-log-header span { color: #93a4b8; font-size: 0.62rem; }
+.repository-debug-tunnels { display: flex; flex-wrap: wrap; gap: 0.25rem 0.7rem; margin-top: 0.25rem; }
+.repository-debug-tunnels a { color: #67e8f9; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.61rem; overflow-wrap: anywhere; text-decoration: none; }
+.repository-debug-tunnels a:hover { color: #cffafe; text-decoration: underline; }
 .repository-deployment-log-header .icon-button { width: 1.9rem; min-width: 1.9rem; min-height: 1.9rem; color: #cbd5e1; background: transparent; border-color: #334155; }
 .repository-deployment-log-list { display: grid; max-height: 22rem; overflow-y: auto; }
 .repository-deployment-event { display: grid; grid-template-columns: minmax(14rem, 0.35fr) minmax(18rem, 1fr) auto; gap: 0.8rem; align-items: start; padding: 0.65rem 0.8rem; border-bottom: 1px solid #202d40; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }

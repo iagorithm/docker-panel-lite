@@ -344,10 +344,23 @@ function RepositoryDeploymentLog({ repository, deployments, open, onClose }: {
     .filter((deployment) => deployment.repositoryId === repository.id)
     .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0))
     .slice(0, 20);
+  const tunnelUrls = repositoryDebugTunnelUrls(repository);
   return (
     <section className="repository-deployment-log" aria-label={`Deployment log for ${repository.alias}`}>
       <div className="repository-deployment-log-header">
-        <div><strong>Deployment events</strong><span>{repository.alias} · latest 20 jobs</span></div>
+        <div>
+          <strong>Deployment events</strong>
+          <span>{repository.alias} · latest 20 jobs</span>
+          {tunnelUrls.length ? (
+            <div className="repository-debug-tunnels">
+              {tunnelUrls.map(([service, url]) => (
+                <a href={url} target="_blank" rel="noreferrer" key={`${service}:${url}`}>
+                  tunnel[{service}]={url}
+                </a>
+              ))}
+            </div>
+          ) : <span>tunnel=not published</span>}
+        </div>
         <IconButton title="Close deployment events" onClick={onClose}><Icon name="close" /></IconButton>
       </div>
       {entries.length ? (
@@ -383,6 +396,21 @@ function repositoryPublicUrls(repository: Repository) {
   const entries = Object.entries(repository.publicUrls || {}).filter(([, url]) => Boolean(url));
   if (entries.length) return entries;
   return repository.publicUrl ? [[repository.service || "app", repository.publicUrl] as [string, string]] : [];
+}
+
+function repositoryDebugTunnelUrls(repository: Repository) {
+  const urls = new Map<string, string>();
+  const add = (service: string, value?: string) => {
+    const raw = String(value || "").trim();
+    if (!raw) return;
+    urls.set(service || repository.service || "app", /^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  };
+
+  for (const [service, tunnel] of Object.entries(repository.publicTunnels || {})) add(service, tunnel.url || tunnel.domain);
+  for (const [service, url] of Object.entries(repository.publicUrls || {})) add(service, url);
+  for (const [service, domain] of Object.entries(repository.publicTunnelDomains || {})) add(service, domain);
+  add(repository.service || "app", repository.publicUrl || repository.publicTunnelDomain);
+  return [...urls.entries()];
 }
 
 function containerPrimaryAction(status: string): ContainerAction {
