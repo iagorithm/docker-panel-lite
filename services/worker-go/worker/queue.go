@@ -590,6 +590,7 @@ func jobActionLabel(action string) string {
 		"build":             "build Dockerfile container",
 		"discover_branches": "discover branches",
 		"read_compose":      "read Compose file",
+		"read_dockerfile":   "read Dockerfile",
 		"tunnel_start":      "open public URL",
 		"tunnel_stop":       "close public URL",
 	}

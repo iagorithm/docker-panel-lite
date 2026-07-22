@@ -31,6 +31,7 @@ export type Repository = {
   defaultWorkerId?: string;
   availableBranches?: string[];
   composeContent?: string;
+  dockerfileContent?: string;
   createdAt: number;
   updatedAt: number;
   scope?: "workspace";

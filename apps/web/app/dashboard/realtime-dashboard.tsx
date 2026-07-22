@@ -50,7 +50,7 @@ type Props = {
 };
 
 type View = "containers" | "repositories" | "logs" | "workers" | "settings";
-type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "read_dockerfile" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs";
 const defaultComposeFile = "docker-compose.yaml";
 const defaultContainerCommand = 'docker compose -f docker-compose-local-setup.yaml exec -it api bash "/vagrant/scripts/nuke_database.sh"';
@@ -1293,6 +1293,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
   const [query, setQuery] = useState("");
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
+  const [viewingDockerfileRepositoryId, setViewingDockerfileRepositoryId] = useState<string | null>(null);
   const [viewingDeploymentLogRepositoryId, setViewingDeploymentLogRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const projectWorkers = useMemo(() => [...agents].sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))), [agents]);
@@ -1365,6 +1366,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
           const publicUrls = repositoryPublicUrls(repository);
           const latestDeployment = deployments.filter((deployment) => deployment.repositoryId === repository.id).sort((a, b) => b.createdAt - a.createdAt)[0];
           const latestComposeRead = deployments.filter((deployment) => deployment.repositoryId === repository.id && deployment.action === "read_compose").sort((a, b) => b.createdAt - a.createdAt)[0];
+          const latestDockerfileRead = deployments.filter((deployment) => deployment.repositoryId === repository.id && deployment.action === "read_dockerfile").sort((a, b) => b.createdAt - a.createdAt)[0];
           const projectUrl = publicUrls[0]?.[1] || repository.publicTunnelDomain || "Not deployed publicly";
           const productionDomainUrl = repository.domain ? (repository.domain.startsWith("http") ? repository.domain : `https://${repository.domain}`) : "";
           const latestWorker = latestDeployment?.targetWorkerId ? agentById.get(latestDeployment.targetWorkerId) : undefined;
@@ -1398,7 +1400,15 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
                   ) : (
                     <QueueButton repositoryId={repository.id} action="read_compose" title="View Compose" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_compose"))} onClick={() => setViewingComposeRepositoryId(repository.id)}><Icon name="document" /></QueueButton>
                   )
-                ) : null}
+                ) : (
+                  viewingDockerfileRepositoryId === repository.id ? (
+                    <IconButton title="Close Dockerfile" onClick={() => setViewingDockerfileRepositoryId(null)}><Icon name="close" /></IconButton>
+                  ) : !workerSelected ? (
+                    <IconButton title="Select a worker first" disabled><Icon name="document" /></IconButton>
+                  ) : (
+                    <QueueButton repositoryId={repository.id} action="read_dockerfile" title="View Dockerfile" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("read_dockerfile"))} onClick={() => setViewingDockerfileRepositoryId(repository.id)}><Icon name="document" /></QueueButton>
+                  )
+                )}
                 {repository.mode === "compose" ? <QueueButton repositoryId={repository.id} action="deploy" title="Deploy" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("deploy"))} disabled={!workerSelected}><Icon name="play" /></QueueButton> : <QueueButton repositoryId={repository.id} action="build" title="Build and run" targetWorkerId={targetWorkerId} primary busy={busyRepositoryActions.has(actionKey("build"))} disabled={!workerSelected}><Icon name="play" /></QueueButton>}
                 <IconButton
                   title={viewingDeploymentLogRepositoryId === repository.id ? "Close deployment events" : "Deployment events"}
@@ -1411,6 +1421,7 @@ function RepositoriesView({ repositories, credentials, containers, deployments, 
               </div>
               {isOwner ? <RepositorySettings repository={repository} credentials={credentials} workers={projectWorkers} deployedWorkers={deployedWorkers} latestDeployment={latestDeployment} latestWorker={latestWorker} now={now} open={editingRepositoryId === repository.id} /> : null}
               <ComposeViewer repository={repository} deployment={latestComposeRead} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
+              <DockerfileViewer repository={repository} deployment={latestDockerfileRead} open={viewingDockerfileRepositoryId === repository.id} onClose={() => setViewingDockerfileRepositoryId(null)} />
               <RepositoryDeploymentLog repository={repository} deployments={deployments} open={viewingDeploymentLogRepositoryId === repository.id} onClose={() => setViewingDeploymentLogRepositoryId(null)} />
             </article>
           );
@@ -1709,6 +1720,31 @@ function ComposeViewer({ repository, deployment, open, onClose }: { repository: 
       <div className="compose-viewer-header">
         <div><strong>Docker Compose</strong><span>{repository.composeFile || defaultComposeFile}</span></div>
         <button type="button" title="Close Compose" aria-label="Close Compose" data-tooltip="Close Compose" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <pre className="code-viewer"><code>{viewerContent}</code></pre>
+    </div>
+  );
+}
+
+function DockerfileViewer({ repository, deployment, open, onClose }: { repository: Repository; deployment?: Deployment; open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  const dockerfileContent = repository.dockerfileContent;
+  const viewerContent = typeof dockerfileContent === "string"
+    ? dockerfileContent || "The Dockerfile is empty."
+    : deployment?.status === "failed"
+      ? `Could not load the Dockerfile.\n\n${deployment.message || "The worker reported an unknown error."}`
+      : deployment?.status === "completed"
+        ? `The worker completed the request but did not return Dockerfile content.\n\n${deployment.message || "Check that the configured Dockerfile exists in the repository."}`
+        : deployment && ["queued", "leased", "running"].includes(deployment.status)
+          ? `Loading Dockerfile...\n\nStatus: ${deployment.status}`
+          : deployment
+            ? `Could not load the Dockerfile.\n\nJob status: ${deployment.status}${deployment.message ? `\n${deployment.message}` : ""}`
+            : "Waiting for the Dockerfile read request to be queued...";
+  return (
+    <div className="compose-viewer full-row">
+      <div className="compose-viewer-header">
+        <div><strong>Dockerfile</strong><span>{repository.dockerfile || "Dockerfile"}</span></div>
+        <button type="button" title="Close Dockerfile" aria-label="Close Dockerfile" data-tooltip="Close Dockerfile" onClick={onClose}><Icon name="close" /></button>
       </div>
       <pre className="code-viewer"><code>{viewerContent}</code></pre>
     </div>

@@ -61,13 +61,20 @@ func Execute(ctx context.Context, client *Client, job map[string]interface{}, re
 				"branchesUpdatedAt": nowMillis(),
 			},
 		}, nil
-	case "sync", "read_compose":
+	case "sync", "read_compose", "read_dockerfile":
 		path, err := syncRepository(ctx, client, repository, workspaceID, settings)
 		if err != nil {
 			return Result{}, err
 		}
 		updates := map[string]interface{}{}
-		if stringValue(repository["mode"]) == "compose" {
+		mode := stringValue(repository["mode"])
+		if action == "read_compose" && mode != "compose" {
+			return Result{}, fmt.Errorf("project is not configured for Docker Compose")
+		}
+		if action == "read_dockerfile" && mode != "dockerfile" {
+			return Result{}, fmt.Errorf("project is not configured for Dockerfile")
+		}
+		if mode == "compose" && action != "read_dockerfile" {
 			composePath, err := repositoryFile(path, stringValue(repository["composeFile"]), "compose.yml", "Compose file", true)
 			if err != nil {
 				return Result{}, err
@@ -82,6 +89,21 @@ func Execute(ctx context.Context, client *Client, job map[string]interface{}, re
 				return Result{}, err
 			}
 			updates["composeContent"] = string(content)
+		} else if mode == "dockerfile" && action == "read_dockerfile" {
+			dockerfilePath, err := repositoryFile(path, stringValue(repository["dockerfile"]), "Dockerfile", "Dockerfile", true)
+			if err != nil {
+				return Result{}, err
+			}
+			if info, err := os.Stat(dockerfilePath); err != nil {
+				return Result{}, err
+			} else if info.Size() > 1_000_000 {
+				return Result{}, fmt.Errorf("Dockerfile is larger than 1 MB")
+			}
+			content, err := os.ReadFile(dockerfilePath)
+			if err != nil {
+				return Result{}, err
+			}
+			updates["dockerfileContent"] = string(content)
 		}
 		return Result{Message: "Repository synchronized", Updates: updates}, nil
 	case "stop":

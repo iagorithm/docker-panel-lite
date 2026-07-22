@@ -33,7 +33,7 @@ const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const defaultComposeFile = "docker-compose.yaml";
 const workerOnlineFreshness = 45_000;
 const orphanWorkerDeleteAge = 2 * 60_000;
-type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "worker_command" | "tunnel_start" | "tunnel_stop";
+type RepositoryAction = "sync" | "deploy" | "stop" | "build" | "discover_branches" | "read_compose" | "read_dockerfile" | "worker_command" | "tunnel_start" | "tunnel_stop";
 type ContainerJobAction = "container_start" | "container_stop" | "container_restart" | "container_delete" | "container_logs" | "container_exec" | "container_tunnel_start";
 type JobAction = RepositoryAction | ContainerJobAction;
 
@@ -913,7 +913,7 @@ export async function deleteCommandPreset(formData: FormData) {
 async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQueueState> {
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
-  const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose", "tunnel_start", "tunnel_stop"]).parse(formData.get("action"));
+  const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose", "read_dockerfile", "tunnel_start", "tunnel_stop"]).parse(formData.get("action"));
   let targetWorkerId = z.string().trim().default("").parse(formData.get("targetWorkerId") || "");
   const repository = (
     await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).get()
@@ -922,7 +922,7 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
   if (!canAccessRepository(repository as RepositoryAccessRecord, user)) throw new Error("Repository is not available to this user");
   targetWorkerId ||= String(repository.defaultWorkerId || "");
   const createdAt = Date.now();
-  const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
+  const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose", "read_dockerfile"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {
     const message = "Repository credential is not available to this user";
     await recordFailedDeployment({ workspaceId: user.workspaceId, repositoryId, action, targetWorkerId, requestedBy: user.uid, requestedByEmail: user.email, message });

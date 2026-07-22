@@ -56,6 +56,7 @@ def job_action_label(action: str) -> str:
         "stop": "stop repository",
         "discover_branches": "discover branches",
         "read_compose": "read Compose file",
+        "read_dockerfile": "read Dockerfile",
         "inventory_refresh": "refresh container inventory",
         "container_start": "start container",
         "container_stop": "stop container",

@@ -775,9 +775,13 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
         )
         return _public_urls_message(updates.get("publicUrls")), updates
     path = _sync(repository, workspace_id, settings)
-    if action in {"sync", "read_compose"}:
+    if action in {"sync", "read_compose", "read_dockerfile"}:
         updates = {}
-        if mode == "compose":
+        if action == "read_compose" and mode != "compose":
+            raise ValueError("Project is not configured for Docker Compose")
+        if action == "read_dockerfile" and mode != "dockerfile":
+            raise ValueError("Project is not configured for Dockerfile")
+        if mode == "compose" and action != "read_dockerfile":
             compose_path = _repository_file(
                 path,
                 repository.get("composeFile", ""),
@@ -788,6 +792,17 @@ def execute(job: dict, repository: dict, settings: Settings) -> tuple[str, dict]
             if compose_path.stat().st_size > 1_000_000:
                 raise ValueError("Compose file is larger than 1 MB")
             updates["composeContent"] = compose_path.read_text(encoding="utf-8", errors="replace")
+        elif mode == "dockerfile" and action == "read_dockerfile":
+            dockerfile_path = _repository_file(
+                path,
+                repository.get("dockerfile", ""),
+                "Dockerfile",
+                "Dockerfile",
+                must_exist=True,
+            )
+            if dockerfile_path.stat().st_size > 1_000_000:
+                raise ValueError("Dockerfile is larger than 1 MB")
+            updates["dockerfileContent"] = dockerfile_path.read_text(encoding="utf-8", errors="replace")
         return "Repository synchronized", updates
     if action not in {"deploy", "build"}:
         raise ValueError(f"Unknown repository action: {action}")
