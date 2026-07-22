@@ -115,7 +115,7 @@ class GitHubServices:
         if self.preview_writes:
             diff = "\n".join(difflib.unified_diff(previous.splitlines(), content.splitlines(), fromfile=f"a/{safe}", tofile=f"b/{safe}", lineterm=""))
             self.preview_changes = [change for change in self.preview_changes if change["path"] != safe]
-            self.preview_changes.append({"path": safe, "content": content, "reason": reason[:500], "diff": diff, "baseSha": current["sha"]})
+            self.preview_changes.append({"path": safe, "content": content, "previousContent": previous, "reason": reason[:500], "diff": diff, "baseSha": current["sha"]})
             return f"Preview ready for {safe}; no commit was created"
         branch = self.ensure_branch(reason)
         message = (commit_message.strip() or f"fix(services): {reason}").replace("\n", " ")[:120]

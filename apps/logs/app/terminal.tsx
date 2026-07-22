@@ -117,7 +117,7 @@ type AgentFix = {
   targetBranch: string; commitSha: string; commitMessage: string; hotfix: boolean;
   requestedBy: string; requestedByEmail?: string; report: string;
   changes: Array<{ path: string; commit: string; reason?: string }>;
-  logIds: string[]; createdAt: number;
+  logIds: string[]; createdAt: number; reapplicable: boolean;
 };
 
 async function responseBody(response: Response) {
@@ -380,6 +380,32 @@ export function LogsTerminal() {
     }
   };
 
+  const reapplyFix = async (fix: AgentFix, sourceLogs: AppLog[]) => {
+    setAgentRunning(true);
+    setPreparingMode(fix.hotfix ? "hotfix" : "fix");
+    setError("");
+    setAgentNotice("");
+    try {
+      const response = await fetch("/api/agent/fixes", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fixId: fix.id, hotfix: fix.hotfix }),
+      });
+      const body = await responseBody(response) as { error?: string; runId?: string; report?: string; baseBranch?: string; plannedBranch?: string; commitMessage?: string; previews?: Array<{ path: string; reason: string; diff: string }>; hotfix?: boolean };
+      if (!response.ok || !body.runId || !body.previews?.length) throw new Error(body.error || `Reapply returned HTTP ${response.status}`);
+      setAgentResult({ runId: body.runId, report: body.report || fix.report, baseBranch: body.baseBranch, plannedBranch: body.plannedBranch, commitMessage: body.commitMessage, previews: body.previews, hotfix: body.hotfix });
+      setAgentResultKind("solution");
+      setAgentSourceLogs(sourceLogs);
+      setAgentTab("preview");
+      if (sourceLogs[0]) setExpandedLogIds((current) => new Set(current).add(sourceLogs[0].id));
+      setAgentNotice(`Reapply prepared from ${fix.id}; review the diff before committing.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAgentRunning(false);
+      setPreparingMode(null);
+    }
+  };
+
   const downloadAgentReport = () => {
     if (!agentResult) return;
     const blob = new Blob([agentResult.report], { type: agentMarkdown ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" });
@@ -495,7 +521,7 @@ export function LogsTerminal() {
               {occurrences.map((item) => item.agentFixId).filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index).map((fixId) => {
                 const fix = agentFixes.get(fixId);
                 return <section className="agent-fix-record" key={fixId}>
-                  <header><Icon name="commit" /><strong>{fixId}</strong>{fix ? <time>{formattedDate(fix.createdAt)}</time> : null}</header>
+                  <header><Icon name="commit" /><strong>{fixId}</strong>{fix ? <><time>{formattedDate(fix.createdAt)}</time><button className="icon-control" title={fix.reapplicable ? "Prepare this exact fix again" : "Reapply unavailable: this record has no safe source snapshot"} aria-label={`Reapply ${fixId}`} disabled={agentRunning || !fix.reapplicable} onClick={() => void reapplyFix(fix, occurrences)}><Icon name="apply" /></button></> : null}</header>
                   {fix ? <div className="agent-fix-grid">
                     <span>Commit</span><code>{fix.commitSha}</code>
                     <span>Branch</span><code>{fix.targetBranch}{fix.hotfix ? " · hotfix" : ""}</code>

@@ -18,10 +18,11 @@ class FixStoreTests(unittest.TestCase):
                 requested_by="user123", requested_by_email="user@example.com",
                 report="Timeout was caused by an unbounded request.",
                 changes=[{"path": "services/worker/main.py", "commit": "abc123"}],
-                log_ids=["log1", "log2"],
+                log_ids=["log1", "log2"], patches=[{"path": "services/worker/main.py", "previousContent": "old", "content": "new"}],
             )
             reopened = FixStore(path)
             self.assertEqual(saved["commitSha"], "abc123")
+            self.assertTrue(saved["reapplicable"])
             self.assertEqual(reopened.get("alpha", "fix_run123")["logIds"], ["log1", "log2"])
             self.assertEqual(len(reopened.list("alpha")), 1)
             self.assertEqual(reopened.list("another"), [])

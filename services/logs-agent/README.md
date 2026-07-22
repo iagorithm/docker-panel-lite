@@ -33,6 +33,9 @@ GitHub source tree under `services/**`.
 - Applied fixes are stored independently in the agent's persistent SQLite database
   at `LOGS_AGENT_DATABASE_PATH`. Firebase log records retain `agentFixId` so the
   logs UI can resolve the exact commit, branch, files, requester, and timestamp.
+- New fix records retain a private before/after snapshot and can prepare the exact
+  correction again. Reapply refuses files that already contain the fix or differ
+  from the original pre-fix version, and still requires preview confirmation.
 
 ## API
 

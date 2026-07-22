@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import difflib
 import json
 import hmac
 import os
@@ -69,6 +71,15 @@ class CommitRequest(BaseModel):
         if len(self.commitMessage) < 3:
             raise ValueError("commitMessage must contain at least 3 visible characters")
         return self
+
+
+class ReapplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fixId: str = Field(min_length=5, max_length=100)
+    workspaceId: str
+    requestedBy: str
+    requestedByEmail: str = ""
+    hotfix: bool = False
 
 
 def firebase_app():
@@ -161,6 +172,58 @@ def fixes(workspaceId: str, fixId: str = "", limit: int = 200, x_agent_secret: s
     return {"fixes": fix_store.list(workspaceId, limit)}
 
 
+@app.post("/v1/fixes/reapply")
+def reapply_fix(request: ReapplyRequest, x_agent_secret: str = Header(default="")):
+    authorize(x_agent_secret)
+    validate_segment(request.workspaceId, "workspaceId")
+    validate_segment(request.requestedBy, "requestedBy")
+    validate_segment(request.fixId, "fixId")
+    stored = fix_store.reapply_payload(request.workspaceId, request.fixId)
+    if not stored:
+        raise HTTPException(status_code=404, detail="Agent fix record not found")
+    original, patches = stored
+    configured_repository = os.environ["GITHUB_REPOSITORY"]
+    configured_base = os.environ.get("GITHUB_BASE_BRANCH", "main")
+    if original["repository"] != configured_repository or original["baseBranch"] != configured_base:
+        raise HTTPException(status_code=409, detail="Safe reapply blocked: the configured repository or base branch differs from the original fix")
+    if not patches:
+        raise HTTPException(status_code=409, detail="This legacy fix does not contain a safe reapply snapshot")
+    if request.hotfix and len(patches) != 1:
+        raise HTTPException(status_code=400, detail="Hotfix reapply requires exactly one services file")
+    run_id = uuid.uuid4().hex[:16]
+    github = GitHubServices(os.environ["GITHUB_TOKEN"], configured_repository, configured_base, run_id, True, request.hotfix, True)
+    previews = []
+    for patch in patches:
+        path = github.safe_path(str(patch.get("path") or ""))
+        current = github.request("GET", f"/contents/{path}?ref={github.base_branch}")
+        current_content = base64.b64decode(current["content"]).decode("utf-8")
+        previous = str(patch.get("previousContent") or "")
+        proposed = str(patch.get("content") or "")
+        if current_content == proposed:
+            raise HTTPException(status_code=409, detail=f"Fix is already present in {path}")
+        if current_content != previous:
+            raise HTTPException(status_code=409, detail=f"Safe reapply blocked: {path} changed since the original fix")
+        github.validate_safe_replacement(path, current_content, proposed)
+        diff = "\n".join(difflib.unified_diff(current_content.splitlines(), proposed.splitlines(), fromfile=f"a/{path}", tofile=f"b/{path}", lineterm=""))
+        previews.append({"path": path, "content": proposed, "previousContent": current_content, "reason": str(patch.get("reason") or original["commitMessage"])[:500], "diff": diff, "baseSha": current["sha"]})
+    first_reason = previews[0]["reason"]
+    planned_branch = github.base_branch if request.hotfix else github.branch_name(first_reason)
+    expires_at = int(time.time() * 1000) + PREVIEW_TTL_SECONDS * 1000
+    trace = db.reference(f"workspaces/{request.workspaceId}/agent_runs/{run_id}", app=firebase_app())
+    trace.set({
+        "id": run_id, "status": "preview", "requestedBy": request.requestedBy,
+        "requestedByEmail": request.requestedByEmail, "apply": True,
+        "hotfix": request.hotfix, "preview": True, "format": "summary",
+        "logIds": original["logIds"], "report": original["report"],
+        "baseBranch": github.base_branch, "plannedBranch": planned_branch,
+        "commitMessage": original["commitMessage"], "previewChanges": previews,
+        "reappliesFixId": request.fixId, "previewExpiresAt": expires_at,
+        "createdAt": {".sv": "timestamp"}, "finishedAt": {".sv": "timestamp"},
+    })
+    public_previews = [{key: patch[key] for key in ("path", "reason", "diff")} for patch in previews]
+    return {"runId": run_id, "report": original["report"], "baseBranch": github.base_branch, "plannedBranch": planned_branch, "commitMessage": original["commitMessage"], "previews": public_previews, "hotfix": request.hotfix, "reappliesFixId": request.fixId}
+
+
 @app.post("/v1/diagnose")
 def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
     authorize(x_agent_secret)
@@ -249,7 +312,7 @@ def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default=
             commit_message=request.commitMessage, hotfix=request.hotfix,
             requested_by=request.requestedBy, requested_by_email=request.requestedByEmail,
             report=existing.get("report", ""), changes=github.changes,
-            log_ids=existing.get("logIds", []),
+            log_ids=existing.get("logIds", []), patches=existing["previewChanges"],
         )
         result = {"runId": request.runId, "fixId": fix_id, "fix": fix_record, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix, "commitMessage": request.commitMessage}
         trace.update({**result, "status": "completed", "committedAt": {".sv": "timestamp"}, "previewChanges": None})
