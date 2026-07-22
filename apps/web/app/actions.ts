@@ -1236,42 +1236,37 @@ export async function enqueueAllContainerLogs() {
 }
 
 export async function enqueueInventoryRefresh() {
-  const user = await requireSession("operator");
-  const createdAt = Date.now();
-  const agents = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents`).get()).val() ?? {};
-  const targets = Object.entries(agents as Record<string, Record<string, string>>)
-    .map(([agentId, agent]) => ({ agentId, poolId: agent.poolId || "default" }))
-    .filter((agent) => {
-      const record = (agents as Record<string, Record<string, string | number>>)[agent.agentId] || {};
-      return agent.agentId && canAccessWorker(record as WorkerAccessRecord, user) && agentIsOnline(record, createdAt);
-    });
-  if (!targets.length) return;
-  const updates: Record<string, unknown> = {};
-  for (const target of targets) {
-    const jobRef = adminDatabase.ref("jobs").push();
-    const jobId = jobRef.key!;
-    const shardId = shardFor(`inventory:${user.workspaceId}:${target.agentId || "default"}`);
-    const job = {
-      id: jobId,
-      workspaceId: user.workspaceId,
-      containerId: "",
-      repositoryId: "",
-      action: "inventory_refresh",
-      poolId: target.poolId,
-      shardId,
-      targetWorkerId: target.agentId,
-      status: "queued",
-      progress: 0,
-      attempt: 0,
-      requestedBy: user.uid,
-      requestedByEmail: user.email,
-      createdAt,
-    };
-    updates[`jobs/${jobId}`] = job;
-    updates[`queues/${target.poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId: target.agentId };
-    updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
+  try {
+    const user = await requireSession("operator");
+    const createdAt = Date.now();
+    const agents = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents`).get()).val() ?? {};
+    const targets = Object.entries(agents as Record<string, Record<string, string>>)
+      .map(([agentId, agent]) => ({ agentId, poolId: agent.poolId || "default" }))
+      .filter((agent) => {
+        const record = (agents as Record<string, Record<string, string | number>>)[agent.agentId] || {};
+        return agent.agentId && canAccessWorker(record as WorkerAccessRecord, user) && agentIsOnline(record, createdAt);
+      });
+    if (!targets.length) return { ok: false, message: "No online workers are available to refresh deployments." };
+    const updates: Record<string, unknown> = {};
+    for (const target of targets) {
+      const jobRef = adminDatabase.ref("jobs").push();
+      const jobId = jobRef.key!;
+      const shardId = shardFor(`inventory:${user.workspaceId}:${target.agentId || "default"}`);
+      const job = {
+        id: jobId, workspaceId: user.workspaceId, containerId: "", repositoryId: "", action: "inventory_refresh",
+        poolId: target.poolId, shardId, targetWorkerId: target.agentId, status: "queued", progress: 0, attempt: 0,
+        requestedBy: user.uid, requestedByEmail: user.email, createdAt,
+      };
+      updates[`jobs/${jobId}`] = job;
+      updates[`queues/${target.poolId}/${shardId}/${jobId}`] = { createdAt, priority: 100, targetWorkerId: target.agentId };
+      updates[`workspaces/${user.workspaceId}/deployments/${jobId}`] = job;
+    }
+    await adminDatabase.ref().update(updates);
+    return { ok: true, message: `Refreshing deployments on ${targets.length} worker${targets.length === 1 ? "" : "s"}.` };
+  } catch (error) {
+    console.error("enqueueInventoryRefresh failed", error);
+    return { ok: false, message: "Deployment refresh could not be queued. Please try again." };
   }
-  await adminDatabase.ref().update(updates);
 }
 
 export async function deleteWorker(formData: FormData) {

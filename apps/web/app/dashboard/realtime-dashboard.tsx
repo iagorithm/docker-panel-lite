@@ -710,7 +710,7 @@ export function RealtimeDashboard(props: Props) {
 }
 
 function WorkspaceSettingsView({ workspaceId, user, credentials, commandPresets }: { workspaceId: string; user: Props["user"]; credentials: CredentialSummary[]; commandPresets: CommandPreset[] }) {
-  const [settingsSection, setSettingsSection] = useState<"credentials" | "commands">("credentials");
+  const [settingsSection, setSettingsSection] = useState<"credentials" | "commands" | "projects">("credentials");
   return (
     <div className="table-workspace settings-workspace">
       <div className="projects-heading"><h1>Settings</h1><span>Workspace configuration</span></div>
@@ -723,12 +723,25 @@ function WorkspaceSettingsView({ workspaceId, user, credentials, commandPresets 
         <div className="workspace-settings-tabs" role="tablist" aria-label="Workspace settings">
           <button type="button" role="tab" aria-selected={settingsSection === "credentials"} className={settingsSection === "credentials" ? "is-active" : ""} onClick={() => setSettingsSection("credentials")}><Icon name="key" />Credentials</button>
           <button type="button" role="tab" aria-selected={settingsSection === "commands"} className={settingsSection === "commands" ? "is-active" : ""} onClick={() => setSettingsSection("commands")}><Icon name="terminal" />Registered Commands</button>
+          <button type="button" role="tab" aria-selected={settingsSection === "projects"} className={settingsSection === "projects" ? "is-active" : ""} onClick={() => setSettingsSection("projects")}><Icon name="download" />Import Projects</button>
         </div>
         <div className="workspace-settings-content" role="tabpanel">
-          {settingsSection === "credentials" ? <CredentialsPanel credentials={credentials} currentUser={user} /> : <CommandPresetsPanel commandPresets={commandPresets} />}
+          {settingsSection === "credentials" ? <CredentialsPanel credentials={credentials} currentUser={user} /> : settingsSection === "commands" ? <CommandPresetsPanel commandPresets={commandPresets} /> : <ProjectsImportPanel />}
         </div>
       </div>
     </div>
+  );
+}
+
+function ProjectsImportPanel() {
+  return (
+    <section className="panel settings-import-panel">
+      <div className="section-title"><div><h2>Import Projects</h2><p>Register multiple projects from a JSON document.</p></div></div>
+      <form action={importRepositoriesJson} className="repository-import-form">
+        <label>Projects JSON<textarea name="repositoriesJson" rows={10} spellCheck={false} placeholder='{"my-project":{"url":"https://github.com/org/repo.git","mode":"compose","compose_file":"compose.yml"}}' /></label>
+        <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import projects from JSON">Import projects</PendingSubmitButton></div>
+      </form>
+    </section>
   );
 }
 
@@ -753,6 +766,16 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     () => new Set(agents.filter((agent) => isWorkerOnline(agent, now)).map((agent) => agent.id)),
     [agents, now],
   );
+  const inventoryRefreshBusy = deployments.some((job) => job.action === "inventory_refresh" && isActiveJob(job, now));
+  async function refreshDeployments() {
+    try {
+      const result = await enqueueInventoryRefresh();
+      if (!result.ok) window.alert(result.message);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      window.alert(message.includes("Failed to find Server Action") ? "The app was updated. Reload the page and refresh deployments again." : "Deployment refresh could not be queued. Please try again.");
+    }
+  }
   const workerById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const repositoryByProject = useMemo(() => {
     const items = new Map<string, Repository>();
@@ -787,7 +810,11 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   const visibleContainerRecords = containers.filter((container) => {
     return Boolean(containerDisplayStatus(container));
   });
-  const sortedContainers = [...visibleContainerRecords].sort((a, b) => Number(containerDisplayStatus(b) === "running") - Number(containerDisplayStatus(a) === "running") || a.name.localeCompare(b.name));
+  const sortedContainers = [...visibleContainerRecords].sort((a, b) =>
+    Number(isWorkerControlContainer(b)) - Number(isWorkerControlContainer(a))
+    || Number(containerDisplayStatus(b) === "running") - Number(containerDisplayStatus(a) === "running")
+    || a.name.localeCompare(b.name),
+  );
   const filteredContainers = sortedContainers.filter((container) =>
     matchesQuery([container.name, container.image, container.project, containerDisplayStatus(container), container.dockerId, container.workerLabel, container.workerHostname, container.workerId, ...containerPublicLinks(container).flatMap(([service, url]) => [service, url]), ...(container.ports || [])], query),
   );
@@ -888,7 +915,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
     const publicLinks = workerContainer ? [] : containerPublicLinks(container);
     const canRegenerateTunnel = displayStatus === "running" && workerOnline && !workerContainer;
     return (
-      <article className="resource-row" key={container.id}>
+      <article className={`resource-row is-${displayStatus} ${workerContainer ? "is-worker" : "is-service"}`} key={container.id}>
         {showDivider ? <div className="resource-divider" /> : null}
         <div className="resource-identity"><ResourceGlyph kind={workerContainer ? "worker" : "container"} /><div className="resource-copy"><strong>{primaryName}</strong><span>{secondaryText}</span></div></div>
         <div className="resource-metadata">
@@ -943,13 +970,14 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
           <div className="icon-toggle container-toolbar-toggle" aria-label="Deployment tools">
             <button type="button" className={containerViewMode === "containers" ? "is-active" : ""} title="View deployments" aria-label="View deployments" aria-pressed={containerViewMode === "containers"} data-tooltip="View deployments" onClick={() => setContainerViewMode("containers")}><SidebarContainerMark /></button>
             <button type="button" className={containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={containerViewMode === "groups"} data-tooltip="View groups" onClick={() => setContainerViewMode("groups")}><Icon name="layers" /></button>
-            <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh deployments"><Icon name="sync" /></PendingIconButton></form>
+            <form action={refreshDeployments}><PendingIconButton title="Refresh deployments" busy={inventoryRefreshBusy}><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
       </div>}
 
       {workerViewOnly ? <WorkersPanel agents={agents} containers={containers} now={now} currentUser={currentUser} /> : null}
-      <section className="panel resource-panel">
+      <section className="panel resource-panel deployment-table">
+          {!workerViewOnly ? <div className="deployment-table-header"><span>Deployment</span><span>Runtime &amp; endpoint</span><span>Actions</span></div> : null}
           {filteredContainers.length ? (
             containerViewMode === "workers" ? containersByWorker.map(([workerKey, worker], workerIndex) => {
               const isExpanded = expandedWorkers.has(workerKey);
@@ -1350,7 +1378,6 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
   const [deployMode, setDeployMode] = useState<"dockerfile" | "compose">("dockerfile");
-  const [showRepositoryImport, setShowRepositoryImport] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMessage, setBranchMessage] = useState("");
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -1396,7 +1423,6 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
             <div className="segmented-radio">
               <label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => setDeployMode("dockerfile")} /><span>Single Dockerfile</span></label>
               <label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => setDeployMode("compose")} /><span>Docker Compose</span></label>
-              <button type="button" className="segment-icon-button" title={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} aria-label={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} data-tooltip={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} onClick={() => setShowRepositoryImport((current) => !current)}><Icon name={showRepositoryImport ? "close" : "document"} /></button>
             </div>
           </fieldset>
           <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
@@ -1425,12 +1451,6 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
         </div>
       </form>
-      {showRepositoryImport ? (
-        <form action={importRepositoriesJson} className="repository-import-form">
-          <label>Projects JSON<textarea name="repositoriesJson" rows={6} spellCheck={false} placeholder='{"my-project":{"url":"https://github.com/org/repo.git","mode":"compose","compose_file":"compose.yml"}}' /></label>
-          <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import projects from JSON">Import projects</PendingSubmitButton></div>
-        </form>
-      ) : null}
     </section>
   );
 }
