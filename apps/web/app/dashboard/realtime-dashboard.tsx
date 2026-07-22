@@ -1611,7 +1611,7 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
         <div className="settings-tabs" role="tablist" aria-label="Project settings">
           {[
             ["overview", "Overview"],
-            ["configuration", "Configuration"],
+            ["configuration", "Git"],
             ["build", "Build"],
             ["environment", "Environment"],
             ["networking", "Domain"],
@@ -1627,14 +1627,13 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <div><span>Workers</span><strong>{deployedWorkers.length ? deployedWorkers.map((worker) => worker.name).join(", ") : "Not deployed"}</strong><small>{repository.defaultWorkerId ? `Default: ${workers.find((worker) => worker.id === repository.defaultWorkerId) ? workerDisplayName(workers.find((worker) => worker.id === repository.defaultWorkerId)!) : repository.defaultWorkerId}` : "No default worker selected"}</small></div>
           </div>
         </div>
-        <div className={tabClass("configuration")} role="tabpanel" aria-label="Project configuration">
+        <div className={tabClass("configuration")} role="tabpanel" aria-label="Project Git settings">
           <div className="form-grid">
             <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
             <label className="wide">Description<textarea name="description" rows={2} defaultValue={repository.description || ""} placeholder="Briefly describe what this project deploys" /></label>
             <label className="wide">Source repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
-            <label>Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select></label>
           </div>
           <div className="danger-tab-panel access-danger-zone">
             <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
@@ -1679,7 +1678,10 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
           </div>
         </div>
         <div className={tabClass("environment")} role="tabpanel" aria-label="Environment variables">
-          <EnvironmentEditor className="full" environment={repository.environment || {}} />
+          <div className="form-grid project-environment-settings">
+            <EnvironmentEditor className="full" environment={repository.environment || {}} />
+            <label className="full">Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select><small className="field-hint">Worker used by default to clone, deploy and run this project.</small></label>
+          </div>
         </div>
         <div className={tabClass("networking")} role="tabpanel" aria-label="Domain settings">
           <div className="form-grid">
