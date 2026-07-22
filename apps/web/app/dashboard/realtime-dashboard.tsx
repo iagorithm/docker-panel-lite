@@ -59,6 +59,21 @@ const orphanWorkerDeleteAge = 2 * 60 * 1000;
 const activeJobMaxAge = 15 * 60 * 1000;
 const pendingButtonMaxAge = 15 * 1000;
 const initialRepositorySaveState: RepositorySaveState = { status: "idle", message: "" };
+
+async function saveRepositorySafely(previousState: RepositorySaveState, formData: FormData): Promise<RepositorySaveState> {
+  try {
+    return await saveRepositoryWithState(previousState, formData);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "";
+    const staleAction = message.includes("Failed to find Server Action") || message.includes("older or newer deployment");
+    return {
+      status: "error",
+      message: staleAction
+        ? "The app was updated. Reload this page, then save the project settings again."
+        : "Project settings could not be saved. Your changes remain in the form; please try again.",
+    };
+  }
+}
 const initialDeploymentQueueState: DeploymentQueueState = { status: "idle", message: "" };
 
 async function parseResponseJson<T>(response: Response): Promise<T> {
@@ -208,9 +223,9 @@ function SidebarContainerMark() {
   );
 }
 
-function ProjectMark() {
+function ProjectMark({ tooltip }: { tooltip?: string } = {}) {
   return (
-    <span className="project-mark" aria-hidden="true">
+    <span className="project-mark" aria-hidden="true" title={tooltip} data-tooltip={tooltip}>
       <svg viewBox="0 0 24 24" focusable="false">
         <rect x="4" y="4" width="6" height="6" rx="1.25" />
         <rect x="14" y="4" width="6" height="6" rx="1.25" />
@@ -221,7 +236,7 @@ function ProjectMark() {
   );
 }
 
-function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "bug" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" }) {
+function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "document" | "play" | "stop" | "logs" | "bug" | "terminal" | "trash" | "logout" | "container" | "repo" | "close" | "branch" | "download" | "help" | "layers" | "chevron" | "worker" | "expand" | "collapse" | "link" | "external" | "minus" }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 2.05 };
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -257,6 +272,7 @@ function Icon({ name }: { name: "add" | "check" | "key" | "sync" | "sliders" | "
       {name === "collapse" ? <path {...common} d="M9.75 4.75v5h-5M9.75 9.75l-5-5M14.25 4.75v5h5M14.25 9.75l5-5M9.75 19.25v-5h-5M9.75 14.25l-5 5M14.25 19.25v-5h5M14.25 14.25l5 5" /> : null}
       {name === "link" ? <path {...common} d="M9.45 14.55 14.55 9.45M10.75 6.75l1.55-1.55a4 4 0 0 1 5.65 5.65L16.4 12.4M7.6 11.6l-1.55 1.55a4 4 0 0 0 5.65 5.65l1.55-1.55" /> : null}
       {name === "external" ? <path {...common} d="M8 6.25H5.75A1.25 1.25 0 0 0 4.5 7.5v10.75a1.25 1.25 0 0 0 1.25 1.25H16.5a1.25 1.25 0 0 0 1.25-1.25V16M13.25 4.5h6.25v6.25M19.25 4.75 11.5 12.5" /> : null}
+      {name === "minus" ? <path {...common} d="M7 12h10" /> : null}
     </svg>
   );
 }
@@ -1254,13 +1270,13 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
               {index ? <div className="resource-divider" /> : null}
-              <div className="resource-identity project-identity"><ProjectMark /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
+              <div className="resource-identity project-identity"><ProjectMark tooltip={`Project: ${repository.alias}`} /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
               <div className="project-source-status">
-                <span className="project-source-pill" title={repository.url}><Icon name="branch" />{repositorySlug(repository.url)}</span>
-                <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "container" : "sync"} /></span>
+                <span className="project-source-pill" title={repository.url} data-tooltip={`Source repository: ${repository.url}`}><Icon name="branch" />{repositorySlug(repository.url)}</span>
+                <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`} data-tooltip={`Latest deployment status: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : status === "idle" ? "minus" : "sync"} /></span>
               </div>
               <div className="row-actions project-row-actions">
-                <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
+                <QueueButton repositoryId={repository.id} action="sync" title="Pull latest changes from the repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
                 {isOwner ? (
                   <IconButton
                     title={editingRepositoryId === repository.id ? "Close settings" : "Edit project"}
@@ -1305,7 +1321,7 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
 }
 
 function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] }) {
-  const [saveState, saveAction] = useActionState(saveRepositoryWithState, initialRepositorySaveState);
+  const [saveState, saveAction] = useActionState(saveRepositorySafely, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [branch, setBranch] = useState("");
@@ -1396,11 +1412,11 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
 }
 
 function RepositorySettings({ repository, credentials, workers, deployedWorkers, latestDeployment, latestWorker, now, open }: { repository: Repository; credentials: CredentialSummary[]; workers: Agent[]; deployedWorkers: Array<{ id: string; name: string }>; latestDeployment?: Deployment; latestWorker?: Agent; now: number; open: boolean }) {
-  const [saveState, saveAction] = useActionState(saveRepositoryWithState, initialRepositorySaveState);
+  const [saveState, saveAction] = useActionState(saveRepositorySafely, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
-  const [settingsTab, setSettingsTab] = useState<"overview" | "general" | "build" | "environment" | "public" | "access" | "danger">("overview");
+  const [settingsTab, setSettingsTab] = useState<"overview" | "configuration" | "environment" | "networking" | "access">("overview");
   const [sharing, setSharing] = useState(repositorySharingMode(repository as RepositoryAccessRecord));
   const [sharedEmails, setSharedEmails] = useState((repository.sharedEmails || []).join(", "));
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
@@ -1460,12 +1476,10 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
         <div className="settings-tabs" role="tablist" aria-label="Project settings">
           {[
             ["overview", "Overview"],
-            ["general", "General"],
-            ["build", "Build"],
+            ["configuration", "Configuration"],
             ["environment", "Environment"],
-            ["public", "Public URL"],
+            ["networking", "Domain"],
             ["access", "Access"],
-            ["danger", "Danger"],
           ].map(([tab, label]) => (
             <button type="button" role="tab" aria-selected={settingsTab === tab} className={settingsTab === tab ? "is-active" : ""} onClick={() => setSettingsTab(tab as typeof settingsTab)} key={tab}>{label}</button>
           ))}
@@ -1477,17 +1491,13 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <div><span>Workers</span><strong>{deployedWorkers.length ? deployedWorkers.map((worker) => worker.name).join(", ") : "Not deployed"}</strong><small>{repository.defaultWorkerId ? `Default: ${workers.find((worker) => worker.id === repository.defaultWorkerId) ? workerDisplayName(workers.find((worker) => worker.id === repository.defaultWorkerId)!) : repository.defaultWorkerId}` : "No default worker selected"}</small></div>
           </div>
         </div>
-        <div className={tabClass("general")} role="tabpanel" aria-label="General project settings">
+        <div className={tabClass("configuration")} role="tabpanel" aria-label="Project configuration">
           <div className="form-grid">
             <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
             <label className="wide">Source repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
             <label>Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select></label>
-          </div>
-        </div>
-        <div className={tabClass("build")} role="tabpanel" aria-label="Build settings">
-          <div className="form-grid">
             <label>Mode<select name="mode" defaultValue={repository.mode}><option value="compose">Docker Compose</option><option value="dockerfile">Dockerfile</option></select></label>
             <label>Compose file<input name="composeFile" defaultValue={repository.composeFile} /></label>
             <label>Dockerfile<input name="dockerfile" defaultValue={repository.dockerfile} /></label>
@@ -1496,11 +1506,15 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <label>Internal port<input name="internalPort" type="number" defaultValue={repository.internalPort || 3000} /></label>
             <label>Host:container ports<input name="ports" defaultValue={repository.ports || ""} /></label>
           </div>
+          <div className="danger-tab-panel access-danger-zone">
+            <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
+            <button type="button" className="danger" title="Permanently remove this project registration" data-tooltip="Permanently remove this project registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel removal" : "Remove project"}</button>
+          </div>
         </div>
         <div className={tabClass("environment")} role="tabpanel" aria-label="Environment variables">
           <EnvironmentEditor className="full" environment={repository.environment || {}} />
         </div>
-        <div className={tabClass("public")} role="tabpanel" aria-label="Public URL settings">
+        <div className={tabClass("networking")} role="tabpanel" aria-label="Domain settings">
           <div className="form-grid">
             <label>Domain<input name="domain" defaultValue={repository.domain} /></label>
             <label className="checkbox-field"><input name="publicTunnelEnabled" type="checkbox" defaultChecked={Boolean(repository.publicTunnelEnabled)} /><span>Public ngrok URL</span></label>
@@ -1513,12 +1527,6 @@ function RepositorySettings({ repository, credentials, workers, deployedWorkers,
             <label>Visibility<select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as typeof sharing)}><option value="private">Private</option><option value="shared">Shared with users</option><option value="public">Public to workspace</option></select></label>
             {sharing === "shared" ? <label className="wide">Shared with<input name="sharedEmails" type="text" value={sharedEmails} onChange={(event) => setSharedEmails(event.target.value)} placeholder="one@example.com, two@example.com" /><small className="field-hint">Separate multiple email addresses with commas.</small></label> : <input type="hidden" name="sharedEmails" value="" />}
             <div className="repository-access-note wide"><strong>{sharing === "private" ? "Only you can see this project." : sharing === "shared" ? "Only the listed users can see and run it." : "Every user in this workspace can see and run it."}</strong><small>Only the owner can edit access, settings, or remove the project.</small></div>
-          </div>
-        </div>
-        <div className={tabClass("danger")} role="tabpanel" aria-label="Danger zone">
-          <div className="danger-tab-panel">
-            <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
-            <button type="button" className="danger" title="Permanently remove this project registration" data-tooltip="Permanently remove this project registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel removal" : "Remove project"}</button>
           </div>
         </div>
         <div className="settings-form-footer">

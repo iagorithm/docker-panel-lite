@@ -1929,6 +1929,10 @@ details[open] > summary { border-bottom: 1px solid var(--ui-border); }
   gap: 0.75rem;
   padding: 0.48rem 0.58rem;
 }
+.access-danger-zone {
+  margin: 0 0.65rem 0.65rem;
+  border-top: 1px solid var(--ui-border);
+}
 .danger-tab-panel > div {
   display: flex;
   min-width: 0;
