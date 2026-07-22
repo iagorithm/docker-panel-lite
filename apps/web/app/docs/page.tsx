@@ -71,22 +71,50 @@ export default function DocsOverviewPage() {
 
     <section id="worker-install"><h3>Connect a worker</h3><p>You can create a worker on a new Docker host or use one that is already running. In both cases, the worker must appear online and be available to your user before assigning it to a project.</p><div className="docs-two-column"><article><h4>Create a worker</h4><p>Run the worker image on the Docker host, preserve its data directory and claim it using the token printed in its logs.</p><a href="#create-worker">Create a worker →</a></article><article><h4>Use an existing worker</h4><p>Claim an unassigned worker with its token, or select an available worker that is already connected to the workspace.</p><a href="#existing-worker">Use an existing worker →</a></article></div></section>
 
-    <section id="create-worker"><h3>Create a worker</h3><ol><li>On the Docker host, create persistent folders for repositories and worker identity.</li><li>Choose the <code>py</code> or <code>go</code> worker image tag.</li><li>Run the selected worker image with access to the Docker socket.</li><li>Read the generated worker token from its logs.</li><li>Open <strong>Workers</strong>, paste the token in <strong>Worker token</strong> and select Claim.</li><li>Confirm that the new worker appears online before deploying.</li></ol><h4>Choose a worker image</h4><div className="docs-two-column"><article><h4>Python worker · <code>:py</code></h4><p>The stable Python implementation. Choose this tag when you want the reference runtime and broad compatibility.</p><code>cjarn/docker-panel-lite-worker:py</code></article><article><h4>Go worker · <code>:go</code></h4><p>The compiled Go implementation. Choose this tag for a lightweight worker with lower runtime overhead.</p><code>cjarn/docker-panel-lite-worker:go</code></article></div><p>Both tags connect to the same workspace and support the same project workflow. Do not run both with the same mounted data folder; each worker needs its own persistent identity.</p><pre><code>{`mkdir -p "$HOME/docker-panel-worker/repos" "$HOME/docker-panel-worker/data"
+    <section id="create-worker">
+      <h3>Create a worker</h3>
+      <p>Run a worker on your own computer for local development or on a Debian VPS for an always-on deployment host. Both options support the Python and Go worker images.</p>
+      <div className="docs-install-options">
+        <article>
+          <div className="docs-install-option-title"><span aria-hidden="true">PC</span><div><h4>Your PC</h4><small>Local development</small></div></div>
+          <p>Use Docker Desktop or Docker Engine already installed on your computer. Suitable for development, testing and deployments that only need to run while your computer is online.</p>
+          <pre><code>{`mkdir -p "$HOME/docker-panel-worker/repos" \\
+  "$HOME/docker-panel-worker/data"
 
-# Choose py or go before running the worker.
-WORKER_TAG=py
+WORKER_TAG=py # Change to go if preferred
 
 docker run -d --pull always \\
-  --name docker-panel-lite-worker \\
+  --name worqer-worker \\
   --restart unless-stopped \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v "$HOME/docker-panel-worker/repos:/app/clones" \\
   -v "$HOME/docker-panel-worker/data:/app/data" \\
   "cjarn/docker-panel-lite-worker:$WORKER_TAG"
 
-docker logs --tail 100 docker-panel-lite-worker`}</code></pre><div className="docs-callout"><strong>Keep the data folder</strong><p>The mounted <code>/app/data</code> folder preserves the worker identity and token across restarts or image updates.</p></div></section>
+docker logs --tail 100 worqer-worker`}</code></pre>
+          <small>Recommended for Linux, macOS with Docker Desktop, or a Linux environment under WSL2.</small>
+        </article>
+        <article>
+          <div className="docs-install-option-title"><span aria-hidden="true">VPS</span><div><h4>Debian VPS</h4><small>Remote and always online</small></div></div>
+          <p>Use the setup script on a fresh Debian server. It installs Docker from the official repository, creates persistent storage and starts the selected worker.</p>
+          <a className="docs-download-link" href="/downloads/vps-setup-worqer.sh" download><span aria-hidden="true">↓</span><span><strong>Download VPS setup script</strong><small>vps-setup-worqer.sh · Debian · Bash</small></span></a>
+          <pre><code>{`curl -fsSLO https://worqer.app/downloads/vps-setup-worqer.sh
+chmod +x vps-setup-worqer.sh
+sudo ./vps-setup-worqer.sh --runtime py
 
-    <section id="existing-worker"><h3>Use an existing worker</h3><p>Choose the case that matches the current state of the worker:</p><table><thead><tr><th>Worker state</th><th>What to do</th></tr></thead><tbody><tr><td>Running but not claimed</td><td>Read its token with <code>docker logs --tail 100 docker-panel-lite-worker</code>, enter it in Workers and select Claim.</td></tr><tr><td>Already visible to your user</td><td>No token is required. Open Project Settings → Environment and select it as the default worker.</td></tr><tr><td>Owned by another user</td><td>Ask the owner to share the worker with your user or make it available to the workspace.</td></tr><tr><td>Offline</td><td>Start the worker on its Docker host and wait until it reports an online state.</td></tr></tbody></table><div className="docs-callout is-warning"><strong>Test worker token</strong><p>This token is provided only for the test worker and must not be reused for production infrastructure.</p><pre><code>nYunaGwdMrEUAl7j02A8KeunUsJzFk2P</code></pre></div><div className="docs-callout"><strong>Assign it to a project</strong><p>Open Project Settings → Environment and select the worker. Deploy, sync and runtime operations for that project will use the selected Docker host.</p></div></section>
+# Or use the Go worker:
+sudo ./vps-setup-worqer.sh --runtime go`}</code></pre>
+          <small>Recommended for persistent deployments, previews and services that must remain available when your computer is offline.</small>
+        </article>
+      </div>
+      <h4>Choose a worker image</h4>
+      <div className="docs-two-column"><article><h4>Python worker · <code>:py</code></h4><p>The stable Python implementation. Choose this tag when you want the reference runtime and broad compatibility.</p><code>cjarn/docker-panel-lite-worker:py</code></article><article><h4>Go worker · <code>:go</code></h4><p>The compiled Go implementation. Choose this tag for a lightweight worker with lower runtime overhead.</p><code>cjarn/docker-panel-lite-worker:go</code></article></div>
+      <h4>Claim either worker</h4>
+      <ol><li>Wait for the worker container to start.</li><li>Copy the claim token shown by the script or <code>docker logs --tail 100 worqer-worker</code>.</li><li>Open <strong>Workers</strong> in worqer.app.</li><li>Paste the token into <strong>Worker token</strong> and select Claim.</li><li>Confirm that the worker appears online, then select it in Project Settings → Environment.</li></ol>
+      <div className="docs-callout"><strong>Keep each worker identity separate</strong><p>The mounted <code>/app/data</code> folder preserves the worker identity and claim token. Never share the same data folder between your PC and VPS workers.</p></div>
+    </section>
+
+    <section id="existing-worker"><h3>Use an existing worker</h3><p>Choose the case that matches the current state of the worker:</p><table><thead><tr><th>Worker state</th><th>What to do</th></tr></thead><tbody><tr><td>Running but not claimed</td><td>Read its token with <code>docker logs --tail 100 worqer-worker</code>, enter it in Workers and select Claim.</td></tr><tr><td>Already visible to your user</td><td>No token is required. Open Project Settings → Environment and select it as the default worker.</td></tr><tr><td>Owned by another user</td><td>Ask the owner to share the worker with your user or make it available to the workspace.</td></tr><tr><td>Offline</td><td>Start the worker on its Docker host and wait until it reports an online state.</td></tr></tbody></table><div className="docs-callout is-warning"><strong>Test worker token</strong><p>This token is provided only for the test worker and must not be reused for production infrastructure.</p><pre><code>nYunaGwdMrEUAl7j02A8KeunUsJzFk2P</code></pre></div><div className="docs-callout"><strong>Assign it to a project</strong><p>Open Project Settings → Environment and select the worker. Deploy, sync and runtime operations for that project will use the selected Docker host.</p></div></section>
 
     <section id="worker-troubleshooting"><h3>Worker troubleshooting</h3><table><thead><tr><th>Symptom</th><th>What to check</th></tr></thead><tbody><tr><td>Worker appears offline</td><td>Confirm its container is running, review its logs and verify network access.</td></tr><tr><td>Worker does not appear</td><td>Confirm the claim token and refresh the Workers page.</td></tr><tr><td>Docker operation fails</td><td>Verify Docker is available on the host and the worker has the required access.</td></tr><tr><td>Project runs on the wrong host</td><td>Review the selected worker in the project Environment tab.</td></tr></tbody></table></section>
 
