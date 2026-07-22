@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { AppLog } from "@/lib/logs";
 
 function formattedCode(value: unknown) {
@@ -137,6 +137,8 @@ export function LogsTerminal() {
   const [agentNotice, setAgentNotice] = useState("");
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(() => new Set());
   const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(() => new Set());
+  const [selectedGroupKey, setSelectedGroupKey] = useState("");
+  const [occurrencePanelHeight, setOccurrencePanelHeight] = useState(170);
   const [actor, setActor] = useState("all");
   const [worker, setWorker] = useState("");
   const [container, setContainer] = useState("");
@@ -246,6 +248,28 @@ export function LogsTerminal() {
   };
 
   const selectedLogs = useMemo(() => logs.filter((log) => selectedLogIds.has(log.id)), [logs, selectedLogIds]);
+  const logGroups = useMemo(() => {
+    const grouped = new Map<string, AppLog[]>();
+    for (const log of logs) {
+      const key = [log.actorType, log.actorId, log.runtime, log.functionName, log.action, String(log.message).trim()].join("\u001f");
+      grouped.set(key, [...(grouped.get(key) || []), log]);
+    }
+    return [...grouped.entries()].map(([key, occurrences]) => ({ key, occurrences, log: occurrences[0] }));
+  }, [logs]);
+  const selectedGroup = useMemo(() => logGroups.find((group) => group.key === selectedGroupKey) || null, [logGroups, selectedGroupKey]);
+
+  const startPanelResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = occurrencePanelHeight;
+    const move = (moveEvent: PointerEvent) => setOccurrencePanelHeight(Math.max(90, Math.min(window.innerHeight * .65, startHeight + startY - moveEvent.clientY)));
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
 
   const runAgent = async (
     logsToAnalyze: AppLog[] = selectedLogs,
@@ -370,6 +394,7 @@ export function LogsTerminal() {
       </section>
       {error ? <p className="error">ERROR {error}</p> : null}
       {agentNotice ? <p className="agent-notice">{agentNotice}</p> : null}
+      <div className="logs-workspace" style={{ gridTemplateRows: `minmax(180px, 1fr) 5px ${occurrencePanelHeight}px` }}>
       <section className="terminal">
         <div className="log-table-header" aria-hidden="true">
           <span>Sel.</span>
@@ -378,15 +403,17 @@ export function LogsTerminal() {
           <span>Function</span>
           <span>Action</span>
           <span>Error</span>
+          <span>Count</span>
           <span>Rev.</span>
         </div>
-        {logs.length ? logs.map((log) => (
+        {logGroups.length ? logGroups.map(({ key, occurrences, log }) => (
           <article
-            className={`${selectedLogIds.has(log.id) ? "is-selected" : ""} ${expandedLogIds.has(log.id) ? "is-expanded" : ""}`}
-            key={log.id}
+            className={`${occurrences.every((item) => selectedLogIds.has(item.id)) ? "is-selected" : ""} ${expandedLogIds.has(log.id) ? "is-expanded" : ""} ${selectedGroupKey === key ? "is-group-active" : ""}`}
+            key={key}
             title={expandedLogIds.has(log.id) ? "Click to hide details" : "Click to show details"}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest("button, input, a, label, .agent-report")) return;
+              setSelectedGroupKey(key);
               setExpandedLogIds((current) => {
                 const next = new Set(current);
                 if (next.has(log.id)) next.delete(log.id); else next.add(log.id);
@@ -397,15 +424,17 @@ export function LogsTerminal() {
             <div className="log-selection">
               <input
                 type="checkbox"
-                checked={selectedLogIds.has(log.id)}
-                aria-label={`Select ${log.action} log`}
+                checked={occurrences.every((item) => selectedLogIds.has(item.id))}
+                aria-label={`Select all ${occurrences.length} occurrences of ${log.action}`}
                 onChange={(event) => setSelectedLogIds((current) => {
                   const next = new Set(current);
-                  if (event.target.checked) next.add(log.id); else next.delete(log.id);
+                  for (const occurrence of occurrences) {
+                    if (event.target.checked) next.add(occurrence.id); else next.delete(occurrence.id);
+                  }
                   return next;
                 })}
               />
-              <button className="icon-control" title={analyzingLogIds.has(log.id) ? "Analyzing this log" : "Analyze this log"} aria-label={analyzingLogIds.has(log.id) ? "Analyzing this log" : "Analyze this log"} disabled={agentRunning || needsLogin} onClick={() => void runAgent([log])}>{analyzingLogIds.has(log.id) ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="analyze" />}</button>
+              <button className="icon-control" title={occurrences.some((item) => analyzingLogIds.has(item.id)) ? "Analyzing this error group" : "Analyze this error group"} aria-label={occurrences.some((item) => analyzingLogIds.has(item.id)) ? "Analyzing this error group" : "Analyze this error group"} disabled={agentRunning || needsLogin} onClick={() => { setSelectedGroupKey(key); void runAgent(occurrences); }}>{occurrences.some((item) => analyzingLogIds.has(item.id)) ? <span className="row-spinner" aria-hidden="true" /> : <Icon name="analyze" />}</button>
               <button
                 className="icon-control expand-control"
                 title={expandedLogIds.has(log.id) ? "Hide details" : "Show details"}
@@ -423,6 +452,7 @@ export function LogsTerminal() {
             <code className="log-function" title={`${log.runtime}:${log.functionName}`}>{log.runtime}:{log.functionName}</code>
             <span className="log-action" title={log.action}>{log.action}</span>
             <code className="log-preview" title={String(log.message)}>{String(log.message)}</code>
+            <strong className="occurrence-count" title={`${occurrences.length} occurrences`}>{occurrences.length}</strong>
             <small className="analysis-count" title={log.lastAnalyzedAt ? `Last review ${new Date(log.lastAnalyzedAt).toLocaleString()}` : "Not reviewed"}>{log.analyzed ? `${log.analysisCount || 1}×` : "—"}</small>
             {expandedLogIds.has(log.id) ? <div className="log-details">
               <pre className="log-code"><code>{formattedCode(log.message)}</code></pre>
@@ -477,6 +507,24 @@ export function LogsTerminal() {
           </article>
         )) : <p className="empty">-- no application errors stored --</p>}
       </section>
+      <div className="panel-resizer" role="separator" aria-label="Resize error and occurrence panels" aria-orientation="horizontal" onPointerDown={startPanelResize}><span /></div>
+      <section className="occurrences-panel">
+        <header>
+          <strong>{selectedGroup ? `${selectedGroup.occurrences.length} occurrences` : "Occurrences"}</strong>
+          <span>{selectedGroup ? selectedGroup.log.action : "Select an error row"}</span>
+        </header>
+        <div className="occurrence-table">
+          <div className="occurrence-header"><span>When</span><span>Where</span><span>Function</span><span>User</span><span>Source</span></div>
+          {selectedGroup ? selectedGroup.occurrences.map((occurrence) => <div className="occurrence-row" key={occurrence.id}>
+            <time>{formattedDate(occurrence.createdAt)}</time>
+            <strong>{occurrence.actorType === "worker" ? occurrence.actorLabel || occurrence.actorId : "web"}</strong>
+            <code>{occurrence.runtime}:{occurrence.functionName}</code>
+            <span>{occurrence.userEmail || occurrence.actorEmail || occurrence.userId || "unknown"}</span>
+            <span>{occurrence.context?.containerId || occurrence.source || "—"}</span>
+          </div>) : <p className="empty">Select a grouped error to view its ungrouped history.</p>}
+        </div>
+      </section>
+      </div>
     </main>
   );
 }

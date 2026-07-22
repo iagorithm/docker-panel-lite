@@ -158,9 +158,10 @@ button:disabled { cursor: wait; opacity: .4; }
 .agent-notice { color: #bbf7d0; background: #0b2b18; }
 .error { color: #ffc2be; background: #381311; }
 
+.logs-workspace { display: grid; height: calc(100vh - 79px); min-height: 360px; }
 .terminal {
-  min-height: calc(100vh - 79px);
-  max-height: calc(100vh - 79px);
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   border: solid #1c2c22;
   border-width: 0 1px 1px;
@@ -172,7 +173,7 @@ button:disabled { cursor: wait; opacity: .4; }
 .log-table-header,
 article {
   display: grid;
-  grid-template-columns: 54px 156px 170px 245px 135px minmax(280px, 1fr) 34px;
+  grid-template-columns: 54px 156px 170px 245px 135px minmax(280px, 1fr) 44px 34px;
   gap: 5px;
   align-items: center;
 }
@@ -197,6 +198,7 @@ article {
 }
 article:hover { background: #09110c; }
 article.is-selected { background: #0b1910; box-shadow: inset 2px 0 #55d17d; }
+article.is-group-active { background: #0b1510; box-shadow: inset 2px 0 #60a5fa; }
 .log-selection { display: flex; align-items: center; gap: 2px; }
 .log-selection input { width: 12px; height: 12px; min-height: auto; margin: 0 2px 0 0; }
 .log-selection button { width: 18px; min-width: 18px; height: 18px; min-height: 18px; padding: 2px; border-color: transparent; background: transparent; }
@@ -206,6 +208,7 @@ article.is-selected { background: #0b1910; box-shadow: inset 2px 0 #55d17d; }
 .expand-control svg { transition: transform .12s ease; }
 .is-expanded .expand-control svg { transform: rotate(180deg); }
 .analysis-count { color: #86efac; font-size: 8px; text-align: center; white-space: nowrap; }
+.occurrence-count { color: #93c5fd; font-size: 10px; text-align: center; }
 time, small { color: #637a68; }
 time { white-space: nowrap; }
 strong { color: #e08c86; overflow: hidden; text-overflow: ellipsis; }
@@ -220,14 +223,28 @@ code { color: #d5dfd8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .log-details > pre:last-child { padding: 4px 7px; color: #8ba695; background: #060a07; border: 1px solid #111e16; }
 .log-details > pre:last-child code { color: inherit; }
 .empty { padding: 16px; color: #52665a; }
+.panel-resizer { position: relative; z-index: 8; cursor: row-resize; background: #101a14; border-top: 1px solid #263b2e; border-bottom: 1px solid #263b2e; touch-action: none; }
+.panel-resizer:hover, .panel-resizer:active { background: #315d3e; }
+.panel-resizer span { position: absolute; top: 1px; left: 50%; width: 34px; height: 1px; background: #55705d; transform: translateX(-50%); }
+.occurrences-panel { min-height: 0; overflow: hidden; background: #050806; border: solid #1c2c22; border-width: 0 1px 1px; }
+.occurrences-panel > header { display: flex; gap: 10px; align-items: center; min-height: 28px; padding: 4px 8px; border-bottom: 1px solid #1c2c22; font-size: 9px; }
+.occurrences-panel > header strong { color: #93c5fd; }
+.occurrences-panel > header span { color: #637a68; }
+.occurrence-table { height: calc(100% - 28px); overflow: auto; }
+.occurrence-header, .occurrence-row { display: grid; grid-template-columns: 156px 180px 280px minmax(180px, 1fr) minmax(180px, 1fr); gap: 6px; align-items: center; min-width: 1050px; padding: 3px 8px; }
+.occurrence-header { position: sticky; z-index: 3; top: 0; color: #718579; background: #090e0b; border-bottom: 1px solid #26382c; font-size: 8px; text-transform: uppercase; }
+.occurrence-row { min-height: 24px; border-bottom: 1px solid #101a14; font-size: 9px; }
+.occurrence-row strong, .occurrence-row code, .occurrence-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.occurrence-row code { color: #789080; }
+.occurrence-row span { color: #a6b5aa; }
 
 @media (max-width: 850px) {
   main { padding: 3px; }
   .filters input, .filters select { flex: 1; width: auto; min-width: 125px; max-width: none; }
   .filter-spacer { display: none; }
-  .log-table-header, article { grid-template-columns: 54px 156px 150px 220px 120px minmax(280px, 1fr) 34px; min-width: 1080px; }
+  .log-table-header, article { grid-template-columns: 54px 156px 150px 220px 120px minmax(280px, 1fr) 44px 34px; min-width: 1125px; }
   .log-details { grid-column: 1 / -1; padding: 5px 28px 6px 59px; }
-  .terminal { min-height: calc(100vh - 112px); max-height: none; }
+  .logs-workspace { height: calc(100vh - 112px); }
   .agent-report header { flex-wrap: wrap; }
   .agent-report-layout { grid-template-columns: 96px minmax(0, 1fr); }
 }
