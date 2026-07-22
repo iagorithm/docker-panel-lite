@@ -30,8 +30,10 @@ class GitHubServices:
     run_id: str
     allow_writes: bool
     hotfix: bool = False
+    preview_writes: bool = False
     branch: str = ""
     changes: list[dict[str, str]] = field(default_factory=list)
+    preview_changes: list[dict[str, str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repository):
@@ -84,13 +86,19 @@ class GitHubServices:
         if not self.allow_writes:
             return "WRITE BLOCKED: analysis-only run. Recommend the change in the report."
         safe = self.safe_path(path)
-        if self.hotfix and any(change["path"] != safe and change["path"].startswith("services/") for change in self.changes):
+        recorded_changes = [*self.changes, *self.preview_changes]
+        if self.hotfix and any(change["path"] != safe and change["path"].startswith("services/") for change in recorded_changes):
             return "WRITE BLOCKED: hotfix mode permits changes to only one services/** file. Use a dedicated branch for a larger correction."
         if len(content.encode("utf-8")) > 300_000:
             raise ValueError("Agent writes are limited to 300 KB per file")
         current = self.request("GET", f"/contents/{safe}?ref={self.branch or self.base_branch}")
         previous = base64.b64decode(current["content"]).decode("utf-8")
         self.validate_safe_replacement(safe, previous, content)
+        if self.preview_writes:
+            diff = "\n".join(difflib.unified_diff(previous.splitlines(), content.splitlines(), fromfile=f"a/{safe}", tofile=f"b/{safe}", lineterm=""))
+            self.preview_changes = [change for change in self.preview_changes if change["path"] != safe]
+            self.preview_changes.append({"path": safe, "content": content, "reason": reason[:500], "diff": diff})
+            return f"Preview ready for {safe}; no commit was created"
         branch = self.ensure_branch(reason)
         result = self.request("PUT", f"/contents/{safe}", json={"message": f"fix(services): {reason[:120]}", "content": base64.b64encode(content.encode()).decode(), "sha": current["sha"], "branch": branch})
         change = {"path": safe, "commit": result["commit"]["sha"], "reason": reason[:500]}

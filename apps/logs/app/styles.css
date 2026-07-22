@@ -119,6 +119,10 @@ button:disabled { cursor: wait; opacity: .4; }
 .result-action svg { width: 12px; height: 12px; }
 .agent-report pre { max-height: 34rem; overflow: auto; padding: 8px; font-size: 10px; line-height: 1.5; }
 .agent-report > small { display: block; padding: 5px 8px; border-top: 1px solid #16261b; }
+.change-preview { display: grid; gap: 6px; padding: 7px; border-top: 1px solid #284431; background: #030604; }
+.change-preview section { display: grid; gap: 4px; }
+.change-preview section > strong { color: #86efac; font-size: 10px; }
+.change-preview pre { max-height: 24rem; overflow: auto; padding: 7px; color: #d7e3da; background: #070b08; border: 1px solid #203428; font-size: 9px; line-height: 1.45; }
 .agent-notice, .error { margin: 0; padding: 6px 8px; font-size: 10px; }
 .agent-notice { color: #bbf7d0; background: #0b2b18; }
 .error { color: #ffc2be; background: #381311; }

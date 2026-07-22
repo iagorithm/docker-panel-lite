@@ -19,6 +19,9 @@ GitHub source tree under `services/**`.
   dependencies, cleanup, or speculative behavior.
 - Reports keep the complete evidence-based improvement proposal separate from
   the minimal safe fix. Optional proposal items are never applied automatically.
+- Applying is two-phase: the agent first stores and returns an exact validated
+  diff without writing GitHub; an explicit confirmation commits that same
+  preview to a descriptive branch or, for one file, directly to the base branch.
 - Runs are stored at `workspaces/<workspaceId>/agent_runs/<runId>`.
 
 ## API

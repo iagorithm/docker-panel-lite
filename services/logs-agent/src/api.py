@@ -23,6 +23,7 @@ class AgentRequest(BaseModel):
     format: str = "markdown"
     apply: bool = False
     hotfix: bool = False
+    preview: bool = False
     workspaceId: str
     requestedBy: str
     requestedByEmail: str = ""
@@ -35,6 +36,14 @@ class HistoryRequest(BaseModel):
     requestedByEmail: str = ""
     report: str = Field(min_length=1, max_length=10000)
     kind: str = "analysis"
+
+
+class CommitRequest(BaseModel):
+    runId: str = Field(min_length=1, max_length=80)
+    workspaceId: str
+    requestedBy: str
+    requestedByEmail: str = ""
+    hotfix: bool = False
 
 
 def firebase_app():
@@ -79,23 +88,53 @@ def diagnose(request: AgentRequest, x_agent_secret: str = Header(default="")):
     trace = db.reference(f"workspaces/{request.workspaceId}/agent_runs/{run_id}", app=firebase_app())
     if request.hotfix and not request.apply:
         raise HTTPException(status_code=400, detail="Hotfix requires apply mode")
-    trace.set({"id": run_id, "status": "running", "requestedBy": request.requestedBy, "requestedByEmail": request.requestedByEmail, "apply": request.apply, "hotfix": request.hotfix, "format": request.format, "logIds": [str(log.get("id", "")) for log in request.logs], "createdAt": {".sv": "timestamp"}})
+    trace.set({"id": run_id, "status": "running", "requestedBy": request.requestedBy, "requestedByEmail": request.requestedByEmail, "apply": request.apply, "hotfix": request.hotfix, "preview": request.preview, "format": request.format, "logIds": [str(log.get("id", "")) for log in request.logs], "createdAt": {".sv": "timestamp"}})
     try:
-        github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), run_id, request.apply, request.hotfix)
+        github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), run_id, request.apply, request.hotfix, request.preview)
         report = run_diagnostics(logs=request.logs, instruction=request.instruction, markdown=request.format == "markdown", github=github)
         if request.apply:
-            source_changes = [change for change in github.changes if change.get("path", "").startswith("services/")]
+            source_changes = github.preview_changes if request.preview else [change for change in github.changes if change.get("path", "").startswith("services/")]
             if not source_changes:
                 raise RuntimeError("Fix was not applied: the agent did not modify any services/** source file")
-            github.append_changelog(status="applied", summary=report, requested_by=request.requestedByEmail or request.requestedBy)
+            if not request.preview:
+                github.append_changelog(status="applied", summary=report, requested_by=request.requestedByEmail or request.requestedBy)
         mark_logs_analyzed(request.workspaceId, request.logs, request.requestedBy)
-        result = {"runId": run_id, "report": report, "branch": github.branch, "changes": github.changes, "format": request.format, "hotfix": request.hotfix}
-        trace.update({**result, "status": "completed", "finishedAt": {".sv": "timestamp"}})
+        previews = [{key: change[key] for key in ("path", "reason", "diff")} for change in github.preview_changes]
+        result = {"runId": run_id, "report": report, "branch": github.branch, "changes": github.changes, "previews": previews, "format": request.format, "hotfix": request.hotfix}
+        trace_result = {**result, "status": "preview" if request.preview else "completed", "finishedAt": {".sv": "timestamp"}}
+        if request.preview:
+            trace_result["previewChanges"] = github.preview_changes
+        trace.update(trace_result)
         return result
     except Exception as error:
         message = re.sub(r"(token|authorization|key)=?[^\s,]+", r"\1=[REDACTED]", str(error), flags=re.I)[:2000]
         trace.update({"status": "failed", "error": message, "finishedAt": {".sv": "timestamp"}})
         raise HTTPException(status_code=500, detail=message) from error
+
+
+@app.post("/v1/commit")
+def commit_preview(request: CommitRequest, x_agent_secret: str = Header(default="")):
+    expected = os.environ.get("LOGS_AGENT_SECRET", "")
+    if not expected or x_agent_secret != expected:
+        raise HTTPException(status_code=401, detail="Invalid agent service credential")
+    trace = db.reference(f"workspaces/{request.workspaceId}/agent_runs/{request.runId}", app=firebase_app())
+    existing = trace.get() or {}
+    if existing.get("status") != "preview" or not existing.get("previewChanges"):
+        raise HTTPException(status_code=409, detail="No pending fix preview is available for this run")
+    if existing.get("requestedBy") != request.requestedBy:
+        raise HTTPException(status_code=403, detail="Only the preview owner can commit this fix")
+    if request.hotfix and len(existing["previewChanges"]) != 1:
+        raise HTTPException(status_code=400, detail="Hotfix requires a preview that changes exactly one services file")
+    try:
+        github = GitHubServices(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_BASE_BRANCH", "main"), request.runId, True, request.hotfix)
+        for change in existing["previewChanges"]:
+            github.write_file(change["path"], change["content"], change["reason"])
+        github.append_changelog(status="applied", summary=existing.get("report", ""), requested_by=request.requestedByEmail or request.requestedBy)
+        result = {"runId": request.runId, "report": existing.get("report", ""), "branch": github.branch, "changes": github.changes, "hotfix": request.hotfix}
+        trace.update({**result, "status": "completed", "committedAt": {".sv": "timestamp"}, "previewChanges": None})
+        return result
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)[:2000]) from error
 
 
 @app.post("/v1/history")

@@ -30,9 +30,10 @@ Your primary role is bug correction in the CURRENT implementation, not feature d
         max_iter=12,
     )
     if github.allow_writes:
-        output = ("Brief Markdown, maximum 220 words, with exactly: Error confirmado, Fix mínimo aplicado, Cambio exacto, Propuesta completa pendiente. State paths and distinguish committed code from recommendations." if markdown else "Maximum 150 words: confirmed error, minimal applied fix, exact path/change, and complete remaining proposal clearly marked as not applied.")
-        mode = ("Implement exactly one minimal root-cause correction in one existing services file on the base branch using write_services_file." if github.hotfix else "Implement only the minimum root-cause correction in existing services files using write_services_file.")
-        mode += " Do not implement any optional proposal item. A successful apply must change source code, not only produce a report."
+        change_status = "prepared for review, not committed" if github.preview_writes else "applied and committed"
+        output = (f"Brief Markdown, maximum 220 words, with exactly: Error confirmado, Fix mínimo {change_status}, Cambio exacto, Propuesta completa pendiente. State paths and distinguish changed code from recommendations." if markdown else f"Maximum 150 words: confirmed error, minimal fix {change_status}, exact path/change, and complete remaining proposal clearly marked as not applied.")
+        mode = ("Prepare exactly one minimal root-cause correction in one existing services file using write_services_file." if github.hotfix else "Prepare only the minimum root-cause correction in existing services files using write_services_file.") if github.preview_writes else ("Implement exactly one minimal root-cause correction in one existing services file on the base branch using write_services_file." if github.hotfix else "Implement only the minimum root-cause correction in existing services files using write_services_file.")
+        mode += " Do not implement any optional proposal item. You must submit changed source through write_services_file, not only produce a report."
     else:
         output = ("Brief Markdown, maximum 220 words, with exactly: Error confirmado, Causa en el código, Propuesta completa, Fix mínimo seguro. Include affected paths and clearly separate required correction from optional improvements." if markdown else "Maximum 150 words: confirmed error, code cause, complete evidence-based proposal, and safest minimal fix. Distinguish required from optional work.")
         mode = "Analysis only; do not write files. Produce the complete evidence-based proposal, but do not invent improvements unsupported by the current code."
