@@ -70,6 +70,7 @@ const repositorySchema = z.object({
   publicTunnelPortsJson: z.string().trim().default(""),
   ngrokAuthtoken: z.string().trim().default(""),
   poolId: z.string().trim().regex(aliasPattern).default("default"),
+  defaultWorkerId: z.string().trim().default(""),
   sharing: z.enum(["private", "shared", "public"]).default("private"),
   sharedEmails: z.string().trim().max(4000).default(""),
 });
@@ -547,6 +548,10 @@ export async function saveRepository(formData: FormData) {
   if (current && currentOwnerUid && !canManageRepository(current, user)) throw new Error("Repository is owned by another user");
   if (current && !currentOwnerUid) throw new Error("Legacy repository has no owner. Remove it before registering it again");
   if (!(await userCanAccessCredential(user.workspaceId, input.credentialId, user))) throw new Error("Credential is not available to this user");
+  if (input.defaultWorkerId) {
+    const worker = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${input.defaultWorkerId}`).get()).val();
+    if (!worker || !canAccessWorker(worker as WorkerAccessRecord, user)) throw new Error("Default worker is not available to this user");
+  }
   const sharedEmails = input.sharing === "shared" ? parseSharedEmails(input.sharedEmails) : [];
   if (!sharedEmails) throw new Error("Enter valid email addresses to share this repository");
   const ownerUid = currentOwnerUid || user.uid;
@@ -590,6 +595,7 @@ export async function saveRepository(formData: FormData) {
     ngrokTokenSecret: current?.ngrokTokenSecret || Boolean(input.ngrokAuthtoken),
     ngrokTokenMask: input.ngrokAuthtoken ? secretMask(input.ngrokAuthtoken) : current?.ngrokTokenMask ?? "",
     poolId: input.poolId,
+    defaultWorkerId: input.defaultWorkerId,
     scope: "workspace" as const,
     sharing: input.sharing,
     shared: input.sharing === "shared" || input.sharing === "public",
@@ -622,11 +628,27 @@ export async function saveRepository(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function saveRepositoryDefaultWorker(formData: FormData) {
+  const user = await requireSession("operator");
+  const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
+  const defaultWorkerId = z.string().trim().default("").parse(formData.get("defaultWorkerId") || "");
+  const repositoryRef = adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`);
+  const repository = (await repositoryRef.get()).val() as RepositoryAccessRecord | null;
+  if (!repository) throw new Error("Project not found");
+  if (!canManageRepository(repository, user)) throw new Error("Only the project owner can change its default worker");
+  if (defaultWorkerId) {
+    const worker = (await adminDatabase.ref(`workspaces/${user.workspaceId}/agents/${defaultWorkerId}`).get()).val();
+    if (!worker || !canAccessWorker(worker as WorkerAccessRecord, user)) throw new Error("Worker is not available to this user");
+  }
+  await repositoryRef.update({ defaultWorkerId, updatedAt: Date.now(), updatedBy: user.uid });
+  revalidatePath("/dashboard");
+}
+
 export async function saveRepositoryWithState(_previousState: RepositorySaveState, formData: FormData): Promise<RepositorySaveState> {
   try {
     const isEditing = Boolean(formData.get("repositoryId"));
     await saveRepository(formData);
-    return { status: "success", message: isEditing ? "Repository settings saved." : "Repository registered." };
+    return { status: "success", message: isEditing ? "Project settings saved." : "Project registered." };
   } catch (error) {
     console.error("saveRepository failed", error);
     const user = await requireSession();
@@ -634,7 +656,7 @@ export async function saveRepositoryWithState(_previousState: RepositorySaveStat
     if (error instanceof z.ZodError) {
       return { status: "error", message: error.issues[0]?.message || "Check the repository fields and try again." };
     }
-    const message = error instanceof Error ? error.message : "Repository could not be saved.";
+    const message = error instanceof Error ? error.message : "Project could not be saved.";
     if (message === "Repository is owned by another user") {
       return { status: "error", message: "That repository name is already registered by another user. Choose another display name or ask its owner to share it." };
     }
@@ -864,12 +886,13 @@ async function enqueueDeploymentRequest(formData: FormData): Promise<DeploymentQ
   const user = await requireSession("operator");
   const repositoryId = z.string().min(1).parse(formData.get("repositoryId"));
   const action = z.enum(["sync", "deploy", "stop", "build", "discover_branches", "read_compose", "tunnel_start", "tunnel_stop"]).parse(formData.get("action"));
-  const targetWorkerId = z.string().trim().default("").parse(formData.get("targetWorkerId") || "");
+  let targetWorkerId = z.string().trim().default("").parse(formData.get("targetWorkerId") || "");
   const repository = (
     await adminDatabase.ref(`workspaces/${user.workspaceId}/repositories/${repositoryId}`).get()
   ).val();
   if (!repository) throw new Error("Repository not found");
   if (!canAccessRepository(repository as RepositoryAccessRecord, user)) throw new Error("Repository is not available to this user");
+  targetWorkerId ||= String(repository.defaultWorkerId || "");
   const createdAt = Date.now();
   const requiresRepositoryCredential = ["sync", "deploy", "build", "discover_branches", "read_compose"].includes(action);
   if (requiresRepositoryCredential && !(await userCanAccessCredential(user.workspaceId, String(repository.credentialId || ""), user))) {

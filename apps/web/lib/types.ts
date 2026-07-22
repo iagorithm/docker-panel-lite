@@ -27,6 +27,7 @@ export type Repository = {
   ngrokTokenSecret?: boolean;
   ngrokTokenMask?: string;
   poolId: string;
+  defaultWorkerId?: string;
   availableBranches?: string[];
   composeContent?: string;
   createdAt: number;

@@ -196,16 +196,6 @@ function ResourceGlyph({ kind = "container" }: { kind?: "container" | "repo" | "
   return <span className={`resource-glyph ${kind === "repo" ? "repo-glyph" : ""}`} aria-hidden="true"><span /></span>;
 }
 
-function GithubMark() {
-  return (
-    <span className="github-mark" aria-hidden="true">
-      <svg viewBox="0 0 16 16" focusable="false">
-        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 4.84a7.65 7.65 0 0 1 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-      </svg>
-    </span>
-  );
-}
-
 function SidebarContainerMark() {
   return (
     <span className="sidebar-container-mark" aria-hidden="true">
@@ -213,6 +203,19 @@ function SidebarContainerMark() {
         <path d="M12 3.6 19.2 7.75 12 11.9 4.8 7.75 12 3.6Z" />
         <path d="M5.25 9.45 11.15 12.82v6.95L5.25 16.4V9.45Z" />
         <path d="M18.75 9.45 12.85 12.82v6.95l5.9-3.37V9.45Z" />
+      </svg>
+    </span>
+  );
+}
+
+function ProjectMark() {
+  return (
+    <span className="project-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <rect x="4" y="4" width="6" height="6" rx="1.25" />
+        <rect x="14" y="4" width="6" height="6" rx="1.25" />
+        <rect x="4" y="14" width="6" height="6" rx="1.25" />
+        <rect x="14" y="14" width="6" height="6" rx="1.25" />
       </svg>
     </span>
   );
@@ -395,6 +398,10 @@ function matchesQuery(values: Array<string | undefined>, query: string) {
 
 function safeDockerName(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").toLowerCase().slice(0, 63);
+}
+
+function repositorySlug(url: string) {
+  return url.replace(/\.git$/i, "").replace(/^https?:\/\/(?:[^@/]+@)?/i, "").replace(/^git@([^:]+):/i, "$1/").split("/").slice(-2).join("/") || url;
 }
 
 function repositoryPublicUrls(repository: Repository) {
@@ -632,13 +639,13 @@ export function RealtimeDashboard(props: Props) {
       <aside className="app-sidebar">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true"><span /></span>
-          <div><strong>Control</strong><span>Container workspace</span></div>
+          <div><strong>Control</strong><span>Deployment workspace</span></div>
         </div>
 
         <p className="sidebar-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Workspace">
-          <button className={view === "containers" ? "is-active" : ""} title="View containers" data-tooltip="View containers" onClick={() => setView("containers")}><SidebarContainerMark />Containers</button>
-          <button className={view === "repositories" ? "is-active" : ""} title="View repositories" data-tooltip="View repositories" onClick={() => setView("repositories")}><span className="sidebar-github-mark"><GithubMark /></span>Repositories</button>
+          <button className={view === "containers" ? "is-active" : ""} title="View deployments" data-tooltip="View deployments" onClick={() => setView("containers")}><SidebarContainerMark />Deployments</button>
+          <button className={view === "repositories" ? "is-active" : ""} title="View projects" data-tooltip="View projects" onClick={() => setView("repositories")}><ProjectMark />Projects</button>
         </nav>
 
         <SidebarWorkers agents={agents} now={now} onOpenWorkers={() => setView("containers")} />
@@ -679,7 +686,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   const [showLogsMonitor, setShowLogsMonitor] = useState(false);
   const [showCommandTerminal, setShowCommandTerminal] = useState(false);
   const [selectedLogContainerId, setSelectedLogContainerId] = useState("");
-  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("groups");
+  const [containerViewMode, setContainerViewMode] = useState<"containers" | "groups" | "workers">("containers");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
   const [expandedWorkerStacks, setExpandedWorkerStacks] = useState<Set<string>>(new Set());
@@ -874,15 +881,15 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
   return (
     <div className="table-workspace containers-workspace">
       <div className="top-toolbar">
-        <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search containers..." /></label>
+        <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search deployments..." /></label>
         <div className="toolbar-actions">
-          <div className="icon-toggle container-toolbar-toggle" aria-label="Container tools">
-            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View containers" aria-label="View containers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers"} data-tooltip="View containers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("containers"); }}><Icon name="container" /></button>
+          <div className="icon-toggle container-toolbar-toggle" aria-label="Deployment tools">
+            <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers" ? "is-active" : ""} title="View deployments" aria-label="View deployments" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "containers"} data-tooltip="View deployments" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("containers"); }}><SidebarContainerMark /></button>
             <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups" ? "is-active" : ""} title="View groups" aria-label="View groups" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "groups"} data-tooltip="View groups" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("groups"); }}><Icon name="layers" /></button>
             <button type="button" className={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers" ? "is-active" : ""} title="View workers" aria-label="View workers" aria-pressed={!showLogsMonitor && !showCommandTerminal && containerViewMode === "workers"} data-tooltip="View workers" onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal(false); setContainerViewMode("workers"); }}><Icon name="worker" /></button>
             <IconButton title="Monitor logs" active={showLogsMonitor} onClick={() => { setShowCommandTerminal(false); setShowLogsMonitor((current) => !current); }}><Icon name="logs" /></IconButton>
             <IconButton title="Command terminal" active={showCommandTerminal} onClick={() => { setShowLogsMonitor(false); setShowCommandTerminal((current) => !current); }}><Icon name="terminal" /></IconButton>
-            <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh containers"><Icon name="sync" /></PendingIconButton></form>
+            <form action={enqueueInventoryRefresh}><PendingIconButton title="Refresh deployments"><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
       </div>
@@ -917,7 +924,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
                           <button type="button" className="worker-stack-header" aria-expanded={expandedWorkerStacks.has(`${workerKey}:${stack}`)} onClick={() => toggleWorkerStack(workerKey, stack)}>
                             <span className={`group-chevron stack-chevron ${expandedWorkerStacks.has(`${workerKey}:${stack}`) ? "is-open" : ""}`}><Icon name="chevron" /></span>
                             <span className="worker-stack-title"><Icon name="layers" />{stack}</span>
-                            <small>{stackContainers.length} containers</small>
+                            <small>{stackContainers.length} deployments</small>
                           </button>
                           {expandedWorkerStacks.has(`${workerKey}:${stack}`) ? <div className="container-group-body">{stackContainers.map((container, index) => renderContainerRow(container, index > 0))}</div> : null}
                         </div>
@@ -942,7 +949,7 @@ function ContainersView({ repositories, containers, commandPresets, deployments,
                 </div>
               );
             }) : filteredContainers.map((container, index) => renderContainerRow(container, index > 0))
-          ) : <EmptyState title={visibleContainerRecords.length ? "No matching containers" : "No containers available"} copy={visibleContainerRecords.length ? "Clear the search field to show every available container." : "Start a container or bring its worker online to see stopped containers here."} />}
+          ) : <EmptyState title={visibleContainerRecords.length ? "No matching deployments" : "No deployments available"} copy={visibleContainerRecords.length ? "Clear the search field to show every deployment." : "Deploy a project or bring its worker online to see stopped services here."} />}
         </section>
       )}
     </div>
@@ -999,8 +1006,8 @@ function CommandTerminal({ containers, commandPresets, agents, deployments, now,
     <div className="command-workspace">
       <form action={enqueueContainerCommand} className="command-terminal-form">
         <div className="command-terminal-controls">
-          <select name="containerId" required aria-label="Container" defaultValue={defaultContainerId}>
-            <option value="" disabled>{sortedContainers.length ? "Select container" : "No containers available"}</option>
+          <select name="containerId" required aria-label="Deployment" defaultValue={defaultContainerId}>
+            <option value="" disabled>{sortedContainers.length ? "Select deployment" : "No deployments available"}</option>
             {sortedContainers.map((container) => {
               const workerName = container.workerLabel || container.workerHostname || container.workerId || "Unknown worker";
               return <option value={container.id} key={container.id}>{container.name} · {container.status} · {workerName}</option>;
@@ -1112,8 +1119,8 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
       <div className="top-toolbar logs-toolbar">
         <label className="search-field"><span>Search logs</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter logs..." /></label>
         <div className="logs-filters">
-          <select value={selectedContainerId} aria-label="Filter by container" onChange={(event) => onSelectContainer(event.target.value)}>
-            <option value="">All containers</option>
+          <select value={selectedContainerId} aria-label="Filter by deployment" onChange={(event) => onSelectContainer(event.target.value)}>
+            <option value="">All deployments</option>
             {sortedContainers.map((container) => <option value={container.id} key={container.id}>{container.name}</option>)}
           </select>
           <select value={projectFilter} aria-label="Filter by group" onChange={(event) => setProjectFilter(event.target.value)}>
@@ -1142,10 +1149,10 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
 
       <section className="logs-monitor">
         <div className="logs-monitor-header">
-          <div><strong>Live logs</strong><span>{visibleContainers.length} of {containers.length} containers</span></div>
-          {selectedContainerId ? <button type="button" title="Show all containers" data-tooltip="Show all containers" onClick={() => onSelectContainer("")}><Icon name="close" /></button> : null}
+          <div><strong>Live logs</strong><span>{visibleContainers.length} of {containers.length} deployments</span></div>
+          {selectedContainerId ? <button type="button" title="Show all deployments" data-tooltip="Show all deployments" onClick={() => onSelectContainer("")}><Icon name="close" /></button> : null}
         </div>
-        <pre className="logs-monitor-console"><code>{consoleText || "No containers match the current filters."}</code></pre>
+        <pre className="logs-monitor-console"><code>{consoleText || "No deployments match the current filters."}</code></pre>
       </section>
     </div>
   );
@@ -1166,11 +1173,10 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
   const [editingRepositoryId, setEditingRepositoryId] = useState<string | null>(null);
   const [viewingComposeRepositoryId, setViewingComposeRepositoryId] = useState<string | null>(null);
   const [viewingDeploymentLogRepositoryId, setViewingDeploymentLogRepositoryId] = useState<string | null>(null);
-  const [deletingRepositoryId, setDeletingRepositoryId] = useState<string | null>(null);
   const [showAddRepository, setShowAddRepository] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const [showCommandPresets, setShowCommandPresets] = useState(false);
-  const [selectedWorkerByRepository, setSelectedWorkerByRepository] = useState<Record<string, string>>({});
+  const projectWorkers = useMemo(() => [...agents].sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))), [agents]);
   const availableWorkers = useMemo(
     () => agents.filter((agent) => isWorkerOnline(agent, now)).sort((a, b) => workerDisplayName(a).localeCompare(workerDisplayName(b))),
     [agents, now],
@@ -1199,12 +1205,6 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
     }
     return result;
   }, [repositories, containers, agentById]);
-  useEffect(() => {
-    setSelectedWorkerByRepository((current) => {
-      const next = Object.fromEntries(Object.entries(current).filter(([, workerId]) => !workerId || availableWorkerIds.has(workerId)));
-      return Object.keys(next).length === Object.keys(current).length ? current : next;
-    });
-  }, [availableWorkerIds]);
   const filteredRepositories = repositories.filter((repository) =>
     matchesQuery([
       repository.alias,
@@ -1222,14 +1222,15 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
   );
   return (
     <div className="table-workspace repositories-workspace">
+      <div className="projects-heading"><h1>Projects</h1><span>{filteredRepositories.length} project{filteredRepositories.length === 1 ? "" : "s"}</span></div>
       <div className="top-toolbar">
-        <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories..." /></label>
+        <label className="search-field"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects..." /></label>
         <div className="toolbar-actions">
-          <div className="icon-toggle repository-toolbar-toggle" aria-label="Repository tools">
-            <IconButton title={showAddRepository ? "Close repository form" : "Add repository"} active={showAddRepository} onClick={() => setShowAddRepository((current) => !current)}><Icon name="add" /></IconButton>
+          <div className="icon-toggle repository-toolbar-toggle" aria-label="Project tools">
+            <IconButton title={showAddRepository ? "Close project form" : "Add project"} active={showAddRepository} onClick={() => setShowAddRepository((current) => !current)}><Icon name="add" /></IconButton>
             <IconButton title={showCredentials ? "Close credentials" : "Credentials"} active={showCredentials} onClick={() => setShowCredentials((current) => !current)}><Icon name="key" /></IconButton>
             <IconButton title={showCommandPresets ? "Close commands" : "Registered commands"} active={showCommandPresets} onClick={() => setShowCommandPresets((current) => !current)}><Icon name="terminal" /></IconButton>
-            <form action={enqueueAllRepositories}><PendingIconButton title="Sync all repositories"><Icon name="sync" /></PendingIconButton></form>
+            <form action={enqueueAllRepositories}><PendingIconButton title="Sync all projects"><Icon name="sync" /></PendingIconButton></form>
           </div>
         </div>
       </div>
@@ -1241,33 +1242,28 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
       <section className="panel resource-panel">
         {filteredRepositories.length ? filteredRepositories.map((repository, index) => {
           const isOwner = canManageRepository(repository as RepositoryAccessRecord, currentUser);
-          const targetWorkerId = selectedWorkerByRepository[repository.id] || "";
-          const workerSelected = Boolean(targetWorkerId);
+          const targetWorkerId = repository.defaultWorkerId || "";
+          const workerSelected = Boolean(targetWorkerId && availableWorkerIds.has(targetWorkerId));
           const deployedWorkers = workersByRepository.get(repository.id) || [];
           const publicUrls = repositoryPublicUrls(repository);
+          const latestDeployment = deployments.filter((deployment) => deployment.repositoryId === repository.id).sort((a, b) => b.createdAt - a.createdAt)[0];
+          const projectUrl = publicUrls[0]?.[1] || repository.domain || repository.publicTunnelDomain || "Not deployed publicly";
+          const latestWorker = latestDeployment?.targetWorkerId ? agentById.get(latestDeployment.targetWorkerId) : undefined;
+          const status = latestDeployment?.status || "idle";
           const actionKey = (action: RepositoryAction) => `${repository.id}:${action}:${targetWorkerId}`;
           return (
             <article className="resource-row repo-resource-row" key={repository.id}>
               {index ? <div className="resource-divider" /> : null}
-              <div className="resource-identity"><GithubMark /><div className="resource-copy"><strong>{repository.alias}</strong><span>{repository.mode === "compose" ? "Docker Compose" : "Dockerfile"}</span></div></div>
-              <div className="resource-metadata">
-                <span title={repository.url}>{repository.url}</span>
-                <small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · Branch {repository.branch || "default"} · {repositorySharingLabel(repository)}</small>
-                {deployedWorkers.length ? (
-                  <div className="repo-worker-flags" aria-label="Deployed workers">
-                    {deployedWorkers.map((worker) => <span className="repo-worker-flag" title={`Deployed on ${worker.name}`} key={worker.id}>{worker.name}</span>)}
-                  </div>
-                ) : null}
+              <div className="resource-identity project-identity"><ProjectMark /><div className="resource-copy"><strong>{repository.alias}</strong>{publicUrls[0] ? <a href={publicUrls[0][1]} target="_blank" rel="noreferrer" title={publicUrls[0][1]}>{projectUrl}</a> : <span title={projectUrl}>{projectUrl}</span>}</div></div>
+              <div className="project-source-status">
+                <span className="project-source-pill" title={repository.url}><Icon name="branch" />{repositorySlug(repository.url)}</span>
+                <span className={`project-deployment-status is-${status}`} title={`Latest deployment: ${status}`}><Icon name={status === "completed" ? "check" : status === "failed" ? "close" : "sync"} /></span>
               </div>
-              <div className="row-actions">
-                <select className="worker-target-select" value={targetWorkerId} title="Run on worker" aria-label={`Run ${repository.alias} on worker`} onChange={(event) => setSelectedWorkerByRepository((current) => ({ ...current, [repository.id]: event.target.value }))}>
-                  <option value="">Select worker</option>
-                  {availableWorkers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}</option>)}
-                </select>
+              <div className="row-actions project-row-actions">
                 <QueueButton repositoryId={repository.id} action="sync" title="Sync repository" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("sync"))} disabled={!workerSelected}><Icon name="sync" /></QueueButton>
                 {isOwner ? (
                   <IconButton
-                    title={editingRepositoryId === repository.id ? "Close settings" : "Edit repository"}
+                    title={editingRepositoryId === repository.id ? "Close settings" : "Edit project"}
                     onClick={() => setEditingRepositoryId((current) => current === repository.id ? null : repository.id)}
                   >
                     <Icon name="sliders" />
@@ -1296,15 +1292,13 @@ function RepositoriesView({ repositories, commandPresets, credentials, container
                 <QueueButton repositoryId={repository.id} action="tunnel_start" title={publicUrls.length ? "Refresh public URLs" : "Open public URLs"} targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_start"))} disabled={!workerSelected}><Icon name="link" /></QueueButton>
                 {publicUrls.length ? <QueueButton repositoryId={repository.id} action="tunnel_stop" title="Close public URLs" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("tunnel_stop"))} disabled={!workerSelected}><Icon name="close" /></QueueButton> : null}
                 <QueueButton repositoryId={repository.id} action="stop" title="Stop" targetWorkerId={targetWorkerId} busy={busyRepositoryActions.has(actionKey("stop"))} disabled={!workerSelected}><Icon name="stop" /></QueueButton>
-                {isOwner ? <IconButton title={deletingRepositoryId === repository.id ? "Close delete confirmation" : "Remove repository"} onClick={() => setDeletingRepositoryId((current) => current === repository.id ? null : repository.id)}><Icon name={deletingRepositoryId === repository.id ? "close" : "trash"} /></IconButton> : null}
               </div>
-              {isOwner ? <RepositorySettings repository={repository} credentials={credentials} open={editingRepositoryId === repository.id} /> : null}
+              {isOwner ? <RepositorySettings repository={repository} credentials={credentials} workers={projectWorkers} deployedWorkers={deployedWorkers} latestDeployment={latestDeployment} latestWorker={latestWorker} now={now} open={editingRepositoryId === repository.id} /> : null}
               <ComposeViewer repository={repository} open={viewingComposeRepositoryId === repository.id} onClose={() => setViewingComposeRepositoryId(null)} />
               <RepositoryDeploymentLog repository={repository} deployments={deployments} open={viewingDeploymentLogRepositoryId === repository.id} onClose={() => setViewingDeploymentLogRepositoryId(null)} />
-              {isOwner ? <RepositoryDeleteConfirm repository={repository} open={deletingRepositoryId === repository.id} onClose={() => setDeletingRepositoryId(null)} /> : null}
             </article>
           );
-        }) : <EmptyState title={repositories.length ? "No matching repositories" : "No repositories yet"} copy={repositories.length ? "Clear the search field to show every repository." : "Register a repository to start deploying from Git."} />}
+        }) : <EmptyState title={repositories.length ? "No matching projects" : "No projects yet"} copy={repositories.length ? "Clear the search field to show every project." : "Register a project to start deploying from Git."} />}
       </section>
     </div>
   );
@@ -1362,14 +1356,14 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
             <div className="segmented-radio">
               <label><input type="radio" name="mode" value="dockerfile" checked={deployMode === "dockerfile"} onChange={() => setDeployMode("dockerfile")} /><span>Single Dockerfile</span></label>
               <label><input type="radio" name="mode" value="compose" checked={deployMode === "compose"} onChange={() => setDeployMode("compose")} /><span>Docker Compose</span></label>
-              <button type="button" className="segment-icon-button" title={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} aria-label={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} data-tooltip={showRepositoryImport ? "Close JSON import" : "Import repositories JSON"} onClick={() => setShowRepositoryImport((current) => !current)}><Icon name={showRepositoryImport ? "close" : "document"} /></button>
+              <button type="button" className="segment-icon-button" title={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} aria-label={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} data-tooltip={showRepositoryImport ? "Close JSON import" : "Import projects JSON"} onClick={() => setShowRepositoryImport((current) => !current)}><Icon name={showRepositoryImport ? "close" : "document"} /></button>
             </div>
           </fieldset>
           <label className="credential-select">GitHub credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public (no credential)</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
         </div>
 
         <div className="repository-input-card">
-          <label className="url-field">Repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
+          <label className="url-field">Source repository URL<div className="input-with-action"><input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required placeholder="https://github.com/user/repository.git" /><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div></label>
           <label>Display name<input name="alias" required placeholder="my-service" /></label>
           <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branches.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
           {deployMode === "dockerfile" ? (
@@ -1387,26 +1381,26 @@ function AddRepositoryPanel({ credentials }: { credentials: CredentialSummary[] 
           <label>Ngrok domain<input name="publicTunnelDomain" placeholder="optional-domain.ngrok.app" /></label>
           <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder="Optional per repository token" /></label>
           <EnvironmentEditor initialEnvText="" />
-          <div className="register-action"><PendingSubmitButton tooltip="Clone repository and save this configuration"><Icon name="download" />Clone and register</PendingSubmitButton></div>
+          <div className="register-action"><PendingSubmitButton tooltip="Clone source and register this project"><Icon name="download" />Clone and register</PendingSubmitButton></div>
           {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
         </div>
       </form>
       {showRepositoryImport ? (
         <form action={importRepositoriesJson} className="repository-import-form">
-          <label>Repositories JSON<textarea name="repositoriesJson" rows={6} spellCheck={false} placeholder='{"my-repo":{"url":"https://github.com/org/repo.git","mode":"compose","compose_file":"compose.yml"}}' /></label>
-          <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import repositories from JSON">Import repositories</PendingSubmitButton></div>
+          <label>Projects JSON<textarea name="repositoriesJson" rows={6} spellCheck={false} placeholder='{"my-project":{"url":"https://github.com/org/repo.git","mode":"compose","compose_file":"compose.yml"}}' /></label>
+          <div className="form-actions"><PendingSubmitButton className="secondary" tooltip="Import projects from JSON">Import projects</PendingSubmitButton></div>
         </form>
       ) : null}
     </section>
   );
 }
 
-function RepositorySettings({ repository, credentials, open }: { repository: Repository; credentials: CredentialSummary[]; open: boolean }) {
+function RepositorySettings({ repository, credentials, workers, deployedWorkers, latestDeployment, latestWorker, now, open }: { repository: Repository; credentials: CredentialSummary[]; workers: Agent[]; deployedWorkers: Array<{ id: string; name: string }>; latestDeployment?: Deployment; latestWorker?: Agent; now: number; open: boolean }) {
   const [saveState, saveAction] = useActionState(saveRepositoryWithState, initialRepositorySaveState);
   const [repositoryUrl, setRepositoryUrl] = useState(repository.url);
   const [credentialId, setCredentialId] = useState(repository.credentialId || "");
   const [branch, setBranch] = useState(repository.branch || "");
-  const [settingsTab, setSettingsTab] = useState<"general" | "build" | "environment" | "public" | "access" | "danger">("general");
+  const [settingsTab, setSettingsTab] = useState<"overview" | "general" | "build" | "environment" | "public" | "access" | "danger">("overview");
   const [sharing, setSharing] = useState(repositorySharingMode(repository as RepositoryAccessRecord));
   const [sharedEmails, setSharedEmails] = useState((repository.sharedEmails || []).join(", "));
   const [branches, setBranches] = useState<string[]>(repository.availableBranches || []);
@@ -1423,7 +1417,7 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
     setLoadingBranches(false);
     setSharing(repositorySharingMode(repository as RepositoryAccessRecord));
     setSharedEmails((repository.sharedEmails || []).join(", "));
-    setSettingsTab("general");
+    setSettingsTab("overview");
     setShowDeleteConfirm(false);
   }, [repository.id, repository.url, repository.credentialId, repository.branch, repository.availableBranches, repository.sharing, repository.public, repository.sharedEmails]);
 
@@ -1458,14 +1452,14 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
   const branchOptions = [...new Set([branch, ...branches].filter(Boolean))];
   const tabClass = (tab: typeof settingsTab) => `settings-tab-panel ${settingsTab === tab ? "is-active" : ""}`;
   return (
-    <details className="inline-editor" open={open}>
-      <summary><span>Edit settings</span><span>⌄</span></summary>
+    <div className="inline-editor project-settings-inline">
       <form action={saveAction} className="repository-settings-form">
         <input type="hidden" name="repositoryId" value={repository.id} />
         <input type="hidden" name="publicTunnelDomainsJson" value={JSON.stringify(repository.publicTunnelDomains || {})} />
         <input type="hidden" name="publicTunnelPortsJson" value={JSON.stringify(repository.publicTunnelPorts || {})} />
-        <div className="settings-tabs" role="tablist" aria-label="Repository settings">
+        <div className="settings-tabs" role="tablist" aria-label="Project settings">
           {[
+            ["overview", "Overview"],
             ["general", "General"],
             ["build", "Build"],
             ["environment", "Environment"],
@@ -1476,12 +1470,20 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
             <button type="button" role="tab" aria-selected={settingsTab === tab} className={settingsTab === tab ? "is-active" : ""} onClick={() => setSettingsTab(tab as typeof settingsTab)} key={tab}>{label}</button>
           ))}
         </div>
-        <div className={tabClass("general")} role="tabpanel" aria-label="General repository settings">
+        <div className={tabClass("overview")} role="tabpanel" aria-label="Project overview">
+          <div className="project-settings-overview">
+            <div><span>Latest deployment</span><strong>{latestDeployment?.message || (latestDeployment ? `${latestDeployment.action} ${latestDeployment.status}` : "No deployments yet")}</strong><small>{latestDeployment ? `${elapsed(latestDeployment.createdAt)} on ${repository.branch || "default"}${latestWorker ? ` · ${workerDisplayName(latestWorker)}` : ""}` : `Ready on ${repository.branch || "default"}`}</small></div>
+            <div><span>Source</span><strong title={repository.url}>{repository.url}</strong><small>{repository.mode === "compose" ? repository.composeFile || defaultComposeFile : repository.dockerfile || "Dockerfile"} · {repository.mode === "compose" ? "Docker Compose" : "Dockerfile"} · Branch {repository.branch || "default"} · {repositorySharingLabel(repository)}</small></div>
+            <div><span>Workers</span><strong>{deployedWorkers.length ? deployedWorkers.map((worker) => worker.name).join(", ") : "Not deployed"}</strong><small>{repository.defaultWorkerId ? `Default: ${workers.find((worker) => worker.id === repository.defaultWorkerId) ? workerDisplayName(workers.find((worker) => worker.id === repository.defaultWorkerId)!) : repository.defaultWorkerId}` : "No default worker selected"}</small></div>
+          </div>
+        </div>
+        <div className={tabClass("general")} role="tabpanel" aria-label="General project settings">
           <div className="form-grid">
             <label>Alias<input name="alias" defaultValue={repository.alias} required /></label>
-            <label className="wide">Repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
+            <label className="wide">Source repository URL<input name="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} required /></label>
             <label>Branch<div className="input-with-action"><select name="branch" value={branch} onChange={(event) => setBranch(event.target.value)}><option value="">Default branch</option>{branchOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" title="Discover branches" aria-label="Discover branches" data-tooltip="Discover branches" onClick={discoverBranches} disabled={loadingBranches}><Icon name={loadingBranches ? "sync" : "branch"} /></button></div>{branchMessage ? <small className="field-hint">{branchMessage}</small> : null}</label>
             <label>Credential<select name="credentialId" value={credentialId} onChange={(event) => setCredentialId(event.target.value)}><option value="">Public repository</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.alias}</option>)}</select></label>
+            <label>Default worker<select key={repository.defaultWorkerId || "none"} name="defaultWorkerId" defaultValue={repository.defaultWorkerId || ""}><option value="">No default worker</option>{workers.map((agent) => <option value={agent.id} key={agent.id}>{workerDisplayName(agent)}{isWorkerOnline(agent, now) ? "" : " · offline"}</option>)}</select></label>
           </div>
         </div>
         <div className={tabClass("build")} role="tabpanel" aria-label="Build settings">
@@ -1506,26 +1508,26 @@ function RepositorySettings({ repository, credentials, open }: { repository: Rep
             <label>Ngrok API token<input name="ngrokAuthtoken" type="password" autoComplete="off" placeholder={repository.ngrokTokenMask ? `Saved ${repository.ngrokTokenMask}` : "Optional per repository token"} />{repository.ngrokTokenMask ? <small className="field-hint">Leave empty to keep saved token.</small> : null}</label>
           </div>
         </div>
-        <div className={tabClass("access")} role="tabpanel" aria-label="Repository access settings">
+        <div className={tabClass("access")} role="tabpanel" aria-label="Project access settings">
           <div className="form-grid repository-access-form">
             <label>Visibility<select name="sharing" value={sharing} onChange={(event) => setSharing(event.target.value as typeof sharing)}><option value="private">Private</option><option value="shared">Shared with users</option><option value="public">Public to workspace</option></select></label>
             {sharing === "shared" ? <label className="wide">Shared with<input name="sharedEmails" type="text" value={sharedEmails} onChange={(event) => setSharedEmails(event.target.value)} placeholder="one@example.com, two@example.com" /><small className="field-hint">Separate multiple email addresses with commas.</small></label> : <input type="hidden" name="sharedEmails" value="" />}
-            <div className="repository-access-note wide"><strong>{sharing === "private" ? "Only you can see this repository." : sharing === "shared" ? "Only the listed users can see and run it." : "Every user in this workspace can see and run it."}</strong><small>Only the owner can edit access, settings, or remove the repository.</small></div>
+            <div className="repository-access-note wide"><strong>{sharing === "private" ? "Only you can see this project." : sharing === "shared" ? "Only the listed users can see and run it." : "Every user in this workspace can see and run it."}</strong><small>Only the owner can edit access, settings, or remove the project.</small></div>
           </div>
         </div>
         <div className={tabClass("danger")} role="tabpanel" aria-label="Danger zone">
           <div className="danger-tab-panel">
-            <div><strong>Remove repository registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
-            <button type="button" className="secondary" title="Remove this repository registration" data-tooltip="Remove this repository registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel remove" : "Remove registration"}</button>
+            <div><strong>Remove project registration</strong><small>This only removes the saved configuration and secrets from the panel.</small></div>
+            <button type="button" className="danger" title="Permanently remove this project registration" data-tooltip="Permanently remove this project registration" onClick={() => setShowDeleteConfirm((current) => !current)}>{showDeleteConfirm ? "Cancel removal" : "Remove project"}</button>
           </div>
         </div>
         <div className="settings-form-footer">
           {saveState.status !== "idle" ? <p className={`form-action-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"} aria-live="polite">{saveState.message}</p> : null}
-          <PendingSubmitButton tooltip="Save repository settings">Save settings</PendingSubmitButton>
+          <PendingSubmitButton tooltip="Save project settings">Save settings</PendingSubmitButton>
         </div>
       </form>
       <RepositoryDeleteConfirm repository={repository} open={showDeleteConfirm} compact onClose={() => setShowDeleteConfirm(false)} />
-    </details>
+    </div>
   );
 }
 
@@ -1541,10 +1543,10 @@ function RepositoryDeleteConfirm({ repository, open, compact = false, onClose }:
     <form action={deleteRepository} className={`repository-delete-confirm ${compact ? "is-compact" : "full-row"}`}>
       <input type="hidden" name="repositoryId" value={repository.id} />
       <input type="hidden" name="expectedRepositoryName" value={expected} />
-      <label>Type <code>{expected}</code> to remove<input name="repositoryNameConfirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} /></label>
+      <label>Type the project name <code>{expected}</code> to confirm removal<input name="repositoryNameConfirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} /></label>
       <div className="delete-confirm-actions">
         <button type="button" className="secondary" onClick={onClose}>Cancel</button>
-        <PendingSubmitButton className="danger" tooltip="Remove repository" disabled={!confirmed}>Remove</PendingSubmitButton>
+        <PendingSubmitButton className="danger" tooltip="Permanently remove project" disabled={!confirmed}>Remove project</PendingSubmitButton>
       </div>
     </form>
   );
