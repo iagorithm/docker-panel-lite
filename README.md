@@ -36,6 +36,46 @@ Run these commands from the repository root.
 | `./run.sh firebase-rules` | Deploys Firebase Realtime Database rules from `scripts/database.rules.json`. |
 | `docker logs --tail 100 docker-panel-lite-worker` | Reads the claim token when running a published worker with `docker run`. |
 
+## Lint and Format the Next.js Apps
+
+Run these commands from the repository root. They apply to both `apps/web` and
+`apps/logs`.
+
+Check the entire Next.js project with ESLint:
+
+```bash
+npm --prefix apps/web run lint
+npm --prefix apps/logs run lint
+```
+
+Apply ESLint's automatic fixes:
+
+```bash
+npm --prefix apps/web run lint:fix
+npm --prefix apps/logs run lint:fix
+```
+
+Format all supported files with Prettier:
+
+```bash
+npm --prefix apps/web run format
+npm --prefix apps/logs run format
+```
+
+Check formatting without modifying files:
+
+```bash
+npm --prefix apps/web run format:check
+npm --prefix apps/logs run format:check
+```
+
+Check TypeScript types without generating build files:
+
+```bash
+npm --prefix apps/web run typecheck
+npm --prefix apps/logs run typecheck
+```
+
 ## Build and Publish the Worker Image
 
 Set the worker image in `.env`:
