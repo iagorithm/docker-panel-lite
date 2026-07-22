@@ -15,7 +15,6 @@ export default async function LoginPage() {
         <div>
           <a href="#architecture">Architecture</a>
           <a href="/docs">Docs</a>
-          <a href="#login">Login</a>
           <a className="landing-nav-cta" href="#login">Get started</a>
         </div>
       </nav>
