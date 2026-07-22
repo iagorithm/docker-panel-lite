@@ -1212,7 +1212,10 @@ function LogsView({ containers, deployments, agents, selectedContainerId, now, o
       ];
       return lines.join("\n");
     })
-    .join("\n\n");
+    .join("\n\n")
+    .split(/\r?\n/)
+    .slice(0, 70)
+    .join("\n");
   const selectedContainer = selectedContainerId ? sortedContainers.find((container) => container.id === selectedContainerId) : undefined;
   const canRefreshSelectedContainer = Boolean(selectedContainerId && selectedContainer);
   useEffect(() => {
