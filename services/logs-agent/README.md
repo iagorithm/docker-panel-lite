@@ -9,9 +9,16 @@ GitHub source tree under `services/**`.
 - Requests require `X-Agent-Secret`.
 - GitHub access is limited in code to `services/**`.
 - Analysis mode cannot write.
-- Apply mode creates `logs-agent/<run-id>` and commits there; it never writes to
-  the configured base branch.
+- Apply mode creates a descriptive `fix/<english-purpose>-<run-id>` branch and
+  uses an English commit message describing what the correction resolves.
+- Explicit hotfix mode may commit directly to the configured base branch and is
+  restricted to one `services/**` source file per run.
 - Logs are treated as untrusted diagnostic input.
+- The agent's primary role is surgical bug correction against the current
+  implementation. It cannot use a fix run for unrelated features, refactors,
+  dependencies, cleanup, or speculative behavior.
+- Reports keep the complete evidence-based improvement proposal separate from
+  the minimal safe fix. Optional proposal items are never applied automatically.
 - Runs are stored at `workspaces/<workspaceId>/agent_runs/<runId>`.
 
 ## API

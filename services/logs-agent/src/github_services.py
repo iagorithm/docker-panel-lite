@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import base64
+import ast
+import difflib
+import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import requests
 from crewai.tools import BaseTool
@@ -25,6 +29,7 @@ class GitHubServices:
     base_branch: str
     run_id: str
     allow_writes: bool
+    hotfix: bool = False
     branch: str = ""
     changes: list[dict[str, str]] = field(default_factory=list)
 
@@ -63,11 +68,15 @@ class GitHubServices:
             raise ValueError(f"{safe} is larger than the agent read limit")
         return content
 
-    def ensure_branch(self) -> str:
+    def ensure_branch(self, reason: str = "") -> str:
         if self.branch:
             return self.branch
+        if self.hotfix:
+            self.branch = self.base_branch
+            return self.branch
         base = self.request("GET", f"/git/ref/heads/{self.base_branch}")
-        self.branch = f"logs-agent/{self.run_id}"
+        slug = re.sub(r"[^a-z0-9]+", "-", reason.lower()).strip("-")[:48] or "service-error"
+        self.branch = f"fix/{slug}-{self.run_id[:6]}"
         self.request("POST", "/git/refs", json={"ref": f"refs/heads/{self.branch}", "sha": base["object"]["sha"]})
         return self.branch
 
@@ -75,14 +84,69 @@ class GitHubServices:
         if not self.allow_writes:
             return "WRITE BLOCKED: analysis-only run. Recommend the change in the report."
         safe = self.safe_path(path)
+        if self.hotfix and any(change["path"] != safe and change["path"].startswith("services/") for change in self.changes):
+            return "WRITE BLOCKED: hotfix mode permits changes to only one services/** file. Use a dedicated branch for a larger correction."
         if len(content.encode("utf-8")) > 300_000:
             raise ValueError("Agent writes are limited to 300 KB per file")
-        branch = self.ensure_branch()
-        current = self.request("GET", f"/contents/{safe}?ref={branch}")
+        current = self.request("GET", f"/contents/{safe}?ref={self.branch or self.base_branch}")
+        previous = base64.b64decode(current["content"]).decode("utf-8")
+        self.validate_safe_replacement(safe, previous, content)
+        branch = self.ensure_branch(reason)
         result = self.request("PUT", f"/contents/{safe}", json={"message": f"fix(services): {reason[:120]}", "content": base64.b64encode(content.encode()).decode(), "sha": current["sha"], "branch": branch})
         change = {"path": safe, "commit": result["commit"]["sha"], "reason": reason[:500]}
         self.changes.append(change)
         return f"Updated {safe} on {branch} in commit {change['commit']}"
+
+    @staticmethod
+    def validate_safe_replacement(path: str, previous: str, proposed: str) -> None:
+        if not proposed.strip():
+            raise ValueError("Destructive fix blocked: proposed file is empty")
+        if len(proposed.encode("utf-8")) < len(previous.encode("utf-8")) * 0.9:
+            raise ValueError("Destructive fix blocked: proposed file removes more than 10% of the existing code")
+        diff = difflib.ndiff(previous.splitlines(), proposed.splitlines())
+        removed = sum(1 for line in diff if line.startswith("- ") and line[2:].strip())
+        existing_lines = max(1, sum(1 for line in previous.splitlines() if line.strip()))
+        removal_limit = min(20, max(3, int(existing_lines * 0.1)))
+        if removed > removal_limit:
+            raise ValueError(f"Destructive fix blocked: proposed change removes {removed} existing lines")
+        if path.endswith(".py"):
+            try:
+                ast.parse(proposed, filename=path)
+            except SyntaxError as error:
+                raise ValueError(f"Invalid Python fix blocked: {error.msg} at line {error.lineno}") from error
+        if path.endswith(".json"):
+            try:
+                json.loads(proposed)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"Invalid JSON fix blocked: {error.msg} at line {error.lineno}") from error
+
+    def append_changelog(self, *, status: str, summary: str, requested_by: str) -> dict[str, str]:
+        branch = self.ensure_branch()
+        path = "CHANGELOGS.md"
+        response = requests.get(f"{self.api}/contents/{path}", headers=self.headers, params={"ref": branch}, timeout=30)
+        if response.status_code == 404:
+            current = None
+            content = "# Correction history\n"
+        elif response.status_code >= 400:
+            raise RuntimeError(f"GitHub GET {path} failed ({response.status_code}): {response.text[:500]}")
+        else:
+            current = response.json()
+            content = base64.b64decode(current["content"]).decode("utf-8")
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        concise = summary.strip()[:4000]
+        delivery = "hotfix" if self.hotfix else "branch"
+        entry = f"\n## {timestamp} · {status}\n\n- Run: `{self.run_id}`\n- Requested by: `{requested_by or 'unknown'}`\n- Branch: `{branch}`\n- Delivery: `{delivery}`\n\n{concise}\n"
+        payload = {
+            "message": f"docs: record logs-agent {status}",
+            "content": base64.b64encode((content.rstrip() + "\n" + entry).encode()).decode(),
+            "branch": branch,
+        }
+        if current:
+            payload["sha"] = current["sha"]
+        result = self.request("PUT", f"/contents/{path}", json=payload)
+        change = {"path": path, "commit": result["commit"]["sha"], "reason": f"Record {status} correction"}
+        self.changes.append(change)
+        return change
 
 
 class ListServicesFilesTool(BaseTool):
@@ -109,7 +173,7 @@ class ReadServicesFileTool(BaseTool):
 class WriteServicesFileTool(BaseTool):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str = "write_services_file"
-    description: str = "Replace an existing services/** file on a dedicated branch when apply mode is enabled."
+    description: str = "Replace an existing services/** file when apply mode is enabled. Hotfix mode is restricted to one services file on the base branch."
     args_schema: type[BaseModel] = WriteInput
     backend: GitHubServices
 

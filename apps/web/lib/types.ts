@@ -111,6 +111,10 @@ export type AppLog = {
   severity: "error";
   message: string;
   context?: Record<string, string>;
+  analyzed?: boolean;
+  analysisCount?: number;
+  lastAnalyzedAt?: number;
+  lastAnalyzedBy?: string;
   createdAt: number;
 };
 
