@@ -227,7 +227,7 @@ export function LogsTerminal() {
     apply: true,
     hotfix,
     preview: true,
-    instruction: `Apply the diagnosed correction exactly when supported by the code. The tool reason and Git commit message must be concise English describing what the fix resolves. Keep the final report brief. Diagnosis: ${agentResult?.report || ""}`,
+    instruction: `Apply the diagnosed correction exactly when supported by the code. The tool reason and Git commit message must be concise English describing what the fix resolves. Keep the final report brief. Diagnosis: ${agentResult?.report || ""}`.slice(0, 9500),
   });
 
   const commitPreview = async (hotfix: boolean) => {

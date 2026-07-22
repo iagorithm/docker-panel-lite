@@ -19,7 +19,7 @@ app = FastAPI(title="Docker Panel Logs CrewAI Agent", version="1.0.0")
 
 class AgentRequest(BaseModel):
     logs: list[dict] = Field(min_length=1, max_length=50)
-    instruction: str = Field(default="", max_length=2000)
+    instruction: str = Field(default="", max_length=10000)
     format: str = "markdown"
     apply: bool = False
     hotfix: bool = False

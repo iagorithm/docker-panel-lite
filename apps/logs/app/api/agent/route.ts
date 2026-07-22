@@ -5,6 +5,18 @@ import { adminSession } from "@/lib/session";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+function apiError(payload: Record<string, unknown>, fallback: string) {
+  const detail = payload.detail ?? payload.error;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((item) => {
+    if (!item || typeof item !== "object") return String(item);
+    const issue = item as { loc?: unknown[]; msg?: string };
+    return `${issue.loc?.join(".") || "request"}: ${issue.msg || JSON.stringify(item)}`;
+  }).join("; ");
+  if (detail) return JSON.stringify(detail);
+  return fallback;
+}
+
 export async function POST(request: NextRequest) {
   const user = await adminSession();
   if (!user) return NextResponse.json({ error: "Admin session required" }, { status: 401 });
@@ -22,7 +34,7 @@ export async function POST(request: NextRequest) {
     const text = await response.text();
     let payload: Record<string, unknown> = {};
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = { error: text || "CrewAI service returned an empty response" }; }
-    if (!response.ok) return NextResponse.json({ error: payload.detail || payload.error || "CrewAI diagnostics failed" }, { status: response.status });
+    if (!response.ok) return NextResponse.json({ error: apiError(payload, "CrewAI diagnostics failed") }, { status: response.status });
     return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "CrewAI service request failed" }, { status: 502 });
