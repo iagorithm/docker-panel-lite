@@ -26,7 +26,7 @@ Run:
   run local             Same as run
   run published         Pull/run stack using images configured in .env
   run go                Build/run web + Python worker + logs app + Go worker
-  run rust              Build the Rust worker bootstrap profile
+  run rust              Build and start the Rust worker profile
   down                  Stop and remove stack containers
   restart               Recreate and start the published-image stack
 
@@ -192,8 +192,9 @@ cmd_run() {
       ;;
     rust)
       export WORKER_RUST_IMAGE="$LOCAL_WORKER_RUST_IMAGE"
-      echo "Building the Rust worker bootstrap profile..."
-      docker compose --profile rust-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" up --build --no-start worker-rust "$@"
+      echo "Building and starting the Rust worker profile..."
+      docker compose --profile rust-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" up -d --build worker-rust "$@"
+      docker compose --profile rust-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps worker-rust
       ;;
     *)
       echo "Unknown run mode: $mode" >&2

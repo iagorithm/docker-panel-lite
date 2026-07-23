@@ -3,15 +3,15 @@ FROM rust:1.88-alpine AS builder
 ARG WORKER_CONFIG_REQUIRED=false
 WORKDIR /src
 RUN apk add --no-cache musl-dev
-COPY services/worker-rust/Cargo.toml services/worker-rust/build.rs ./
+COPY services/worker-rust/Cargo.toml services/worker-rust/Cargo.lock services/worker-rust/build.rs ./
 COPY services/worker-rust/src ./src
 RUN --mount=type=secret,id=worker_config,required=false \
     if [ "$WORKER_CONFIG_REQUIRED" = "true" ] && [ ! -s /run/secrets/worker_config ]; then \
       echo "A worker_config BuildKit secret is required to compile the configured Rust worker." >&2; \
       exit 1; \
     fi \
-    && cargo test --release \
-    && cargo build --release \
+    && cargo test --release --locked \
+    && cargo build --release --locked \
     && cp target/release/worqer-worker-rust /out-worker
 
 FROM alpine:3.22

@@ -149,7 +149,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./volume/repos/worker-rust:/app/clones
       - ./volume/data/worker-rust:/app/data
-    restart: "no"
+    restart: unless-stopped
 
 volumes:
   logs-agent-data:
