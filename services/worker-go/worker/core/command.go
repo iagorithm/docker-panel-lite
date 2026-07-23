@@ -19,16 +19,18 @@ func splitCommand(command string) ([]string, error) {
 			escaped = false
 			continue
 		}
-		if char == '\\' {
-			escaped = true
-			continue
-		}
 		if quote != 0 {
 			if char == quote {
 				quote = 0
+			} else if quote == '"' && char == '\\' {
+				escaped = true
 			} else {
 				current.WriteRune(char)
 			}
+			continue
+		}
+		if char == '\\' {
+			escaped = true
 			continue
 		}
 		if char == '\'' || char == '"' {

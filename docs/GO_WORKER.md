@@ -6,7 +6,7 @@ This document describes the Go implementation of the Docker Panel Lite worker wh
 
 ## Current Status
 
-The Go worker is **not yet a complete replacement** for the Python worker.
+The Go worker implements the same supported dashboard operations as the Python worker. Its remaining production gate is live infrastructure validation, not a missing dashboard action.
 
 Current Go implementation in `services/worker-go` supports:
 
@@ -41,7 +41,7 @@ Current Go implementation does **not** support yet:
 - Firebase realtime queue listeners. The Go worker currently uses polling.
 - Active cancellation/interruption for the remaining Compose, Docker build, Git, and tunnel setup processes.
 
-Production deploy actions should continue to use the Python worker until the Go worker reaches protocol and executor parity.
+Production rollout should begin with one low-risk project after validating its compiled configuration against the target Firebase workspace, Docker host, Git provider, and ngrok account.
 
 ## Goal
 
@@ -130,18 +130,11 @@ services/worker-go/
   go.mod
 ```
 
-Planned but not implemented yet:
-
-```text
-services/worker-go/worker/
-  ngrok.go
-```
-
 ## Python vs Go Parity Matrix
 
 | Capability | Python worker | Go worker | Notes |
 | --- | --- | --- | --- |
-| Config loading | Complete | Implemented | Go reads env and optional worker config file. |
+| Config loading | Complete | Implemented differently | Python reads runtime environment; Go compiles `environment.go` and intentionally ignores runtime env. |
 | Worker ID persistence | Complete | Implemented | Go persists `worker-id` in data dir. |
 | Worker token persistence | Complete | Implemented | Go persists `worker-token` in data dir. |
 | Claim token hash | Complete | Implemented | Go writes SHA-256 hash in heartbeat. |
@@ -150,11 +143,11 @@ services/worker-go/worker/
 | Preserve ownership/sharing | Complete | Implemented | Go reads current agent record before writing heartbeat. |
 | Docker summary | Complete | Implemented | Go uses Docker CLI summary, not Docker SDK yet. |
 | Container inventory | Complete | Implemented | Go publishes dashboard inventory from Docker CLI. |
-| Queue polling/listening | Complete | Partial | Go polls queue shards. Realtime listeners are not implemented yet. |
+| Queue polling/listening | Complete | Implemented | Go uses authenticated Firebase SSE listeners with polling as recovery. |
 | Job leasing | Complete | Implemented | Go uses Firebase REST ETags and conditional PUT. |
 | Lease renewal | Complete | Implemented | Go extends job and lock leases while processing. |
 | Repository lock | Complete | Implemented | Go locks by repository or container key before execution. |
-| Cancellation | Complete | Partial | Go interrupts active `worker_command` and `container_exec` process groups; Compose, Docker build, Git, and tunnel setup still need context propagation. |
+| Cancellation | Partial | Partial | Both mark requested cancellation; Go additionally interrupts active `worker_command` and `container_exec`. Long deployment subprocesses still finish before cancellation completes. |
 | `inventory_refresh` | Complete | Implemented | Publishes container inventory. |
 | `container_logs` | Complete | Implemented | Loads Docker log tail into container record. |
 | `container_start` | Complete | Implemented | Uses Docker CLI. |
@@ -168,7 +161,9 @@ services/worker-go/worker/
 | `discover_branches` | Complete | Implemented | Uses `git ls-remote`. |
 | `read_compose` | Complete | Implemented | Syncs repo and stores compose content up to 1 MB. |
 | Compose deploy | Complete | Implemented | Runs `docker compose up -d --build` with generated environment override. |
-| Dockerfile deploy | Complete | Partial | Builds image and runs container; advanced Docker SDK parity still pending. |
+| Dockerfile deploy | Complete | Implemented | Builds the managed image, validates ports, replaces the container and injects project environment. |
+| `container_tunnel_start` | Complete | Implemented | Resolves a reachable target, protects worker containers and publishes URL state. |
+| Failure reporting | Complete | Implemented | Both publish app logs and explicit tunnel error state. |
 | `tunnel_start` | Complete | Implemented | Uses ngrok CLI process manager and target discovery. |
 | `tunnel_stop` | Complete | Implemented | Stops ngrok processes by repository prefix and clears public URL state. |
 | Runtime display in dashboard | Complete | Implemented | Dashboard shows Python/Go runtime from heartbeat. |
@@ -177,10 +172,11 @@ services/worker-go/worker/
 
 ## Runtime Selection
 
-Add runtime selection through environment variables.
+Select the runtime through the image tag. Python receives runtime configuration; Go reads the values compiled from `environment.go`.
 
-```env
-WORKER_RUNTIME=python
+```text
+cjarn/docker-panel-lite-worker:py
+cjarn/docker-panel-lite-worker:go
 # or
 WORKER_RUNTIME=go
 ```
@@ -451,15 +447,15 @@ Acceptance criteria:
 
 ### Phase 2: Queue Leasing
 
-Status: mostly implemented.
+Status: implemented.
 
 Deliverables:
 
 - Queue shard polling. Done.
-- Optional Firebase realtime listener if practical. Pending.
+- Firebase realtime listener with polling recovery. Done.
 - Job lease transaction. Done with Firebase REST ETags and conditional PUT.
 - Lease renewal while job runs. Done.
-- Cancellation detection. Partial. Go handles cancellation before execution and final status, but does not interrupt active Docker commands yet.
+- Cancellation detection. Partial. Go interrupts worker/container commands, while long Compose, build, Git and tunnel processes still finish before cancellation completes.
 - Active job tracking. Done.
 - Max concurrency enforcement. Done.
 
@@ -494,7 +490,7 @@ Acceptance criteria:
 
 ### Phase 4: Git and Credential Decryption
 
-Status: not implemented.
+Status: implemented.
 
 Deliverables:
 
@@ -512,7 +508,7 @@ Acceptance criteria:
 
 ### Phase 5: Docker Compose and Dockerfile Deployments
 
-Status: partially implemented.
+Status: implemented, pending live repository validation.
 
 Deliverables:
 
@@ -522,14 +518,14 @@ Deliverables:
 - Docker Compose deploy/stop. Done.
 - Dockerfile image build. Done.
 - Managed container run/replace. Done.
-- Environment variable handling. Partial. Go writes `.env` and process env, but does not yet generate the Python worker's Compose override file.
+- Project environment handling. Done. Go writes `.env`, passes process values, and generates the Compose override file.
 
 Acceptance criteria:
 
 - Existing repositories deploy with Go worker. Needs live repository validation.
 - Compose and Dockerfile modes work. Implemented, needs live repository validation.
 - Path traversal outside clone directory is blocked. Done.
-- Environment format is compatible with Python worker behavior. Partial.
+- Environment format is compatible with Python worker behavior. Done.
 
 ### Phase 6: Public URLs
 
@@ -755,13 +751,13 @@ Recommended:
 ## Rollout Plan
 
 1. Build Go worker heartbeat only. Done.
-2. Run Go worker in a dev workspace with no production credentials. Pending.
-3. Claim Go worker from dashboard. Supported by code, needs environment test.
+2. Run Go worker in a dev workspace with compiled non-production credentials. Pending live validation.
+3. Claim Go worker from dashboard. Implemented, needs live environment confirmation.
 4. Enable inventory refresh. Implemented, needs live workspace validation.
 5. Enable logs and basic container actions. Implemented, needs live workspace validation.
 6. Enable Git sync and branch discovery. Implemented, needs live repository validation.
-7. Enable Compose/Dockerfile deployments. Partially implemented, needs live repository validation and Compose override parity.
-8. Enable tunnels. Pending.
+7. Enable Compose/Dockerfile deployments. Implemented, needs live repository validation.
+8. Enable tunnels. Implemented, needs live ngrok validation.
 9. Run Python and Go workers side by side in separate pools. Pending.
 10. Move one low-risk project to Go. Pending.
 11. Promote Go to beta. Pending.
@@ -779,14 +775,12 @@ Recommended:
 
 1. Add live workspace validation for Go queue leasing and container actions.
 2. Add live repository validation for Git, Compose, and Dockerfile jobs.
-3. Add Compose environment override parity with the Python worker.
-4. Add active cancellation/interruption for long Docker commands.
-5. Add ngrok tunnel start/stop parity.
-6. Add deploy log streaming and richer progress updates.
-7. Add command allowlists before enabling `worker_command` and `container_exec`.
-8. Add contract fixtures shared by Python and Go.
-9. Add integration tests for encrypted credentials and private repos.
-10. Add safer cleanup/rollback behavior for failed Dockerfile deploys.
+3. Add active cancellation/interruption for long Compose, build, Git and ngrok operations.
+4. Add deploy log streaming and richer progress updates.
+5. Add command allowlists for `worker_command` and `container_exec` in both runtimes.
+6. Expand contract fixtures shared by Python and Go.
+7. Add integration tests for encrypted credentials and private repos.
+8. Add safer cleanup/rollback behavior for failed Dockerfile deploys in both runtimes.
 
 ## Success Criteria
 

@@ -354,7 +354,7 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 	default:
 		repositoryID := stringValue(job["repositoryId"])
 		if repositoryID == "" {
-			return "", fmt.Errorf("Go worker does not implement action yet: %s", action)
+			return "", fmt.Errorf("action '%s' requires a repositoryId", action)
 		}
 		repository := map[string]interface{}{}
 		if err := r.client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s", stringValue(job["workspaceId"]), repositoryID), &repository); err != nil {
@@ -487,7 +487,7 @@ func (r *Runner) markTunnelFailure(ctx context.Context, job Job, jobErr error) {
 func (r *Runner) recordAppError(ctx context.Context, action string, source string, job Job, jobErr error) {
 	message := jobErr.Error()
 	message = regexp.MustCompile(`(?i)([?&](?:access_token|token|key)=)[^&\s]+`).ReplaceAllString(message, `${1}[REDACTED]`)
-	id := fmt.Sprintf("%d-%s-%s", nowMillis(), normalizeRecordPart(r.settings.WorkerID), normalizeRecordPart(stringValue(job["id"])))
+	id := fmt.Sprintf("%d-%s-%s-%s", nowMillis(), normalizeRecordPart(r.settings.WorkerID), normalizeRecordPart(stringValue(job["id"])), randomHex(4))
 	payload := map[string]interface{}{
 		"id":           id,
 		"actorType":    "worker",

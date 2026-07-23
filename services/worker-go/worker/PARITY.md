@@ -24,11 +24,10 @@ Python files.
 
 | Go package/file | Python comparison surface |
 | --- | --- |
-| `queue.go` and `realtime_todo.go` | `main.py` (`Worker` queue, lease, lock, listeners, cancellation and inventory methods) |
+| `queue.go` and `realtime.go` | `main.py` (`Worker` queue, lease, lock, listeners, cancellation and inventory methods) |
 | `heartbeat.go` and `version.go` | `main.py` (`Worker` heartbeat and runtime metadata) |
 | `identity.go` | `config.py` and `main.py` (persistent token and hash) |
 | `core/command.go` | `executor.py` command parsing and Compose override helpers |
-| `core/docker_sdk_todo.go` | Future replacement for `core/docker_ops.py` Docker SDK calls |
 
 ## Parity rule
 

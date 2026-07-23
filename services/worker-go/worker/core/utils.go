@@ -29,8 +29,13 @@ func (e *safeNameError) Error() string {
 
 func ValidateRelativeFilePath(value string) bool {
 	text := strings.TrimSpace(value)
-	if text == "" || filepath.IsAbs(text) {
+	if text == "" || strings.HasSuffix(text, "/") || strings.HasPrefix(text, "~") || strings.Contains(text, "\x00") || strings.Contains(text, `\`) || filepath.IsAbs(text) {
 		return false
+	}
+	for _, part := range strings.Split(text, "/") {
+		if part == ".." {
+			return false
+		}
 	}
 	cleaned := filepath.Clean(text)
 	return cleaned != "." && cleaned != ".." && !strings.HasPrefix(cleaned, ".."+string(filepath.Separator))

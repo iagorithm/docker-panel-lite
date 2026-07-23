@@ -97,7 +97,7 @@ func ContainerAction(action string, candidates []string) (string, *string, error
 	if err != nil {
 		return "", nil, err
 	}
-	if IsWorkerContainerName(name) && (action == "container_stop" || action == "container_delete" || action == "container_exec") {
+	if IsWorkerContainer(containerID, name) && (action == "container_stop" || action == "container_delete" || action == "container_exec") {
 		return "", nil, fmt.Errorf("worker containers can only be restarted or inspected with logs")
 	}
 	switch action {
@@ -142,7 +142,7 @@ func ContainerExecContext(ctx context.Context, candidates []string, command stri
 	if err != nil {
 		return CommandResult{}, err
 	}
-	if IsWorkerContainerName(name) {
+	if IsWorkerContainer(containerID, name) {
 		return CommandResult{}, fmt.Errorf("worker containers can only be restarted or inspected with logs")
 	}
 	shellCommand, err := containerExecShellCommand(command)
@@ -150,7 +150,7 @@ func ContainerExecContext(ctx context.Context, candidates []string, command stri
 		return CommandResult{}, err
 	}
 	timeout := boundedTimeout(timeoutSeconds)
-	output, exitCode, timedOut, cancelled := dockerOutputWithExitContext(ctx, timeout, "", nil, "exec", "-i", containerID, "/bin/sh", "-lc", shellCommand)
+	output, exitCode, timedOut, cancelled := dockerOutputWithExitContext(ctx, timeout, "", nil, "exec", containerID, "/bin/sh", "-lc", shellCommand)
 	if cancelled {
 		return CommandResult{Message: "Container command cancelled", Output: tailText(output, 120000), ExitCode: 130}, context.Canceled
 	}
@@ -487,7 +487,7 @@ func ContainerTunnelTarget(candidates []string, fallbackPort int, workerHostname
 	if err != nil {
 		return "", "", err
 	}
-	if IsWorkerContainerName(name) || (workerHostname != "" && (name == workerHostname || strings.HasPrefix(workerHostname, container))) {
+	if IsWorkerContainer(container, name) || (workerHostname != "" && (name == workerHostname || strings.HasPrefix(container, workerHostname))) {
 		return "", "", fmt.Errorf("worker containers cannot be exposed publicly")
 	}
 	inspect, err := inspectContainer(container)
@@ -567,6 +567,15 @@ func IsWorkerContainerName(name string) bool {
 		return true
 	}
 	return regexp.MustCompile(`(^|[-_])worker([-_]1)?$`).MatchString(normalized)
+}
+
+func IsWorkerContainer(containerID string, name string) bool {
+	if IsWorkerContainerName(name) {
+		return true
+	}
+	hostname, _ := os.Hostname()
+	hostname = strings.TrimSpace(hostname)
+	return hostname != "" && (name == hostname || strings.HasPrefix(containerID, hostname))
 }
 
 func inspectContainer(container string) (map[string]interface{}, error) {

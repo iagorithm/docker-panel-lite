@@ -43,7 +43,7 @@ func publicURLsMessage(value interface{}) string {
 
 func executeContainerTunnel(job map[string]interface{}, settings Settings) (string, map[string]interface{}, error) {
 	name, target, err := core.ContainerTunnelTarget(
-		[]string{stringValue(job["containerRef"]), stringValue(job["containerId"])},
+		containerCandidates(Job(job)),
 		intValueDefault(job["internalPort"], 3000),
 		settings.Hostname,
 	)
@@ -291,13 +291,15 @@ func loadEnvironment(ctx context.Context, client *Client, repository map[string]
 		value = nil
 		_ = client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s/env", workspaceID, repositoryID), &value)
 		mergeEnvironment(environment, value)
-		value = nil
-		_ = client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s/environment", workspaceID, repositoryID), &value)
-		mergeEnvironment(environment, value)
 	}
 	mergeEnvironment(environment, repository["env_vars"])
 	mergeEnvironment(environment, repository["env"])
 	mergeEnvironment(environment, repository["environment"])
+	if repositoryID != "" {
+		var value interface{}
+		_ = client.Get(ctx, fmt.Sprintf("workspaces/%s/repositories/%s/environment", workspaceID, repositoryID), &value)
+		mergeEnvironment(environment, value)
+	}
 	return environment, nil
 }
 
@@ -315,24 +317,7 @@ func normalizeEnvironment(value interface{}) map[string]string {
 	case nil:
 		return result
 	case string:
-		text := strings.TrimSpace(typed)
-		if text == "" {
-			return result
-		}
-		if strings.HasPrefix(text, "{") {
-			var parsed map[string]interface{}
-			if err := json.Unmarshal([]byte(text), &parsed); err == nil {
-				return normalizeEnvironment(parsed)
-			}
-		}
-		for _, line := range strings.Split(text, "\n") {
-			item := strings.TrimSpace(line)
-			if item == "" || strings.HasPrefix(item, "#") || !strings.Contains(item, "=") {
-				continue
-			}
-			parts := strings.SplitN(item, "=", 2)
-			result[strings.TrimSpace(strings.TrimPrefix(parts[0], "export "))] = normalizeEnvironmentValue(strings.TrimSpace(parts[1]))
-		}
+		return parseEnvironmentText(typed)
 	case map[string]interface{}:
 		for key, item := range typed {
 			if nested, ok := item.(map[string]interface{}); ok {
@@ -346,6 +331,13 @@ func normalizeEnvironment(value interface{}) map[string]string {
 		}
 	case []interface{}:
 		for _, item := range typed {
+			if row, ok := item.(map[string]interface{}); ok {
+				key := stringValue(firstPresent(row, "key", "name"))
+				if strings.TrimSpace(key) != "" {
+					result[strings.TrimSpace(key)] = normalizeEnvironmentValue(row["value"])
+					continue
+				}
+			}
 			for key, value := range normalizeEnvironment(item) {
 				result[key] = value
 			}
@@ -359,19 +351,69 @@ func normalizeEnvironmentValue(value interface{}) string {
 	case nil:
 		return ""
 	case string:
-		text := strings.TrimSpace(typed)
-		if len(text) >= 2 && ((text[0] == '"' && text[len(text)-1] == '"') || (text[0] == '\'' && text[len(text)-1] == '\'')) {
-			text = text[1 : len(text)-1]
-			text = strings.ReplaceAll(text, `\n`, "\n")
-			text = strings.ReplaceAll(text, `\"`, `"`)
+		text := strings.ReplaceAll(typed, "\x00", "")
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			var parsed interface{}
+			compact := regexp.MustCompile(`,\s*([}\]])`).ReplaceAllString(trimmed, "$1")
+			if json.Unmarshal([]byte(compact), &parsed) == nil {
+				payload, _ := json.Marshal(parsed)
+				return string(payload)
+			}
 		}
-		return strings.ReplaceAll(text, "\x00", "")
+		return text
 	case map[string]interface{}, []interface{}:
 		payload, _ := json.Marshal(typed)
 		return string(payload)
 	default:
 		return strings.ReplaceAll(fmt.Sprint(typed), "\x00", "")
 	}
+}
+
+func parseEnvironmentText(value string) map[string]string {
+	result := map[string]string{}
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return result
+	}
+	if strings.HasPrefix(raw, "{") {
+		var parsed map[string]interface{}
+		compact := regexp.MustCompile(`,\s*([}\]])`).ReplaceAllString(raw, "$1")
+		if json.Unmarshal([]byte(compact), &parsed) == nil {
+			return normalizeEnvironment(parsed)
+		}
+		return result
+	}
+	assignment := regexp.MustCompile(`^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$`)
+	inlineComment := regexp.MustCompile(`\s+#.*$`)
+	currentKey := ""
+	for _, line := range strings.Split(raw, "\n") {
+		item := strings.TrimSpace(line)
+		if item == "" || strings.HasPrefix(item, "#") {
+			continue
+		}
+		match := assignment.FindStringSubmatch(line)
+		if match == nil {
+			if currentKey != "" {
+				result[currentKey] += "\n" + line
+			}
+			continue
+		}
+		currentKey = strings.TrimSpace(match[1])
+		valueText := strings.TrimSpace(match[2])
+		if len(valueText) >= 2 && valueText[0] == valueText[len(valueText)-1] && (valueText[0] == '\'' || valueText[0] == '"') {
+			quote := valueText[0]
+			valueText = valueText[1 : len(valueText)-1]
+			if quote == '"' {
+				valueText = strings.ReplaceAll(valueText, `\n`, "\n")
+				valueText = strings.ReplaceAll(valueText, `\"`, `"`)
+			}
+		} else {
+			valueText = strings.TrimSpace(inlineComment.ReplaceAllString(valueText, ""))
+		}
+		result[currentKey] = normalizeEnvironmentValue(valueText)
+	}
+	return result
 }
 
 func projectName(repository map[string]interface{}) (string, error) {

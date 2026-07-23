@@ -36,3 +36,13 @@ func TestHostNetworkTunnelUsesConfiguredInternalPort(t *testing.T) {
 		t.Fatalf("unexpected target: %s", target)
 	}
 }
+
+func TestCommandParserPreservesBackslashInsideSingleQuotes(t *testing.T) {
+	args, err := splitCommand(`printf '%s' 'a\b'`)
+	if err != nil {
+		t.Fatalf("parse command: %v", err)
+	}
+	if len(args) != 3 || args[2] != `a\b` {
+		t.Fatalf("unexpected parsed args: %#v", args)
+	}
+}

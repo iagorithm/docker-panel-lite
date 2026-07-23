@@ -27,18 +27,18 @@ Current implementation status:
 - Sends online/offline heartbeats to `workspaces/{workspaceId}/agents/{workerId}`.
 - Preserves owner and sharing metadata on heartbeat.
 - Reports Docker availability and summary.
-- Polls Firebase queue shards and leases jobs with conditional REST writes.
+- Listens to Firebase queue shards in realtime, keeps polling as recovery, and leases jobs with conditional REST writes.
 - Publishes container inventory to the dashboard.
-- Handles `inventory_refresh`, `container_logs`, `container_start`, `container_stop`, `container_restart`, and `container_delete`.
+- Handles `inventory_refresh`, `container_logs`, `container_start`, `container_stop`, `container_restart`, `container_delete`, and `container_tunnel_start`.
 - Handles `container_exec` and `worker_command`.
-- Handles `discover_branches`, `sync`, `read_compose`, `deploy`, `build`, `stop`, `tunnel_start`, and `tunnel_stop` for repository jobs.
+- Handles `discover_branches`, `sync`, `read_compose`, `read_dockerfile`, `deploy`, `build`, `stop`, `tunnel_start`, and `tunnel_stop` for repository jobs.
+- Validates deployment port collisions and publishes worker/tunnel failures with the same dashboard fields as Python.
 - Decrypts Firebase-stored Git credentials with the same AES-256-GCM format as the app.
 - Opens public ngrok tunnels using the same repository secret path as the Python worker.
 - Reports immutable build version, commit, and commit date in its heartbeat.
 
 Not implemented yet:
 
-- Firebase realtime queue listeners. The Go worker currently uses polling.
 - Active cancellation for long Compose, Docker build, Git, and tunnel setup operations. `worker_command` and `container_exec` are interrupted while running.
 
 Run locally:
@@ -84,4 +84,4 @@ Use `run.sh` for the full local source stack:
 ./run.sh run
 ```
 
-The default `worker` service still runs the Python worker, and the local stack can run it beside `worker-go`. Keep using the Python worker for production deploy actions until the Go worker reaches full production parity.
+The default `worker` service still runs the Python worker, and the local stack can run it beside `worker-go`. The supported operation contract is now shared; validate the compiled Go credentials and one real deployment before moving a production project.
