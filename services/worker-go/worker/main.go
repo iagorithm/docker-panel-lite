@@ -32,6 +32,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("load settings: %v", err)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "--check-config" {
+		if _, err := NewFirebaseClient(settings.FirebaseDatabaseURL, settings.ServiceAccountJSON); err != nil {
+			log.Fatalf("validate compiled settings: %v", err)
+		}
+		log.Printf("Compiled Go worker configuration is valid: workspace=%s pool=%s shards=%d", settings.WorkspaceID, settings.PoolID, len(settings.Shards))
+		return
+	}
 
 	workerToken, err := ResolveWorkerToken(settings.DataDir, Environment.WorkerToken)
 	if err != nil {
