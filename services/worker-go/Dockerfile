@@ -39,4 +39,4 @@ RUN apk add --no-cache ca-certificates git docker-cli docker-cli-compose curl \
     && rm -f /tmp/ngrok.tgz
 WORKDIR /app
 COPY --from=builder /out/docker-panel-worker /usr/local/bin/docker-panel-worker
-CMD ["docker-panel-worker"]
+ENTRYPOINT ["docker-panel-worker"]
