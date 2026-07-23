@@ -118,8 +118,9 @@ even when a capability is initially marked as pending.
 
 ### Bootstrap, configuration, and identity
 
-- Load runtime environment variables and an optional fallback environment file,
-  with runtime values taking precedence.
+- Load platform configuration through the runtime's declared strategy: Python
+  uses runtime variables and an optional fallback file; Go uses the typed
+  `environment.go` configuration compiled into its executable.
 - Resolve Firebase database URL/project, service-account credentials, workspace,
   pool, shards, concurrency, lease duration, polling interval, clone/data paths,
   encryption key, and tunnel configuration.
