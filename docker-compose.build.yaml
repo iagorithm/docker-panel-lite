@@ -13,6 +13,15 @@ services:
         WORKER_CONFIG_REQUIRED: "true"
       secrets:
         - worker_config
+  worker-rust:
+    image: ${WORKER_RUST_IMAGE:-cjarn/docker-panel-lite-worker:rust}
+    build:
+      context: .
+      dockerfile: services/worker-rust/Dockerfile
+      args:
+        WORKER_CONFIG_REQUIRED: "true"
+      secrets:
+        - worker_config
 
 secrets:
   worker_config:

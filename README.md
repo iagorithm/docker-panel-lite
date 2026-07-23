@@ -1,6 +1,6 @@
 # Docker Panel Lite
 
-Web control panel for managing Docker deployments from Git repositories, with Python and Go workers connected through Firebase Realtime Database.
+Web control panel for managing Docker deployments from Git repositories, with production Python and Go workers connected through Firebase Realtime Database. An experimental Rust worker is being implemented under `services/worker-rust`.
 
 ## Main Commands
 

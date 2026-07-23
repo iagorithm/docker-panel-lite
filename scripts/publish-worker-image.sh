@@ -114,6 +114,20 @@ worker_config_secret() {
     NGROK_GO_BIN
     NGROK_REGION
     NGROK_GO_REGION
+    WORKER_RUST_POOL
+    WORKER_RUST_ID
+    WORKER_RUST_TOKEN
+    WORKER_RUST_MACHINE_ID
+    WORKER_RUST_LABEL
+    WORKER_RUST_LOCATION
+    WORKER_RUST_SHARDS
+    WORKER_RUST_MAX_CONCURRENCY
+    WORKER_RUST_LEASE_SECONDS
+    WORKER_RUST_POLL_SECONDS
+    NGROK_RUST_ENABLED
+    NGROK_RUST_AUTHTOKEN
+    NGROK_RUST_BIN
+    NGROK_RUST_REGION
   )
   for key in "${config_keys[@]}"; do
     local value
@@ -158,6 +172,7 @@ dockerfile_for_runtime() {
   case "$1" in
     py|python) printf '%s' "$ROOT_DIR/services/worker/Dockerfile" ;;
     go) printf '%s' "$ROOT_DIR/services/worker-go/Dockerfile" ;;
+    rust|rs) printf '%s' "$ROOT_DIR/services/worker-rust/Dockerfile" ;;
     *) echo "Unknown worker runtime: $1" >&2; exit 1 ;;
   esac
 }
@@ -166,6 +181,7 @@ tag_for_runtime() {
   case "$1" in
     py|python) printf 'py' ;;
     go) printf 'go' ;;
+    rust|rs) printf 'rust' ;;
     *) echo "Unknown worker runtime: $1" >&2; exit 1 ;;
   esac
 }
@@ -203,8 +219,8 @@ build_runtime() {
   echo "  image: $base_image:$tag"
   echo "  platforms: $platforms"
   echo "  push: $push"
-  if [[ "$tag" == "go" ]]; then
-    echo "  configuration: compiled from services/worker-go/worker/environment.go"
+  if [[ "$tag" == "go" || "$tag" == "rust" ]]; then
+    echo "  configuration: compiled into the $tag worker binary"
   else
     echo "  baked config: $([[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]] && echo yes || echo no)"
   fi
@@ -269,8 +285,8 @@ main() {
   local target="${1:-all}"
   case "$target" in
     all|both) ;;
-    py|python|go) ;;
-    *) echo "Usage: ./run.sh publish [all|py|go]" >&2; exit 1 ;;
+    py|python|go|rust|rs) ;;
+    *) echo "Usage: ./run.sh publish [all|py|go|rust]" >&2; exit 1 ;;
   esac
 
   if ! docker buildx version >/dev/null 2>&1; then
@@ -315,6 +331,9 @@ main() {
     go)
       build_runtime go "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
       ;;
+    rust|rs)
+      build_runtime rust "$base_image" "$platforms" "$push" "$progress" "$bake_config" "$worker_version" "$worker_commit" "$worker_build_date"
+      ;;
   esac
 
   if [[ "$push" != "false" && "$push" != "0" ]]; then
@@ -326,6 +345,9 @@ main() {
     case "$target" in
       all|both|go) docker buildx imagetools inspect "$base_image:go" ;;
     esac
+    case "$target" in
+      rust|rs) docker buildx imagetools inspect "$base_image:rust" ;;
+    esac
     echo
     echo "Pushed:"
     case "$target" in
@@ -333,6 +355,9 @@ main() {
     esac
     case "$target" in
       all|both|go) echo "  $base_image:go" ;;
+    esac
+    case "$target" in
+      rust|rs) echo "  $base_image:rust" ;;
     esac
   fi
 }

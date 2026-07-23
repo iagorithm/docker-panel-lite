@@ -134,6 +134,23 @@ services:
       - ./volume/data/worker-go:/app/data
     restart: unless-stopped
 
+  worker-rust:
+    profiles:
+      - rust-worker
+    image: ${WORKER_RUST_IMAGE:-cjarn/docker-panel-lite-worker:rust}
+    build:
+      context: .
+      dockerfile: services/worker-rust/Dockerfile
+      args:
+        WORKER_CONFIG_REQUIRED: "true"
+      secrets:
+        - worker_config
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./volume/repos/worker-rust:/app/clones
+      - ./volume/data/worker-rust:/app/data
+    restart: "no"
+
 volumes:
   logs-agent-data:
 

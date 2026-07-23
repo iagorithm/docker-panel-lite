@@ -8,6 +8,7 @@ COMPOSE_BUILD_FILE="$ROOT_DIR/docker-compose.build.yaml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker-panel-lite}"
 LOCAL_WORKER_IMAGE="${LOCAL_WORKER_IMAGE:-docker-panel-lite-worker:local}"
 LOCAL_WORKER_GO_IMAGE="${LOCAL_WORKER_GO_IMAGE:-docker-panel-lite-worker-go:local}"
+LOCAL_WORKER_RUST_IMAGE="${LOCAL_WORKER_RUST_IMAGE:-docker-panel-lite-worker-rust:local}"
 
 usage() {
   cat <<'EOF'
@@ -25,6 +26,7 @@ Run:
   run local             Same as run
   run published         Pull/run stack using images configured in .env
   run go                Build/run web + Python worker + logs app + Go worker
+  run rust              Build the Rust worker bootstrap profile
   down                  Stop and remove stack containers
   restart               Recreate and start the published-image stack
 
@@ -32,10 +34,13 @@ Build and publish:
   build                 Build local web + Python worker images
   build all             Same as build
   build go              Build local Go worker image
-  publish               Build and push Python (:py) and Go (:go) worker images
+  build rust            Build local Rust worker image
+  publish               Build and push production-ready Python (:py) and Go (:go)
   publish py            Build and push only the Python worker image
   publish go            Build and push only the Go worker image
-  verify                Inspect the published :py and :go worker images
+  publish rust          Build and push only the Rust worker image
+  verify                Inspect the production-ready :py and :go worker images
+  verify rust           Inspect the experimental :rust worker image
   pull                  Pull configured service images
 
 Observe and scale:
@@ -142,7 +147,9 @@ prepare_runtime_dirs() {
     "$ROOT_DIR/volume/data/worker-py" \
     "$ROOT_DIR/volume/repos/worker-py" \
     "$ROOT_DIR/volume/data/worker-go" \
-    "$ROOT_DIR/volume/repos/worker-go"
+    "$ROOT_DIR/volume/repos/worker-go" \
+    "$ROOT_DIR/volume/data/worker-rust" \
+    "$ROOT_DIR/volume/repos/worker-rust"
 }
 
 cmd_setup() {
@@ -183,9 +190,14 @@ cmd_run() {
       compose_local up -d --build --pull never web worker logs logs-agent worker-go "$@"
       compose_go ps
       ;;
+    rust)
+      export WORKER_RUST_IMAGE="$LOCAL_WORKER_RUST_IMAGE"
+      echo "Building the Rust worker bootstrap profile..."
+      docker compose --profile rust-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_BUILD_FILE" up --build --no-start worker-rust "$@"
+      ;;
     *)
       echo "Unknown run mode: $mode" >&2
-      echo "Use: ./run.sh run [local|published|go]" >&2
+      echo "Use: ./run.sh run [local|published|go|rust]" >&2
       exit 1
       ;;
   esac
@@ -204,9 +216,12 @@ cmd_build() {
     go|worker-go)
       compose_go build worker-go "$@"
       ;;
+    rust|worker-rust)
+      docker compose --profile rust-worker --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build worker-rust "$@"
+      ;;
     *)
       echo "Unknown build target: $target" >&2
-      echo "Use: ./run.sh build [all|go]" >&2
+      echo "Use: ./run.sh build [all|go|rust]" >&2
       exit 1
       ;;
   esac
@@ -218,12 +233,12 @@ cmd_publish() {
   require_env_file
   require_docker
   case "$target" in
-    all|both|py|python|go)
+    all|both|py|python|go|rust|rs)
       "$ROOT_DIR/scripts/publish-worker-image.sh" "$target" "$@"
       ;;
     *)
       echo "Unknown publish target: $target" >&2
-      echo "Use: ./run.sh publish [all|py|go]" >&2
+      echo "Use: ./run.sh publish [all|py|go|rust]" >&2
       exit 1
       ;;
   esac
@@ -293,6 +308,16 @@ main() {
       require_docker
       image_ref="$(worker_image_ref)"
       base_image="${image_ref%:*}"
+      verify_target="${1:-production}"
+      if [[ "$verify_target" == "rust" ]]; then
+        echo "Inspecting $base_image:rust"
+        docker buildx imagetools inspect "$base_image:rust"
+        exit 0
+      fi
+      if [[ "$verify_target" != "production" ]]; then
+        echo "Usage: ./run.sh verify [rust]" >&2
+        exit 1
+      fi
       echo "Inspecting $base_image:py"
       docker buildx imagetools inspect "$base_image:py"
       echo
