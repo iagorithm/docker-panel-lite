@@ -29,8 +29,70 @@ for pair in "${pairs[@]}"; do
   fi
 done
 
+actions=(
+  inventory_refresh
+  worker_command
+  container_exec
+  container_start
+  container_stop
+  container_restart
+  container_delete
+  container_logs
+  container_tunnel_start
+  discover_branches
+  sync
+  read_compose
+  read_dockerfile
+  deploy
+  build
+  stop
+  tunnel_start
+  tunnel_stop
+)
+
+python_sources=(
+  "$ROOT_DIR/services/worker/worker/main.py"
+  "$ROOT_DIR/services/worker/worker/executor.py"
+)
+go_sources=(
+  "$ROOT_DIR/services/worker-go/worker/queue.go"
+  "$ROOT_DIR/services/worker-go/worker/executor.go"
+)
+
+for action in "${actions[@]}"; do
+  if ! grep -Fq "\"$action\"" "${python_sources[@]}"; then
+    echo "Python worker is missing required action: $action" >&2
+    failed=1
+  fi
+  if ! grep -Fq "\"$action\"" "${go_sources[@]}"; then
+    echo "Go worker is missing required action: $action" >&2
+    failed=1
+  fi
+done
+
+for marker in publicTunnelError app_logs "deployment port collision"; do
+  if ! grep -RiqF "$marker" "$ROOT_DIR/services/worker/worker"; then
+    echo "Python worker is missing parity behavior marker: $marker" >&2
+    failed=1
+  fi
+  if ! grep -RiqF "$marker" "$ROOT_DIR/services/worker-go/worker"; then
+    echo "Go worker is missing parity behavior marker: $marker" >&2
+    failed=1
+  fi
+done
+
+if grep -RqE 'os\.(Getenv|LookupEnv)' "$ROOT_DIR/services/worker-go/worker"; then
+  echo "Go worker must use compiled environment.go configuration, not runtime environment variables." >&2
+  failed=1
+fi
+
+if [[ ! -f "$ROOT_DIR/services/worker-go/worker/environment.go" ]]; then
+  echo "Missing compiled Go worker configuration: services/worker-go/worker/environment.go" >&2
+  failed=1
+fi
+
 if [[ "$failed" -ne 0 ]]; then
   exit 1
 fi
 
-echo "Worker parity structure is valid (${#pairs[@]} Python/Go pairs)."
+echo "Worker parity contract is valid (${#pairs[@]} file pairs, ${#actions[@]} shared actions)."

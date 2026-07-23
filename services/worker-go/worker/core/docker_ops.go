@@ -203,6 +203,11 @@ func RunCompose(project string, repoPath string, composeFile string, environment
 			args = append(args, "-f", override)
 		}
 	}
+	if !down {
+		if err := validateComposeDeploymentPorts(project, repoPath, environment, args); err != nil {
+			return "", err
+		}
+	}
 	if down {
 		args = append(args, "down")
 	} else {
@@ -222,6 +227,13 @@ func RunCompose(project string, repoPath string, composeFile string, environment
 }
 
 func RunDockerfile(project string, repoPath string, dockerfile string, environment map[string]string, ports []string) (string, error) {
+	bindings, err := configuredPortBindings(ports)
+	if err != nil {
+		return "", err
+	}
+	if err := validateDeploymentPorts(project, bindings); err != nil {
+		return "", err
+	}
 	if err := WriteEnvFile(repoPath, environment); err != nil {
 		return "", err
 	}
@@ -246,6 +258,130 @@ func RunDockerfile(project string, repoPath string, dockerfile string, environme
 		containerID = containerID[:12]
 	}
 	return "Container " + containerID + " deployed", nil
+}
+
+type portBinding struct {
+	Port     int
+	Protocol string
+}
+
+func configuredPortBindings(values []string) (map[portBinding]bool, error) {
+	bindings := map[portBinding]bool{}
+	pattern := regexp.MustCompile(`^(\d+):(\d+)(?:/(tcp|udp))?$`)
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		match := pattern.FindStringSubmatch(strings.ToLower(value))
+		if match == nil {
+			return nil, fmt.Errorf("invalid port mapping '%s'. Use host:container, for example 8080:80", value)
+		}
+		hostPort, _ := strconv.Atoi(match[1])
+		containerPort, _ := strconv.Atoi(match[2])
+		if hostPort < 1 || hostPort > 65535 || containerPort < 1 || containerPort > 65535 {
+			return nil, fmt.Errorf("invalid port mapping '%s'. Ports must be between 1 and 65535", value)
+		}
+		protocol := match[3]
+		if protocol == "" {
+			protocol = "tcp"
+		}
+		binding := portBinding{Port: hostPort, Protocol: protocol}
+		if bindings[binding] {
+			return nil, fmt.Errorf("port %d/%s is declared more than once", hostPort, protocol)
+		}
+		bindings[binding] = true
+	}
+	return bindings, nil
+}
+
+func validateComposeDeploymentPorts(project, repoPath string, environment map[string]string, composeArgs []string) error {
+	args := append(append([]string{}, composeArgs...), "config", "--format", "json")
+	raw, err := dockerOutput(60*time.Second, repoPath, environment, args...)
+	if err != nil {
+		return err
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return fmt.Errorf("Docker Compose returned invalid JSON while validating published ports")
+	}
+	bindings := map[portBinding]bool{}
+	for _, serviceValue := range mapValue(payload["services"]) {
+		service, _ := serviceValue.(map[string]interface{})
+		ports, _ := service["ports"].([]interface{})
+		for _, portValue := range ports {
+			port, _ := portValue.(map[string]interface{})
+			published := stringValue(port["published"])
+			if published == "" {
+				continue
+			}
+			bounds := strings.SplitN(published, "-", 2)
+			first, firstErr := strconv.Atoi(bounds[0])
+			last := first
+			var lastErr error
+			if len(bounds) == 2 {
+				last, lastErr = strconv.Atoi(bounds[1])
+			}
+			if firstErr != nil || lastErr != nil || first < 1 || first > last || last > 65535 {
+				return fmt.Errorf("invalid Compose published port '%s'", published)
+			}
+			protocol := strings.ToLower(stringValue(port["protocol"]))
+			if protocol == "" {
+				protocol = "tcp"
+			}
+			if protocol != "tcp" && protocol != "udp" {
+				continue
+			}
+			for current := first; current <= last; current++ {
+				bindings[portBinding{Port: current, Protocol: protocol}] = true
+			}
+		}
+	}
+	return validateDeploymentPorts(project, bindings)
+}
+
+func validateDeploymentPorts(project string, requested map[portBinding]bool) error {
+	if len(requested) == 0 {
+		return nil
+	}
+	raw, err := commandOutput(10*time.Second, "docker", "ps", "--format", "{{json .}}")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row map[string]interface{}
+		if json.Unmarshal([]byte(line), &row) != nil {
+			continue
+		}
+		name := strings.TrimPrefix(stringValue(firstValue(row, "Names", "Name")), "/")
+		labels := parseLabels(stringValue(row["Labels"]))
+		if name == project || labels["com.docker.compose.project"] == project {
+			continue
+		}
+		container := stringValue(firstValue(row, "ID", "Id", "ContainerID"))
+		inspect, inspectErr := inspectContainer(container)
+		if inspectErr != nil {
+			continue
+		}
+		network, _ := inspect["NetworkSettings"].(map[string]interface{})
+		for key, mappings := range mapValue(network["Ports"]) {
+			parts := strings.SplitN(key, "/", 2)
+			protocol := "tcp"
+			if len(parts) == 2 {
+				protocol = strings.ToLower(parts[1])
+			}
+			items, _ := mappings.([]interface{})
+			for _, mappingValue := range items {
+				mapping, _ := mappingValue.(map[string]interface{})
+				hostPort, _ := strconv.Atoi(stringValue(mapping["HostPort"]))
+				binding := portBinding{Port: hostPort, Protocol: protocol}
+				if requested[binding] {
+					return fmt.Errorf("deployment port collision: %d/%s already bound by running container '%s'", hostPort, protocol, name)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func StopDockerfileContainer(project string) (string, error) {
@@ -344,6 +480,34 @@ func PublicTunnelTargets(project string, mode string, service string, fallbackPo
 	return map[string]string{serviceName: target}, nil
 }
 
+// ContainerTunnelTarget resolves an arbitrary dashboard container reference to
+// the same reachable target used by repository tunnels.
+func ContainerTunnelTarget(candidates []string, fallbackPort int, workerHostname string) (string, string, error) {
+	container, name, err := resolveContainer(candidates)
+	if err != nil {
+		return "", "", err
+	}
+	if IsWorkerContainerName(name) || (workerHostname != "" && (name == workerHostname || strings.HasPrefix(workerHostname, container))) {
+		return "", "", fmt.Errorf("worker containers cannot be exposed publicly")
+	}
+	inspect, err := inspectContainer(container)
+	if err != nil {
+		return "", "", err
+	}
+	state, _ := inspect["State"].(map[string]interface{})
+	if !boolValue(state["Running"]) {
+		return "", "", fmt.Errorf("container must be running to create a public URL")
+	}
+	if fallbackPort < 1 || fallbackPort > 65535 {
+		fallbackPort = 3000
+	}
+	target, err := containerTunnelTarget(container, fallbackPort, workerHostname)
+	if err != nil || target == "" {
+		return "", "", fmt.Errorf("could not resolve a tunnel target for local container '%s'. Publish a port or expose a reachable internal port", name)
+	}
+	return nameOrID(name, container), target, nil
+}
+
 func containerTunnelTarget(container string, fallbackPort int, workerHostname string) (string, error) {
 	inspect, err := inspectContainer(container)
 	if err != nil {
@@ -353,10 +517,18 @@ func containerTunnelTarget(container string, fallbackPort int, workerHostname st
 	if internalPort == 0 {
 		internalPort = fallbackPort
 	}
+	connectWorkerToContainerNetworks(inspect, workerHostname)
+	return tunnelTargetFromInspect(inspect, internalPort, fallbackPort)
+}
+
+func tunnelTargetFromInspect(inspect map[string]interface{}, internalPort int, fallbackPort int) (string, error) {
 	if target := hostPortTarget(inspect, internalPort); target != "" {
 		return target, nil
 	}
-	connectWorkerToContainerNetworks(inspect, workerHostname)
+	hostConfig, _ := inspect["HostConfig"].(map[string]interface{})
+	if strings.EqualFold(strings.TrimSpace(stringValue(hostConfig["NetworkMode"])), "host") {
+		return fmt.Sprintf("http://host.docker.internal:%d", fallbackPort), nil
+	}
 	if ip := containerIPAddress(inspect); ip != "" {
 		return fmt.Sprintf("http://%s:%d", ip, internalPort), nil
 	}
@@ -748,6 +920,18 @@ func intValue(value interface{}) int {
 		return parsed
 	default:
 		return 0
+	}
+}
+
+func boolValue(value interface{}) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		text := strings.ToLower(strings.TrimSpace(typed))
+		return text == "true" || text == "1" || text == "yes"
+	default:
+		return false
 	}
 }
 

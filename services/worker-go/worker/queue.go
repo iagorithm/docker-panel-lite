@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ type Runner struct {
 	heartbeat *Agent
 
 	mu        sync.Mutex
+	scanMu    sync.Mutex
 	active    map[string]bool
 	accepting bool
 	jobs      sync.WaitGroup
@@ -54,6 +56,11 @@ func (r *Runner) Wait() {
 }
 
 func (r *Runner) Run(ctx context.Context) {
+	go func() {
+		if err := r.RunRealtime(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("realtime queue listener stopped: %v", err)
+		}
+	}()
 	ticker := time.NewTicker(time.Duration(r.settings.PollSeconds) * time.Second)
 	defer ticker.Stop()
 	r.scan(ctx)
@@ -68,6 +75,8 @@ func (r *Runner) Run(ctx context.Context) {
 }
 
 func (r *Runner) scan(ctx context.Context) {
+	r.scanMu.Lock()
+	defer r.scanMu.Unlock()
 	capacity := r.capacity()
 	if capacity <= 0 {
 		return
@@ -148,6 +157,7 @@ func (r *Runner) process(jobID string, shard string) {
 	claimed, err := r.claim(ctx, jobID)
 	if err != nil {
 		log.Printf("job %s claim failed: %v", jobID, err)
+		r.recordAppError(ctx, "unknown_job", "worker.claim", Job{"id": jobID, "workspaceId": r.settings.WorkspaceID}, err)
 		_ = r.fail(ctx, Job{"id": jobID, "workspaceId": r.settings.WorkspaceID}, err)
 		_ = r.client.Delete(ctx, queuePath(r.settings.PoolID, shard)+"/"+jobID)
 		return
@@ -206,6 +216,8 @@ func (r *Runner) process(jobID string, shard string) {
 			return
 		}
 		log.Printf("job %s failed: %v", jobID, err)
+		r.recordAppError(ctx, stringValue(job["action"]), "worker.job", job, err)
+		r.markTunnelFailure(ctx, job, err)
 		_ = r.fail(ctx, job, err)
 		_ = r.client.Delete(ctx, queuePath(r.settings.PoolID, shard)+"/"+jobID)
 		return
@@ -315,6 +327,19 @@ func (r *Runner) execute(ctx context.Context, job Job) (string, error) {
 			return "", fmt.Errorf("%s", result.Message)
 		}
 		return result.Message, nil
+	case "container_tunnel_start":
+		message, updates, err := executeContainerTunnel(job, r.settings)
+		if err != nil {
+			return "", err
+		}
+		containerID := stringValue(job["containerId"])
+		if containerID == "" {
+			return "", fmt.Errorf("container reference is missing")
+		}
+		if err := r.client.Patch(ctx, fmt.Sprintf("workspaces/%s/containers/%s", stringValue(job["workspaceId"]), containerID), updates); err != nil {
+			return "", err
+		}
+		return message, nil
 	case "container_start", "container_stop", "container_restart", "container_delete", "container_logs":
 		message, logTail, err := core.ContainerAction(action, containerCandidates(job))
 		if err != nil {
@@ -436,6 +461,59 @@ func (r *Runner) publish(ctx context.Context, job Job, values map[string]interfa
 
 func (r *Runner) fail(ctx context.Context, job Job, err error) error {
 	return r.publish(ctx, job, map[string]interface{}{"status": "failed", "message": truncate(err.Error(), 1000), "finishedAt": nowMillis(), "leaseExpiresAt": nil})
+}
+
+func (r *Runner) markTunnelFailure(ctx context.Context, job Job, jobErr error) {
+	action := stringValue(job["action"])
+	var path string
+	if action == "tunnel_start" && stringValue(job["repositoryId"]) != "" {
+		path = fmt.Sprintf("workspaces/%s/repositories/%s", stringValue(job["workspaceId"]), stringValue(job["repositoryId"]))
+	} else if action == "container_tunnel_start" && stringValue(job["containerId"]) != "" {
+		path = fmt.Sprintf("workspaces/%s/containers/%s", stringValue(job["workspaceId"]), stringValue(job["containerId"]))
+	}
+	if path == "" {
+		return
+	}
+	_ = r.client.Patch(ctx, path, map[string]interface{}{
+		"publicUrl":             "",
+		"publicUrls":            map[string]interface{}{},
+		"publicTunnels":         map[string]interface{}{},
+		"publicTunnelStatus":    "error",
+		"publicTunnelError":     truncate(jobErr.Error(), 1000),
+		"publicTunnelUpdatedAt": nowMillis(),
+	})
+}
+
+func (r *Runner) recordAppError(ctx context.Context, action string, source string, job Job, jobErr error) {
+	message := jobErr.Error()
+	message = regexp.MustCompile(`(?i)([?&](?:access_token|token|key)=)[^&\s]+`).ReplaceAllString(message, `${1}[REDACTED]`)
+	id := fmt.Sprintf("%d-%s-%s", nowMillis(), normalizeRecordPart(r.settings.WorkerID), normalizeRecordPart(stringValue(job["id"])))
+	payload := map[string]interface{}{
+		"id":           id,
+		"actorType":    "worker",
+		"actorId":      r.settings.WorkerID,
+		"actorLabel":   r.settings.WorkerLabelOrDefault(),
+		"userId":       stringValue(job["requestedBy"]),
+		"userEmail":    stringValue(job["requestedByEmail"]),
+		"runtime":      "worker-go",
+		"functionName": truncate(source, 240),
+		"action":       truncate(nameOrDefault(action, "worker_runtime"), 120),
+		"source":       truncate(nameOrDefault(source, "worker"), 160),
+		"severity":     "error",
+		"message":      truncate(message, 2000),
+		"createdAt":    nowMillis(),
+		"context": map[string]interface{}{
+			"jobId":            stringValue(job["id"]),
+			"repositoryId":     stringValue(job["repositoryId"]),
+			"containerId":      stringValue(job["containerId"]),
+			"targetWorkerId":   stringValue(job["targetWorkerId"]),
+			"requestedBy":      stringValue(job["requestedBy"]),
+			"requestedByEmail": stringValue(job["requestedByEmail"]),
+		},
+	}
+	if err := r.client.Put(ctx, fmt.Sprintf("workspaces/%s/app_logs/%s", r.settings.WorkspaceID, id), payload); err != nil {
+		log.Printf("could not publish app log: %v", err)
+	}
 }
 
 func (r *Runner) acquireLock(ctx context.Context, job Job) (bool, error) {

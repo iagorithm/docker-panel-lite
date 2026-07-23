@@ -41,6 +41,39 @@ func publicURLsMessage(value interface{}) string {
 	return message
 }
 
+func executeContainerTunnel(job map[string]interface{}, settings Settings) (string, map[string]interface{}, error) {
+	name, target, err := core.ContainerTunnelTarget(
+		[]string{stringValue(job["containerRef"]), stringValue(job["containerId"])},
+		intValueDefault(job["internalPort"], 3000),
+		settings.Hostname,
+	)
+	if err != nil {
+		return "", nil, err
+	}
+	tunnelKey, err := core.SafeName("container-" + settings.WorkerID + "-" + name)
+	if err != nil {
+		return "", nil, err
+	}
+	service := core.NewNgrokService(settings.DataDir, settings.NgrokEnabled, settings.NgrokAuthtoken, settings.NgrokBin, settings.NgrokRegion)
+	if boolValue(job["tunnelReset"]) {
+		service.Stop(tunnelKey)
+	}
+	tunnel, err := service.Start(tunnelKey, target, "")
+	if err != nil {
+		return "", nil, err
+	}
+	updates := map[string]interface{}{
+		"publicUrl":               tunnel.URL,
+		"publicUrls":              map[string]interface{}{"container": tunnel.URL},
+		"publicTunnelStatus":      "online",
+		"publicTunnelTarget":      tunnel.Target,
+		"publicTunnelWorkerId":    settings.WorkerID,
+		"publicTunnelWorkerLabel": settings.WorkerLabelOrDefault(),
+		"publicTunnelUpdatedAt":   nowMillis(),
+	}
+	return fmt.Sprintf("Public URL ready for local container '%s': %s", name, tunnel.URL), updates, nil
+}
+
 func Execute(ctx context.Context, client *Client, job map[string]interface{}, repository map[string]interface{}, settings Settings) (Result, error) {
 	action := stringValue(job["action"])
 	workspaceID := stringValue(job["workspaceId"])
@@ -351,7 +384,7 @@ func projectName(repository map[string]interface{}) (string, error) {
 
 func parsePorts(value string) []string {
 	result := []string{}
-	for _, item := range regexp.MustCompile(`[\n,]+`).Split(value, -1) {
+	for _, item := range regexp.MustCompile(`[\s,]+`).Split(value, -1) {
 		text := strings.TrimSpace(item)
 		if text != "" {
 			result = append(result, text)
