@@ -3,16 +3,25 @@ FROM golang:1.24-alpine AS builder
 ARG WORKER_VERSION=dev
 ARG WORKER_COMMIT=unknown
 ARG WORKER_BUILD_DATE=unknown
+ARG WORKER_CONFIG_REQUIRED=false
 WORKDIR /src
 COPY services/worker-go/go.mod ./go.mod
 RUN go mod download
 COPY services/worker-go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+RUN --mount=type=secret,id=worker_config,required=false \
+    if [ -s /run/secrets/worker_config ]; then \
+      go run ./cmd/generate-environment /run/secrets/worker_config ./worker/environment_generated.go; \
+    elif [ "$WORKER_CONFIG_REQUIRED" = "true" ]; then \
+      echo "A worker_config BuildKit secret is required to compile the configured Go worker." >&2; \
+      exit 1; \
+    fi \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -ldflags="-s -w \
       -X docker-panel-lite-worker-go/worker.WorkerVersion=${WORKER_VERSION} \
       -X docker-panel-lite-worker-go/worker.BuildCommit=${WORKER_COMMIT} \
       -X docker-panel-lite-worker-go/worker.BuildDate=${WORKER_BUILD_DATE}" \
-    -o /out/docker-panel-worker ./worker
+    -o /out/docker-panel-worker ./worker \
+    && rm -f ./worker/environment_generated.go
 
 FROM alpine:3.22
 ARG NGROK_VERSION=3

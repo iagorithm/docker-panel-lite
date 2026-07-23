@@ -83,16 +83,37 @@ worker_config_secret() {
     NEXT_PUBLIC_FIREBASE_PROJECT_ID
     FIREBASE_SERVICE_ACCOUNT_JSON
     CREDENTIAL_ENCRYPTION_KEY
+    DEFAULT_WORKSPACE_ID
     WORKER_WORKSPACE_ID
     WORKER_POOL
+    WORKER_GO_POOL
+    WORKER_ID
+    WORKER_GO_ID
+    WORKER_TOKEN
+    WORKER_GO_TOKEN
+    WORKER_MACHINE_ID
+    WORKER_GO_MACHINE_ID
+    WORKER_LABEL
+    WORKER_GO_LABEL
+    WORKER_LOCATION
+    WORKER_GO_LOCATION
     WORKER_SHARDS
+    WORKER_GO_SHARDS
     WORKER_MAX_CONCURRENCY
+    WORKER_GO_MAX_CONCURRENCY
     WORKER_LEASE_SECONDS
+    WORKER_GO_LEASE_SECONDS
     WORKER_POLL_SECONDS
+    WORKER_GO_POLL_SECONDS
     QUEUE_SHARDS
     NGROK_ENABLED
+    NGROK_GO_ENABLED
     NGROK_AUTHTOKEN
+    NGROK_GO_AUTHTOKEN
+    NGROK_BIN
+    NGROK_GO_BIN
     NGROK_REGION
+    NGROK_GO_REGION
   )
   for key in "${config_keys[@]}"; do
     local value
@@ -171,11 +192,9 @@ build_runtime() {
 
   local build_secrets=()
   local secret_file=""
-  if [[ "$tag" == "py" ]]; then
-    secret_file="$(worker_config_secret "$bake_config")"
-    if [[ -n "$secret_file" ]]; then
-      build_secrets+=(--secret "id=worker_config,src=$secret_file")
-    fi
+  secret_file="$(worker_config_secret "$bake_config")"
+  if [[ -n "$secret_file" ]]; then
+    build_secrets+=(--secret "id=worker_config,src=$secret_file")
   fi
 
   echo
@@ -194,7 +213,7 @@ build_runtime() {
     echo "  worker commit: $worker_commit"
     echo "  worker build date: $worker_build_date"
   fi
-  if [[ "$tag" == "py" && ( "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ) ]]; then
+  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
     echo "  warning: baked config is intended for private images only"
   fi
 
@@ -205,7 +224,7 @@ build_runtime() {
     -f "$dockerfile"
     -t "$base_image:$tag"
   )
-  if [[ "$tag" == "py" && ( "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ) ]]; then
+  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
     build_command+=(--build-arg WORKER_CONFIG_REQUIRED=true)
   fi
   if [[ "$tag" == "go" ]]; then
@@ -221,6 +240,9 @@ build_runtime() {
   build_command+=("${output_flag[@]}" "$ROOT_DIR")
 
   if ! "${build_command[@]}"; then
+    if [[ -n "$secret_file" ]]; then
+      rm -f "$secret_file"
+    fi
     echo
     echo "Worker image build/publish failed for runtime '$tag'."
     if [[ "$push" != "false" && "$push" != "0" ]]; then

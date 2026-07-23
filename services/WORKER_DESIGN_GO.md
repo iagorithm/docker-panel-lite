@@ -13,8 +13,9 @@ failure-reporting contract.
 ## Intentional runtime difference
 
 Python reads its worker configuration from runtime environment variables and an
-optional fallback file. Go reads `worker/environment.go`; these values are
-compiled into the executable and runtime environment variables are ignored.
+optional fallback file. Go reads `worker/environment.go`; the publication script
+generates a temporary compiled override from a BuildKit secret. Runtime
+environment variables are ignored.
 Generated worker identity and claim-token files remain installation-specific.
 
 ## Action contract

@@ -9,14 +9,33 @@ Python ↔ Go file map and the rules for keeping future functionality comparable
 ## Compiled configuration
 
 The Go worker intentionally differs from the Python worker: it does not read
-process environment variables or `.env` configuration at runtime. Edit
-`services/worker-go/worker/environment.go` before compiling it. The selected
-values become part of the binary.
+process environment variables or `.env` configuration at runtime. For a direct
+local build, edit `services/worker-go/worker/environment.go`. The publication
+script instead reads the root `.env` into a BuildKit secret, generates a
+temporary Go source file inside the build step, compiles it, and removes that
+source file before producing the image layer.
 
 Do not commit production credentials or publish a binary containing them to a
 public registry. The generated worker ID and claim token may be left empty;
 each installation will create and persist them under the configured data
 directory.
+
+Build a configured local image without pushing it:
+
+```bash
+PUSH=false ./run.sh publish go
+```
+
+Validate the compiled configuration without connecting the worker or printing a
+claim token:
+
+```bash
+docker run --rm cjarn/docker-panel-lite-worker:go --check-config
+```
+
+Publishing `:go` is safe only to a private registry because compiled secrets can
+still be extracted from the executable even though the source and BuildKit
+secret are absent from the final filesystem.
 
 Current implementation status:
 

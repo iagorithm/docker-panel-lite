@@ -9,3 +9,11 @@ services:
     build:
       context: .
       dockerfile: services/worker-go/Dockerfile
+      args:
+        WORKER_CONFIG_REQUIRED: "true"
+      secrets:
+        - worker_config
+
+secrets:
+  worker_config:
+    file: .env
