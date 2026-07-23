@@ -171,9 +171,11 @@ build_runtime() {
 
   local build_secrets=()
   local secret_file=""
-  secret_file="$(worker_config_secret "$bake_config")"
-  if [[ -n "$secret_file" ]]; then
-    build_secrets+=(--secret "id=worker_config,src=$secret_file")
+  if [[ "$tag" == "py" ]]; then
+    secret_file="$(worker_config_secret "$bake_config")"
+    if [[ -n "$secret_file" ]]; then
+      build_secrets+=(--secret "id=worker_config,src=$secret_file")
+    fi
   fi
 
   echo
@@ -182,13 +184,17 @@ build_runtime() {
   echo "  image: $base_image:$tag"
   echo "  platforms: $platforms"
   echo "  push: $push"
-  echo "  baked config: $([[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]] && echo yes || echo no)"
+  if [[ "$tag" == "go" ]]; then
+    echo "  configuration: compiled from services/worker-go/worker/environment.go"
+  else
+    echo "  baked config: $([[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]] && echo yes || echo no)"
+  fi
   if [[ "$tag" == "go" ]]; then
     echo "  worker version: $worker_version"
     echo "  worker commit: $worker_commit"
     echo "  worker build date: $worker_build_date"
   fi
-  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
+  if [[ "$tag" == "py" && ( "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ) ]]; then
     echo "  warning: baked config is intended for private images only"
   fi
 
@@ -199,7 +205,7 @@ build_runtime() {
     -f "$dockerfile"
     -t "$base_image:$tag"
   )
-  if [[ "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ]]; then
+  if [[ "$tag" == "py" && ( "$bake_config" == "true" || "$bake_config" == "1" || "$bake_config" == "yes" ) ]]; then
     build_command+=(--build-arg WORKER_CONFIG_REQUIRED=true)
   fi
   if [[ "$tag" == "go" ]]; then

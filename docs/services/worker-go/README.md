@@ -6,9 +6,21 @@ The source layout follows the Python worker by responsibility and filename.
 See [`../../../services/worker-go/worker/PARITY.md`](../../../services/worker-go/worker/PARITY.md) for the
 Python ↔ Go file map and the rules for keeping future functionality comparable.
 
+## Compiled configuration
+
+The Go worker intentionally differs from the Python worker: it does not read
+process environment variables or `.env` configuration at runtime. Edit
+`services/worker-go/worker/environment.go` before compiling it. The selected
+values become part of the binary.
+
+Do not commit production credentials or publish a binary containing them to a
+public registry. The generated worker ID and claim token may be left empty;
+each installation will create and persist them under the configured data
+directory.
+
 Current implementation status:
 
-- Loads the same worker environment variables as the Python worker.
+- Loads its worker configuration from `worker/environment.go`, compiled into the binary.
 - Resolves stable worker identity.
 - Persists the worker claim token in `/app/data/worker-token`.
 - Writes the SHA-256 worker token hash to Firebase.

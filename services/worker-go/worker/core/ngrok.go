@@ -139,10 +139,10 @@ func (s NgrokService) Current(project string) (*Tunnel, error) {
 
 func (s NgrokService) Start(project string, target string, domain string) (Tunnel, error) {
 	if !s.Enabled {
-		return Tunnel{}, fmt.Errorf("ngrok is disabled. Set NGROK_ENABLED=true and NGROK_AUTHTOKEN in the worker environment")
+		return Tunnel{}, fmt.Errorf("ngrok is disabled. Enable it in the compiled Go configuration or save an ngrok token in the project")
 	}
-	if s.Authtoken == "" && strings.TrimSpace(os.Getenv("NGROK_CONFIG")) == "" {
-		return Tunnel{}, fmt.Errorf("NGROK_AUTHTOKEN is required to open public tunnels")
+	if s.Authtoken == "" {
+		return Tunnel{}, fmt.Errorf("an ngrok authtoken is required in the project or compiled Go configuration")
 	}
 	current, _ := s.Current(project)
 	if current != nil && current.Target == target && current.Domain == domain {

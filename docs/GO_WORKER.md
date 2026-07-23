@@ -10,7 +10,7 @@ The Go worker is **not yet a complete replacement** for the Python worker.
 
 Current Go implementation in `services/worker-go` supports:
 
-- Configuration loading compatible with the Python worker environment.
+- Typed configuration compiled from `services/worker-go/worker/environment.go`.
 - Firebase Realtime Database REST client using service-account OAuth.
 - Stable worker identity.
 - Persistent worker claim token.
@@ -362,7 +362,7 @@ Worker actions:
 
 ## Configuration Parity
 
-The Go worker should support the same environment variables as the Python worker.
+The Go worker intentionally does not support the Python worker's runtime configuration variables. Its settings are edited in `environment.go` and compiled into the binary.
 
 Required:
 

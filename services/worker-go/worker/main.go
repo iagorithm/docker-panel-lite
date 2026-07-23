@@ -28,12 +28,12 @@ var workerNames = []string{
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	settings, err := FromEnvironment()
+	settings, err := FromCompiledEnvironment()
 	if err != nil {
 		log.Fatalf("load settings: %v", err)
 	}
 
-	workerToken, err := ResolveWorkerToken(settings.DataDir)
+	workerToken, err := ResolveWorkerToken(settings.DataDir, Environment.WorkerToken)
 	if err != nil {
 		log.Fatalf("resolve worker token: %v", err)
 	}

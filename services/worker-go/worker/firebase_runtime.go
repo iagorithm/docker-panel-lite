@@ -47,7 +47,7 @@ func NewFirebaseClient(databaseURL, serviceAccountJSON string) (*Client, error) 
 		return nil, errors.New("firebase database URL is required")
 	}
 	if strings.TrimSpace(serviceAccountJSON) == "" {
-		return nil, errors.New("FIREBASE_SERVICE_ACCOUNT_JSON is required for the Go worker")
+		return nil, errors.New("ServiceAccountJSON is required in the compiled Go configuration")
 	}
 	var account serviceAccount
 	if err := json.Unmarshal([]byte(serviceAccountJSON), &account); err != nil {

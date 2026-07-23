@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-func ResolveWorkerToken(dataDir string) (string, error) {
-	if configured := strings.TrimSpace(os.Getenv("WORKER_TOKEN")); configured != "" {
+func ResolveWorkerToken(dataDir, compiledToken string) (string, error) {
+	if configured := strings.TrimSpace(compiledToken); configured != "" {
 		return configured, nil
 	}
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
