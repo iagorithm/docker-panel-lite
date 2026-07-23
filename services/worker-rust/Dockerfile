@@ -6,6 +6,8 @@ RUN apk add --no-cache musl-dev
 COPY services/worker-rust/Cargo.toml services/worker-rust/Cargo.lock services/worker-rust/build.rs ./
 COPY services/worker-rust/src ./src
 RUN --mount=type=secret,id=worker_config,required=false \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
     if [ "$WORKER_CONFIG_REQUIRED" = "true" ] && [ ! -s /run/secrets/worker_config ]; then \
       echo "A worker_config BuildKit secret is required to compile the configured Rust worker." >&2; \
       exit 1; \
